@@ -1,8 +1,14 @@
+from agents.diversifier import Diversifier
 from agents.fast_seller import FastSeller
+from agents.fertilizer_maximalist import FertilizerMaximalist
 from agents.neglectful_grower import NeglectfulGrower
+from agents.no_upgrade_player import NoUpgradePlayer
 from agents.profit_optimizer import ProfitOptimizer
 from agents.progression_player import ProgressionPlayer
+from agents.random_agent import RandomAgent
 from agents.reckless_spender import RecklessSpender
+from agents.risk_averse_grower import RiskAverseGrower
+from agents.upgrade_rusher import UpgradeRusher
 from runner.single_run import run_single
 
 CONFIG = {"start_money": 60, "start_slots": 3, "days": 30}
@@ -20,7 +26,10 @@ FERTILIZER_CONFIG = {
     "loss_chance_reduction": 0.03,
 }
 
-ALL_AGENTS = (FastSeller, ProfitOptimizer, ProgressionPlayer, NeglectfulGrower, RecklessSpender)
+ALL_AGENTS = (
+    FastSeller, ProfitOptimizer, ProgressionPlayer, NeglectfulGrower, RecklessSpender,
+    RandomAgent, NoUpgradePlayer, FertilizerMaximalist, Diversifier, RiskAverseGrower, UpgradeRusher,
+)
 
 
 def make_crops():
