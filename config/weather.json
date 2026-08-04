@@ -1,0 +1,9 @@
+{
+  "season_length_days": 15,
+  "seasons": {
+    "spring": {"temperature_range": [8, 23], "rain_chance": 0.42, "rainfall_range": [0.12, 0.32], "evaporation": 0.06},
+    "summer": {"temperature_range": [18, 36], "rain_chance": 0.18, "rainfall_range": [0.08, 0.24], "evaporation": 0.12},
+    "autumn": {"temperature_range": [7, 25], "rain_chance": 0.35, "rainfall_range": [0.10, 0.30], "evaporation": 0.07},
+    "winter": {"temperature_range": [-3, 14], "rain_chance": 0.28, "rainfall_range": [0.06, 0.20], "evaporation": 0.04}
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "cost": 8,
+  "yield_bonus_pct": 0.25,
+  "loss_chance_reduction": 0.03,
+  "nutrients_added": {"nitrogen": 0.25, "phosphorus": 0.15, "potassium": 0.15}
+}

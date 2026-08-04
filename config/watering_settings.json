@@ -1,0 +1,8 @@
+{
+  "neglect_loss_chance_penalty_per_day": 0.05,
+  "neglect_yield_penalty_per_day": 0.08,
+  "max_neglect_loss_chance_bonus": 0.60,
+  "max_neglect_yield_penalty": 0.80,
+  "cost_per_plot": 0.35,
+  "moisture_added": 0.45
+}

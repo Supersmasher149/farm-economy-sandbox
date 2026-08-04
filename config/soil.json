@@ -1,0 +1,12 @@
+{
+  "initial": {
+    "moisture": 0.65,
+    "nitrogen": 0.75,
+    "phosphorus": 0.75,
+    "potassium": 0.75,
+    "ph": 6.5,
+    "soil_health": 0.7,
+    "pest_pressure": 0.05,
+    "disease_pressure": 0.03
+  }
+}
