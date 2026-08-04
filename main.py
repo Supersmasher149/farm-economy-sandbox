@@ -132,7 +132,7 @@ def cmd_batch(args):
 
     results = run_batch(
         config, agents, crops, upgrades, watering_settings, fertilizer_config,
-        num_runs=args.runs, base_seed=args.seed, world=world,
+        num_runs=args.runs, base_seed=args.seed, world=world, workers=args.workers,
     )
     summary = aggregate(results)
     warning_list = evaluate_warnings(summary, config)
@@ -188,6 +188,8 @@ def build_parser():
     batch = subparsers.add_parser("batch", help="Run a batch across all strategies and generate a report.")
     batch.add_argument("--runs", type=int, default=1000)
     batch.add_argument("--seed", type=int, default=None, help="Base seed for generating per-run seeds.")
+    batch.add_argument("--workers", type=int, default=None,
+                        help="Parallel worker processes (default: all CPU cores; 1 for sequential).")
     batch.set_defaults(func=cmd_batch)
 
     return parser

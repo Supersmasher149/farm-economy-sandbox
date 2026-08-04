@@ -7,13 +7,22 @@ Decisions are derived from a hash of already-seed-determined state (day,
 money, candidate set) rather than an independent RNG stream, so a replayed
 run with the same seed reproduces the exact same "random" choices.
 """
+import hashlib
+
 from agents.base import Agent
 from simulation import economy_rules
 
 
 def _pseudo_random_unit(*parts) -> float:
-    """Deterministic pseudo-random float in [0, 1) derived from `parts`."""
-    return (hash(parts) % 10_000) / 10_000
+    """Deterministic pseudo-random float in [0, 1) derived from `parts`.
+
+    Uses a fixed-algorithm hash rather than the builtin `hash()`, whose
+    string hashing is randomized per interpreter process -- that would make
+    choices vary across worker processes in a parallel batch run even for
+    the same recorded seed.
+    """
+    digest = hashlib.md5(repr(parts).encode()).digest()
+    return int.from_bytes(digest[:4], "big") / 2 ** 32
 
 
 class RandomAgent(Agent):
