@@ -21,7 +21,8 @@ from agents.random_agent import RandomAgent
 from agents.reckless_spender import RecklessSpender
 from agents.risk_averse_grower import RiskAverseGrower
 from agents.upgrade_rusher import UpgradeRusher
-from metrics.aggregate_results import aggregate
+from metrics.aggregate_results import BatchAggregator
+from metrics.economics_audit import build_economics_audit
 from metrics.report import generate_markdown_report
 from metrics.run_results import write_csv
 from metrics.warnings import evaluate_warnings
@@ -78,18 +79,30 @@ def print_player_summary(player, seed, strategy_name):
     print(f"Days simulated: {player.day}")
     print(f"Final money: {round(player.money, 2)}")
     print(f"Total revenue: {round(player.total_revenue, 2)}")
-    print(f"Total expenses: {round(player.total_expenses, 2)}")
-    print(f"Net profit: {round(player.total_revenue - player.total_expenses, 2)}")
+    print(f"Total costs: {round(player.total_expenses, 2)}")
+    production_costs = sum(
+        player.expenses_by_category.get(category, 0.0)
+        for category in ("seeds", "watering", "fertilizer")
+    )
+    gross_profit = player.total_revenue - production_costs
+    operating_profit = gross_profit - player.expenses_by_category.get("contract_penalties", 0.0)
+    print(f"Gross profit: {round(gross_profit, 2)}")
+    print(f"Operating profit: {round(operating_profit, 2)}")
+    print(f"Net cash change: {round(player.total_revenue - player.total_expenses, 2)}")
+    print(f"Expenses by category: {dict(sorted(player.expenses_by_category.items()))}")
     print(f"Crops planted / harvested / sold: {player.total_planted} / {player.total_harvested} / {player.total_sold}")
     print(f"Crop plant counts: {player.crop_plant_counts}")
     print(f"Upgrades owned: {sorted(player.upgrades_owned)}")
     print(f"Upgrade purchase days: {player.upgrade_purchase_days}")
     print(f"Idle days: {player.idle_days}")
     print(f"Bankrupt: {player.bankrupt}")
+    print(f"Bankruptcy day / reason: {player.bankruptcy_day} / {player.bankruptcy_reason}")
     print(f"Lowest / highest money: {round(player.lowest_money, 2)} / {round(player.highest_money, 2)}")
     watering_rate = 100 * player.total_waterings / player.slot_days if player.slot_days else 0.0
+    occupied_watering_rate = 100 * player.total_waterings / player.occupied_slot_days if player.occupied_slot_days else 0.0
     loss_rate = 100 * player.total_crops_lost / player.total_harvest_events if player.total_harvest_events else 0.0
     print(f"Watering coverage: {round(watering_rate, 1)}% of plot-days ({player.total_waterings}/{player.slot_days})")
+    print(f"Watering coverage of occupied plot-days: {round(occupied_watering_rate, 1)}% ({player.total_waterings}/{player.occupied_slot_days})")
     print(f"Crops lost: {player.total_crops_lost} ({round(loss_rate, 1)}% of matured crops)")
     print(f"Fertilizer bought / applied: {player.total_fertilizer_bought} / {player.total_fertilizer_applied}")
     print(f"Quality harvested: {player.quality_harvested}")
@@ -127,23 +140,45 @@ def cmd_replay(args):
 
 def cmd_batch(args):
     crops, upgrades, config, world = load_config()
+    config = dict(config)
+    if args.days is not None:
+        config["days"] = args.days
+    if args.start_money is not None:
+        config["start_money"] = args.start_money
     watering_settings, fertilizer_config = world["watering"], world["fertilizer"]
     agents = [cls() for cls in AGENT_REGISTRY.values()]
+    total_runs = args.runs * len(agents)
 
     results = run_batch(
         config, agents, crops, upgrades, watering_settings, fertilizer_config,
         num_runs=args.runs, base_seed=args.seed, world=world, workers=args.workers,
     )
-    summary = aggregate(results)
-    warning_list = evaluate_warnings(summary, config)
 
     os.makedirs(REPORTS_DIR, exist_ok=True)
     crop_ids = [c["id"] for c in crops]
     crop_names = {c["id"]: c["name"] for c in crops}
     agent_descriptions = {agent.name: agent.description for agent in agents}
+    economics_audit = build_economics_audit(crops, fertilizer_config, world["markets"])
+
+    # run_batch streams one RunResult at a time rather than returning a
+    # materialized list (so memory stays bounded for very large batches), so
+    # results can only be consumed once. write_csv drives the single pass
+    # over it -- pulling one result, writing one CSV row, discarding it --
+    # while this tee feeds the same result into the aggregator as a side
+    # effect, keeping CSV writing and summary aggregation in lockstep instead
+    # of requiring two separate passes over a held-in-memory list.
+    aggregator = BatchAggregator()
+
+    def _tee(stream):
+        for r in stream:
+            aggregator.add(r)
+            yield r
 
     csv_path = os.path.join(REPORTS_DIR, "run_results.csv")
-    write_csv(results, csv_path, crop_ids)
+    write_csv(_tee(results), csv_path, crop_ids)
+
+    summary = aggregator.finalize()
+    warning_list = evaluate_warnings(summary, config)
 
     config_snapshot_path = os.path.join(REPORTS_DIR, "config_snapshot.json")
     with open(config_snapshot_path, "w") as f:
@@ -158,11 +193,13 @@ def cmd_batch(args):
         }, f, indent=2)
 
     report_path = os.path.join(REPORTS_DIR, "summary_report.md")
-    report_text = generate_markdown_report(config, args.runs, summary, warning_list, crop_names, agent_descriptions)
+    report_text = generate_markdown_report(
+        config, args.runs, summary, warning_list, crop_names, agent_descriptions, economics_audit
+    )
     with open(report_path, "w") as f:
         f.write(report_text)
 
-    print(f"Ran {args.runs} simulations x {len(agents)} strategies = {len(results)} total runs.")
+    print(f"Ran {args.runs} simulations x {len(agents)} strategies = {total_runs} total runs.")
     print(f"CSV:    {csv_path}")
     print(f"Config: {config_snapshot_path}")
     print(f"Report: {report_path}")
@@ -190,6 +227,10 @@ def build_parser():
     batch.add_argument("--seed", type=int, default=None, help="Base seed for generating per-run seeds.")
     batch.add_argument("--workers", type=int, default=None,
                         help="Parallel worker processes (default: all CPU cores; 1 for sequential).")
+    batch.add_argument("--days", type=int, default=None,
+                       help="Override simulated days for this batch without changing config files.")
+    batch.add_argument("--start-money", type=float, default=None,
+                       help="Override starting money for this batch without changing config files.")
     batch.set_defaults(func=cmd_batch)
 
     return parser

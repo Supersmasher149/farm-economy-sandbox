@@ -1,56 +1,242 @@
-"""Aggregate a batch's RunResults into per-strategy summary statistics."""
+"""Aggregate a batch's RunResults into per-strategy summary statistics.
+
+Statistics are accumulated incrementally, one RunResult at a time, rather
+than by materializing every run into per-strategy lists -- so aggregating a
+multi-million-run batch doesn't require holding the whole batch in memory.
+Almost every stat here is a running sum/count, running min/max, or running
+dict-sum, all of which are O(1) per run. The exception is the four
+`median_*` stats, which need the full set of values for that field
+(statistics.median has to see everything to find the middle). Rather than an
+approximate/streaming median algorithm, we retain the minimum data that
+makes exact medians possible: a plain list of floats/ints per strategy for
+just the fields that need it (final_money split by survivor/bankrupt cohort,
+bankruptcy_day) -- a few bytes per run, instead of the ~5KB per run a full
+RunResult (with several nested dicts) costs.
+
+Running means use Neumaier (improved Kahan-Babuska) compensated summation
+instead of naive `total += value`, so they stay numerically close to
+statistics.mean's higher-precision internal calculation and don't quietly
+drift from it at the 2-decimal rounding this module reports at.
+
+`aggregate(results) -> dict` is kept as a convenience wrapper with the same
+signature and output as before (works on a list or any other iterable, in a
+single pass). Batch callers that want to interleave aggregation with other
+per-result work (e.g. streaming a CSV row per result) should drive
+`BatchAggregator` directly instead.
+"""
 import statistics
 
 
-def aggregate(results: list) -> dict:
-    by_strategy = {}
+class _MeanAccumulator:
+    """Running mean via Neumaier compensated summation. count==0 -> None."""
+
+    __slots__ = ("total", "comp", "count")
+
+    def __init__(self):
+        self.total = 0.0
+        self.comp = 0.0
+        self.count = 0
+
+    def add(self, value) -> None:
+        t = self.total + value
+        if abs(self.total) >= abs(value):
+            self.comp += (self.total - t) + value
+        else:
+            self.comp += (value - t) + self.total
+        self.total = t
+        self.count += 1
+
+    def mean(self):
+        return round((self.total + self.comp) / self.count, 2) if self.count else None
+
+
+# (summary-dict mean field name, RunResult attribute) for the per-run stats
+# whose mean is computed over every run regardless of bankruptcy/upgrades.
+_SIMPLE_MEAN_FIELDS = (
+    ("crop_loss_rate", "crop_loss_rate"),
+    ("watering_rate", "watering_rate"),
+    ("occupied_watering_rate", "occupied_watering_rate"),
+    ("occupied_slot_days", "occupied_slot_days"),
+    ("fertilizer_applications", "fertilizer_applications"),
+    ("spoiled_units", "spoiled_units"),
+    ("processed_units", "processed_units"),
+    ("contracts_completed", "contracts_completed"),
+    ("contracts_failed", "contracts_failed"),
+    ("final_reputation", "final_reputation"),
+    ("total_costs", "total_expenses"),
+    ("gross_profit", "gross_profit"),
+    ("operating_profit", "operating_profit"),
+    ("net_cash_change", "net_cash_change"),
+)
+
+# Mean fields that are conditional (only some runs contribute) and so need
+# their own named accumulator rather than a blanket per-run add.
+_CONDITIONAL_MEAN_FIELDS = (
+    "final_money", "final_money_survivors", "final_money_bankrupt",
+    "bankruptcy_day", "minimum_cash_balance", "minimum_cash_balance_bankrupt",
+    "first_upgrade_day", "second_upgrade_day",
+)
+
+
+class _StrategyAccumulator:
+    def __init__(self):
+        self.count = 0
+        self.means = {
+            name: _MeanAccumulator()
+            for name in _CONDITIONAL_MEAN_FIELDS + tuple(name for name, _ in _SIMPLE_MEAN_FIELDS)
+        }
+
+        self.final_money_min = None
+        self.final_money_max = None
+        self.bankruptcy_day_min = None
+        self.bankruptcy_day_max = None
+
+        # Only the scalar lists exact medians need -- see module docstring.
+        self.survivor_money_values = []
+        self.bankrupt_money_values = []
+        self.bankruptcy_day_values = []
+
+        self.crop_totals = {}
+        self.planted_total = 0
+        self.channel_revenue = {}
+        self.quality_totals = {}
+        self.expense_totals = {}
+        self.crop_observations = {}
+        self.bankruptcy_reasons = {}
+
+    def add(self, r) -> None:
+        self.count += 1
+        means = self.means
+
+        means["final_money"].add(r.final_money)
+        if self.final_money_min is None or r.final_money < self.final_money_min:
+            self.final_money_min = r.final_money
+        if self.final_money_max is None or r.final_money > self.final_money_max:
+            self.final_money_max = r.final_money
+
+        if r.bankrupt:
+            self.bankrupt_money_values.append(r.final_money)
+            means["final_money_bankrupt"].add(r.final_money)
+            means["minimum_cash_balance_bankrupt"].add(r.minimum_cash_balance)
+            if r.bankruptcy_day is not None:
+                self.bankruptcy_day_values.append(r.bankruptcy_day)
+                means["bankruptcy_day"].add(r.bankruptcy_day)
+                if self.bankruptcy_day_min is None or r.bankruptcy_day < self.bankruptcy_day_min:
+                    self.bankruptcy_day_min = r.bankruptcy_day
+                if self.bankruptcy_day_max is None or r.bankruptcy_day > self.bankruptcy_day_max:
+                    self.bankruptcy_day_max = r.bankruptcy_day
+            reason = r.bankruptcy_reason or "unknown"
+            self.bankruptcy_reasons[reason] = self.bankruptcy_reasons.get(reason, 0) + 1
+        else:
+            self.survivor_money_values.append(r.final_money)
+            means["final_money_survivors"].add(r.final_money)
+
+        means["minimum_cash_balance"].add(r.minimum_cash_balance)
+
+        if r.first_upgrade_day is not None:
+            means["first_upgrade_day"].add(r.first_upgrade_day)
+        if r.second_upgrade_day is not None:
+            means["second_upgrade_day"].add(r.second_upgrade_day)
+
+        for name, attr in _SIMPLE_MEAN_FIELDS:
+            means[name].add(getattr(r, attr))
+
+        self.planted_total += r.crops_planted
+        for cid, count in r.crop_counts.items():
+            self.crop_totals[cid] = self.crop_totals.get(cid, 0) + count
+        for channel, revenue in r.revenue_by_channel.items():
+            self.channel_revenue[channel] = self.channel_revenue.get(channel, 0.0) + revenue
+        for quality, quantity in r.quality_harvested.items():
+            self.quality_totals[quality] = self.quality_totals.get(quality, 0) + quantity
+        for category, amount in r.expenses_by_category.items():
+            self.expense_totals[category] = self.expense_totals.get(category, 0.0) + amount
+        for cid, observation in r.crop_decision_observations.items():
+            aggregate_observation = self.crop_observations.setdefault(cid, {})
+            for key, value in observation.items():
+                aggregate_observation[key] = aggregate_observation.get(key, 0) + value
+
+    def finalize(self) -> dict:
+        means = self.means
+        all_money_values = self.survivor_money_values + self.bankrupt_money_values
+
+        return {
+            "num_runs": self.count,
+            "avg_final_money": means["final_money"].mean(),
+            "median_final_money": round(statistics.median(all_money_values), 2),
+            "min_final_money": round(self.final_money_min, 2),
+            "max_final_money": round(self.final_money_max, 2),
+            "surviving_runs": len(self.survivor_money_values),
+            "bankrupt_runs": len(self.bankrupt_money_values),
+            "avg_final_money_survivors": means["final_money_survivors"].mean(),
+            "median_final_money_survivors": (
+                round(statistics.median(self.survivor_money_values), 2)
+                if self.survivor_money_values else None
+            ),
+            "avg_final_money_bankrupt": means["final_money_bankrupt"].mean(),
+            "median_final_money_bankrupt": (
+                round(statistics.median(self.bankrupt_money_values), 2)
+                if self.bankrupt_money_values else None
+            ),
+            "bankruptcy_rate": round(100 * len(self.bankrupt_money_values) / self.count, 2),
+            "avg_bankruptcy_day": means["bankruptcy_day"].mean(),
+            "median_bankruptcy_day": (
+                round(statistics.median(self.bankruptcy_day_values), 2)
+                if self.bankruptcy_day_values else None
+            ),
+            "min_bankruptcy_day": self.bankruptcy_day_min,
+            "max_bankruptcy_day": self.bankruptcy_day_max,
+            "avg_minimum_cash_balance": means["minimum_cash_balance"].mean(),
+            "avg_minimum_cash_balance_bankrupt": means["minimum_cash_balance_bankrupt"].mean(),
+            "bankruptcy_reasons": self.bankruptcy_reasons,
+            "avg_first_upgrade_day": means["first_upgrade_day"].mean(),
+            "avg_second_upgrade_day": means["second_upgrade_day"].mean(),
+            "crop_usage_pct": {
+                cid: round(100 * count / self.planted_total, 2) if self.planted_total else 0.0
+                for cid, count in self.crop_totals.items()
+            },
+            "avg_crop_loss_rate": means["crop_loss_rate"].mean(),
+            "avg_watering_rate": means["watering_rate"].mean(),
+            "avg_occupied_watering_rate": means["occupied_watering_rate"].mean(),
+            "avg_occupied_slot_days": means["occupied_slot_days"].mean(),
+            "avg_fertilizer_applications": means["fertilizer_applications"].mean(),
+            "avg_spoiled_units": means["spoiled_units"].mean(),
+            "avg_processed_units": means["processed_units"].mean(),
+            "avg_contracts_completed": means["contracts_completed"].mean(),
+            "avg_contracts_failed": means["contracts_failed"].mean(),
+            "avg_final_reputation": means["final_reputation"].mean(),
+            "avg_total_costs": means["total_costs"].mean(),
+            "avg_gross_profit": means["gross_profit"].mean(),
+            "avg_operating_profit": means["operating_profit"].mean(),
+            "avg_net_cash_change": means["net_cash_change"].mean(),
+            "avg_expenses_by_category": {
+                key: round(value / self.count, 2) for key, value in self.expense_totals.items()
+            },
+            "revenue_by_channel": {
+                key: round(value / self.count, 2) for key, value in self.channel_revenue.items()
+            },
+            "quality_harvested": self.quality_totals,
+            "crop_decision_observations": self.crop_observations,
+        }
+
+
+class BatchAggregator:
+    """Streaming aggregator: call .add(result) once per RunResult, in any
+    order or interleaving with other per-result work, then .finalize() once
+    at the end to get the same summary dict aggregate() returns."""
+
+    def __init__(self):
+        self._by_strategy = {}
+
+    def add(self, result) -> None:
+        acc = self._by_strategy.setdefault(result.strategy, _StrategyAccumulator())
+        acc.add(result)
+
+    def finalize(self) -> dict:
+        return {strategy: acc.finalize() for strategy, acc in self._by_strategy.items()}
+
+
+def aggregate(results) -> dict:
+    aggregator = BatchAggregator()
     for r in results:
-        by_strategy.setdefault(r.strategy, []).append(r)
-
-    summary = {}
-    for strategy, runs in by_strategy.items():
-        final_moneys = [r.final_money for r in runs]
-        bankrupt_count = sum(1 for r in runs if r.bankrupt)
-        first_days = [r.first_upgrade_day for r in runs if r.first_upgrade_day is not None]
-        second_days = [r.second_upgrade_day for r in runs if r.second_upgrade_day is not None]
-
-        crop_totals = {}
-        planted_total = 0
-        for r in runs:
-            planted_total += r.crops_planted
-            for cid, count in r.crop_counts.items():
-                crop_totals[cid] = crop_totals.get(cid, 0) + count
-        crop_usage_pct = {
-            cid: round(100 * count / planted_total, 2) if planted_total else 0.0
-            for cid, count in crop_totals.items()
-        }
-        channel_revenue = {}
-        quality_totals = {}
-        for run in runs:
-            for channel, revenue in run.revenue_by_channel.items():
-                channel_revenue[channel] = channel_revenue.get(channel, 0.0) + revenue
-            for quality, quantity in run.quality_harvested.items():
-                quality_totals[quality] = quality_totals.get(quality, 0) + quantity
-
-        summary[strategy] = {
-            "num_runs": len(runs),
-            "avg_final_money": round(statistics.mean(final_moneys), 2),
-            "median_final_money": round(statistics.median(final_moneys), 2),
-            "min_final_money": round(min(final_moneys), 2),
-            "max_final_money": round(max(final_moneys), 2),
-            "bankruptcy_rate": round(100 * bankrupt_count / len(runs), 2),
-            "avg_first_upgrade_day": round(statistics.mean(first_days), 2) if first_days else None,
-            "avg_second_upgrade_day": round(statistics.mean(second_days), 2) if second_days else None,
-            "crop_usage_pct": crop_usage_pct,
-            "avg_crop_loss_rate": round(statistics.mean(r.crop_loss_rate for r in runs), 2),
-            "avg_watering_rate": round(statistics.mean(r.watering_rate for r in runs), 2),
-            "avg_fertilizer_applications": round(statistics.mean(r.fertilizer_applications for r in runs), 2),
-            "avg_spoiled_units": round(statistics.mean(r.spoiled_units for r in runs), 2),
-            "avg_processed_units": round(statistics.mean(r.processed_units for r in runs), 2),
-            "avg_contracts_completed": round(statistics.mean(r.contracts_completed for r in runs), 2),
-            "avg_contracts_failed": round(statistics.mean(r.contracts_failed for r in runs), 2),
-            "avg_final_reputation": round(statistics.mean(r.final_reputation for r in runs), 2),
-            "revenue_by_channel": {key: round(value / len(runs), 2) for key, value in channel_revenue.items()},
-            "quality_harvested": quality_totals,
-        }
-    return summary
+        aggregator.add(r)
+    return aggregator.finalize()

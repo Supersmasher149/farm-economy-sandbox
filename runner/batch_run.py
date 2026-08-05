@@ -15,7 +15,23 @@ process once via a pool initializer rather than being re-pickled on every
 task, and tasks are dispatched in chunks rather than one at a time -- both
 matter because an individual simulated run is cheap, so per-task IPC
 overhead would otherwise dominate.
+
+run_batch is a generator: it streams one RunResult at a time instead of
+materializing the whole batch, so memory stays bounded for multi-million-run
+batches. It also does no work at all until first iterated (that's how Python
+generator functions work) -- every current caller iterates immediately after
+calling it, so this is safe, but it's a real change from the old eager list
+return worth knowing if you add a new caller.
+
+Jobs are submitted to the process pool in bounded windows rather than all at
+once: concurrent.futures.Executor.map submits every task eagerly (creating
+one Future per job up front, before any results are consumed), so handing it
+the full job list for a huge batch would recreate the same unbounded-memory
+problem streaming is meant to fix. Pulling jobs off a lazy generator in
+window_size-sized slices, against one long-lived pool reused across windows,
+keeps peak in-flight jobs/futures bounded independent of total batch size.
 """
+import itertools
 import os
 import random
 from concurrent.futures import ProcessPoolExecutor
@@ -46,31 +62,44 @@ def _run_in_worker(job):
 
 
 def run_batch(config: dict, agents: list, crops: list, upgrades: list, watering_settings: dict,
-              fertilizer_config: dict, num_runs: int, base_seed=None, world=None, workers=None):
+              fertilizer_config: dict, num_runs: int, base_seed=None, world=None, workers=None,
+              window_size=None):
     seed_rng = random.Random(base_seed)
-    jobs = [
+    total_jobs = len(agents) * num_runs
+    if total_jobs <= 0:
+        return
+
+    # Lazy -- a whole batch's (agent, seed) pairs are never held in memory at
+    # once. Seeds are still minted single-threaded and in the same
+    # agent-major order as before, so a given base_seed keeps producing the
+    # same per-run seeds regardless of worker count or window size.
+    jobs = (
         (agent, seed_rng.randrange(2 ** 32))
         for agent in agents
         for _ in range(num_runs)
-    ]
-
-    if not jobs:
-        return []
+    )
 
     if workers is None:
         workers = os.cpu_count() or 1
-    workers = max(1, min(workers, len(jobs)))
+    workers = max(1, min(workers, total_jobs))
 
     if workers <= 1:
-        return [
-            _execute(agent, run_seed, config, crops, upgrades, watering_settings, fertilizer_config, world)
-            for agent, run_seed in jobs
-        ]
+        for agent, run_seed in jobs:
+            yield _execute(agent, run_seed, config, crops, upgrades, watering_settings, fertilizer_config, world)
+        return
 
-    chunksize = max(1, len(jobs) // (workers * 4))
+    if window_size is None:
+        window_size = max(2000, workers * 500)
+    window_size = max(1, window_size)
+
     with ProcessPoolExecutor(
         max_workers=workers,
         initializer=_init_worker,
         initargs=(config, crops, upgrades, watering_settings, fertilizer_config, world),
     ) as executor:
-        return list(executor.map(_run_in_worker, jobs, chunksize=chunksize))
+        while True:
+            window = list(itertools.islice(jobs, window_size))
+            if not window:
+                break
+            chunksize = max(1, len(window) // (workers * 4))
+            yield from executor.map(_run_in_worker, window, chunksize=chunksize)
