@@ -1,3 +1,5 @@
+import pytest
+
 from simulation import economy_rules
 
 
@@ -35,3 +37,124 @@ def test_effective_growth_days_never_below_one(player, fast_crop):
 def test_expected_profit_per_day_is_positive_for_profitable_crop(player, standard_crop):
     profit = economy_rules.expected_profit_per_day(standard_crop, player, {})
     assert profit > 0
+
+
+# -- upgrade-purchase budget gate -------------------------------------------
+
+def test_upgrade_payback_days_none_without_crop_catalog(player, capacity_upgrade):
+    assert economy_rules.upgrade_payback_days(capacity_upgrade, player, {}, {}) is None
+
+
+def test_upgrade_payback_days_prices_capacity_upgrade(player, standard_crop, capacity_upgrade):
+    crops_by_id = {"standard": standard_crop}
+    payback = economy_rules.upgrade_payback_days(capacity_upgrade, player, crops_by_id, {})
+    nominal = economy_rules.expected_profit_per_day(standard_crop, player, {})
+    expected = capacity_upgrade["cost"] / (nominal * capacity_upgrade["effect"]["amount"])
+    assert payback == pytest.approx(expected)
+
+
+def test_should_buy_upgrade_within_budget_blocks_purchase_cooldown(player, capacity_upgrade):
+    player.money = 1000
+    player.highest_money = 1000
+    player.upgrade_purchase_days = {"efficiency_1": player.day}
+
+    assert not economy_rules.should_buy_upgrade_within_budget(player, capacity_upgrade)
+
+    player.day += 10
+    assert economy_rules.should_buy_upgrade_within_budget(player, capacity_upgrade)
+
+
+def test_should_buy_upgrade_within_budget_blocks_over_cumulative_cap(player, capacity_upgrade):
+    player.money = 200
+    player.highest_money = 200
+    # Already spent 100 on upgrades; +120 more would exceed 60% of the peak
+    # cash (200 * 0.6 = 120), even though the reserve check alone passes.
+    player.expenses_by_category["upgrades"] = 100
+
+    assert not economy_rules.should_buy_upgrade_within_budget(player, capacity_upgrade)
+
+
+def test_should_buy_upgrade_within_budget_allows_when_clear(player, capacity_upgrade):
+    player.money = 1000
+    player.highest_money = 1000
+    assert economy_rules.should_buy_upgrade_within_budget(player, capacity_upgrade)
+
+
+# -- crop-selection reserve ladder -------------------------------------------
+
+def test_crop_seed_reserve_gate_relaxes_with_fraction(player, standard_crop):
+    player.money = 68
+    player.operating_reserve = 100
+
+    assert not economy_rules.crop_seed_reserve_gate(standard_crop, player, 1.0)
+    assert economy_rules.crop_seed_reserve_gate(standard_crop, player, 0.5)
+
+
+def test_choose_crop_with_relaxed_reserve_returns_none_below_loosest_tier(player, standard_crop):
+    player.money = 10
+    player.operating_reserve = 100
+    assert economy_rules.choose_crop_with_relaxed_reserve([standard_crop], player, {}) is None
+
+
+# -- soil-quality-aware ranking -----------------------------------------------
+
+def test_soil_health_factor_defaults_healthy_without_plots():
+    from simulation.state import PlayerState
+    empty = PlayerState(money=10, slots_total=0)
+    assert economy_rules.soil_health_factor(empty) == 1.0
+
+
+def test_quality_adjusted_profit_matches_nominal_at_full_soil_health(player):
+    for plot in player.plots:
+        plot.nitrogen = plot.phosphorus = plot.potassium = 1.0
+    crop = {
+        "id": "demanding", "seed_cost": 45, "growth_days": 12,
+        "min_yield": 5, "max_yield": 10, "base_price": 16, "loss_chance": 0.0,
+        "nutrient_demand": {"nitrogen": 0.04, "phosphorus": 0.03, "potassium": 0.035},
+        "family": "flowering",
+    }
+    nominal = economy_rules.expected_profit_per_day(crop, player, {})
+    adjusted = economy_rules.quality_adjusted_profit_per_day(crop, player, {})
+    assert adjusted == pytest.approx(nominal)
+
+
+def test_quality_adjusted_profit_discounted_when_soil_depleted(player):
+    for plot in player.plots:
+        plot.nitrogen = plot.phosphorus = plot.potassium = 0.0
+    crop = {
+        "id": "demanding", "seed_cost": 45, "growth_days": 12,
+        "min_yield": 5, "max_yield": 10, "base_price": 16, "loss_chance": 0.0,
+        "nutrient_demand": {"nitrogen": 0.04, "phosphorus": 0.03, "potassium": 0.035},
+        "family": "flowering",
+    }
+    nominal = economy_rules.expected_profit_per_day(crop, player, {})
+    adjusted = economy_rules.quality_adjusted_profit_per_day(crop, player, {})
+    assert adjusted < nominal
+
+
+def test_soil_quality_risk_favors_low_demand_crop_when_depleted(player):
+    for plot in player.plots:
+        plot.nitrogen = plot.phosphorus = plot.potassium = 0.0
+    low_demand = {"nutrient_demand": {"nitrogen": 0.01, "phosphorus": 0.01, "potassium": 0.01}, "family": "leafy"}
+    high_demand = {"nutrient_demand": {"nitrogen": 0.04, "phosphorus": 0.03, "potassium": 0.035}, "family": "flowering"}
+    assert economy_rules.soil_quality_risk(low_demand, player) < economy_rules.soil_quality_risk(high_demand, player)
+
+
+def test_best_crop_by_expected_profit_triages_to_lowest_demand_when_soil_critical(player):
+    for plot in player.plots:
+        plot.nitrogen = plot.phosphorus = plot.potassium = 0.0
+    low_demand = {
+        "id": "low", "seed_cost": 5, "growth_days": 3, "min_yield": 1, "max_yield": 2,
+        "base_price": 5, "loss_chance": 0.0,
+        "nutrient_demand": {"nitrogen": 0.01, "phosphorus": 0.01, "potassium": 0.01},
+    }
+    high_demand = {
+        "id": "high", "seed_cost": 45, "growth_days": 12, "min_yield": 5, "max_yield": 10,
+        "base_price": 16, "loss_chance": 0.0,
+        "nutrient_demand": {"nitrogen": 0.04, "phosphorus": 0.03, "potassium": 0.035},
+    }
+    # Nominal EV would favor "high" (higher price/yield); soil is fully
+    # depleted (well below CRITICAL_SOIL_HEALTH), so triage should override
+    # that and pick the gentlest crop instead.
+    chosen = economy_rules.best_crop_by_expected_profit([low_demand, high_demand], player, {})
+    assert chosen["id"] == "low"

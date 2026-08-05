@@ -2,5 +2,6 @@
   "start_money": 60,
   "start_slots": 3,
   "days": 45,
+  "operating_reserve": 100,
   "seed": null
 }

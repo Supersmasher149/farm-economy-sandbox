@@ -29,13 +29,17 @@ python3 main.py replay --strategy fast_seller --seed 123456789
 
 # Run every strategy N times each and generate a report
 python3 main.py batch --runs 1000
+
+# Run a short/high-cash diagnostic scenario without editing config files
+python3 main.py batch --runs 100 --days 30 --start-money 300
 ```
 
 `batch` writes to `reports/`:
 
 - `run_results.csv` -- one row per simulation run
 - `config_snapshot.json` -- the exact config the batch ran with
-- `summary_report.md` -- per-strategy stats plus automated balance warnings
+- `summary_report.md` -- per-strategy stats, cash-flow diagnostics, economics
+  audit, and automated balance warnings
 
 Pass `--seed` to `batch` to make an entire batch (including every agent's
 per-run seeds) reproducible, which is useful for A/B-testing a config or
@@ -45,6 +49,10 @@ code change against the exact same simulated conditions.
 since each simulated run is independent. Results are byte-for-byte
 identical to a sequential run for the same `--seed`. Pass `--workers 1` to
 force sequential execution, or `--workers N` to cap the pool size.
+
+Optional `--days N` and `--start-money N` batch arguments override those two
+simulation settings for the diagnostic run only; the effective values are
+recorded in the config snapshot and report.
 
 ## Project layout
 

@@ -6,6 +6,7 @@ from simulation import actions, contracts, crop_growth, economy_rules, inventory
 
 def _legacy_run_day(player, agent, crops, crops_by_id, upgrades, upgrades_by_id, watering_settings, fertilizer_config, rng):
     player.slot_days += player.slots_total
+    player.occupied_slot_days += len(player.planted)
     watered = actions.water_farm(player, agent, crops_by_id, rng, watering_settings)
     harvested = actions.harvest_mature(player, crops_by_id, rng, watering_settings, fertilizer_config)
     _revenue, sold = actions.sell_all(player, crops_by_id, rng)
@@ -55,8 +56,12 @@ def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgra
         return
 
     player.slot_days += player.slots_total
+    player.occupied_slot_days += len(player.planted)
     items_by_id = dict(crops_by_id)
     items_by_id.update({product["id"]: product for product in world["processing"].get("products", [])})
+    player.crop_catalog = crops_by_id
+    player.upgrades_catalog = upgrades_by_id
+    player.contract_config = world["contracts"]
 
     player.current_weather = weather.generate_weather(player.day, world["weather"], rng)
     weather.apply_weather(player, crops_by_id, player.current_weather, crop_growth)
@@ -67,6 +72,7 @@ def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgra
     spoiled = inventory.age_and_spoil(player, storage)
     completed = processing.complete_jobs(player)
     markets.update_daily_prices(player, items_by_id, world["markets"], rng)
+    player.market_channels = world["markets"]["channels"]
     new_offers = contracts.generate_offers(player, world["contracts"], world["buyers"], items_by_id, rng)
 
     acted = bool(harvested or spoiled or completed)
@@ -114,8 +120,23 @@ def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgra
 def _plant_open_slots(player, agent, crops, crops_by_id, upgrades_by_id, fertilizer_config=None) -> bool:
     planted_something = False
     while player.open_slots > 0:
+        for candidate in crops:
+            unlocked = economy_rules.is_crop_unlocked(candidate, player)
+            affordable = player.money >= candidate["seed_cost"]
+            player.observe_crop_decision(candidate, unlocked, affordable)
         crop = agent.choose_crop(player, crops, crops_by_id, upgrades_by_id)
-        if crop is None or not economy_rules.is_crop_unlocked(crop, player) or player.money < crop["seed_cost"]:
+        if crop is None:
+            break
+        unlocked = economy_rules.is_crop_unlocked(crop, player)
+        affordable = player.money >= crop["seed_cost"]
+        if not unlocked or not affordable:
+            player.observe_crop_decision(
+                crop,
+                unlocked,
+                affordable,
+                blocked_reason="locked" if not unlocked else "unaffordable",
+                count_opportunity=False,
+            )
             break
         use_fertilizer = bool(
             fertilizer_config
@@ -126,6 +147,7 @@ def _plant_open_slots(player, agent, crops, crops_by_id, upgrades_by_id, fertili
         use_fertilizer = use_fertilizer and player.fertilizer_inventory > 0
         if not actions.buy_seeds(player, crop, 1):
             break
+        player.observe_crop_decision(crop, True, True, selected=True, count_opportunity=False)
         growth_days = economy_rules.effective_growth_days(crop, player, upgrades_by_id)
         planted_something = actions.plant_seed(
             player, crop, growth_days, fertilized=use_fertilizer, fertilizer_config=fertilizer_config
@@ -142,4 +164,6 @@ def _finish_day(player, crops: list, acted: bool) -> None:
     has_inventory = any(lot.quantity > 0 for lot in player.inventory_lots) or any(player.crop_inventory.values())
     if player.money < cheapest_seed and not player.planted and not has_inventory and not player.processing_jobs:
         player.bankrupt = True
+        player.bankruptcy_day = player.day + 1
+        player.bankruptcy_reason = "no_viable_reinvestment"
     player.day += 1

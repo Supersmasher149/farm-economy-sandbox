@@ -23,6 +23,13 @@ class NeglectfulGrower(Agent):
         ]
         if not candidates:
             return None
+        safe_candidates = [
+            crop for crop in candidates
+            if economy_rules.can_spend_with_reserve(player, crop["seed_cost"])
+        ]
+        if not safe_candidates:
+            return min(candidates, key=lambda c: c["growth_days"])
+        candidates = safe_candidates
         return max(candidates, key=lambda c: economy_rules.expected_profit_per_day(c, player, upgrades_by_id))
 
     def should_buy_upgrade(self, player, upgrade):

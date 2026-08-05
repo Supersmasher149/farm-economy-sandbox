@@ -1,6 +1,8 @@
 """Buyer contract offers, deliveries, and deadline resolution."""
-from simulation import inventory
+from simulation import economy_rules, inventory, markets
 from simulation.state import ContractState
+
+PRODUCTION_SAFETY_FACTOR = 0.45
 
 
 def generate_offers(player, contract_config: dict, buyers: list, items_by_id: dict, rng) -> list:
@@ -47,6 +49,73 @@ def accept(player, contract_id: str) -> bool:
     return True
 
 
+def best_market_alternative(player, contract) -> float:
+    """Return the best current net unit value for a contract's item and grade."""
+    alternatives = []
+    for channel in getattr(player, "market_channels", []):
+        quote = markets.quote(
+            player,
+            contract.item_id,
+            contract.min_quality,
+            channel,
+            contract.quantity,
+        )
+        if quote:
+            alternatives.append(quote["net"] / quote["quantity"])
+    if alternatives:
+        return max(alternatives)
+    market_price = player.market_prices.get(contract.item_id, 0.0)
+    return market_price * 1.15
+
+
+def is_offer_profitable(player, contract) -> bool:
+    """Contracts must beat the best available sale channel, not raw price."""
+    return contract.unit_price > best_market_alternative(player, contract)
+
+
+def producible_quantity(player, contract) -> float:
+    """Estimate safely producible quantity before a contract deadline.
+
+    The estimate uses a 45% yield safety factor and accounts for crops that
+    must mature before their slot can be replanted for the contract item.
+    """
+    crop = player.crop_catalog.get(contract.item_id)
+    if crop is None:
+        return 0.0
+    growth_days = economy_rules.effective_growth_days(
+        crop, player, player.upgrades_catalog
+    )
+    days_available = max(0, contract.deadline_day - player.day)
+    expected_yield = (
+        (crop["min_yield"] + crop["max_yield"]) / 2
+        * (1 - crop.get("loss_chance", 0.0))
+        * getattr(player, "contract_config", {}).get(
+            "production_safety_factor", PRODUCTION_SAFETY_FACTOR
+        )
+    )
+    quantity = 0.0
+    open_slots = player.open_slots
+    quantity += open_slots * (days_available // growth_days) * expected_yield
+    for planted in player.planted:
+        days_after_current_crop = (
+            days_available
+            if planted.crop_id == contract.item_id
+            else days_available - planted.growth_days_required
+        )
+        if days_after_current_crop >= growth_days:
+            quantity += (days_after_current_crop // growth_days) * expected_yield
+    return quantity
+
+
+def is_offer_feasible(player, contract) -> bool:
+    crop = player.crop_catalog.get(contract.item_id)
+    if crop is None:
+        return False
+    if not economy_rules.can_spend_with_reserve(player, crop["seed_cost"]):
+        return False
+    return contract.quantity <= producible_quantity(player, contract)
+
+
 def deliver(player, contract_id: str, quantity: int) -> tuple[float, int]:
     contract = next((item for item in player.active_contracts if item.id == contract_id and not item.resolved), None)
     if contract is None or player.day > contract.deadline_day:
@@ -75,7 +144,7 @@ def resolve_expired(player) -> None:
         shortfall_value = contract.remaining * contract.unit_price
         penalty = min(player.money, shortfall_value * contract.penalty_rate)
         player.money -= penalty
-        player.total_expenses += penalty
+        player.record_expense("contract_penalties", penalty)
         player.contract_penalties += penalty
         player.contracts_failed += 1
         player.reputation = max(0.0, player.reputation - 4.0)

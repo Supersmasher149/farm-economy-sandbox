@@ -18,7 +18,7 @@ def start_job(player, recipe: dict, quantity_batches: int, capacity: int) -> boo
     if consumed != total_input:
         return False
     player.money -= total_cost
-    player.total_expenses += total_cost
+    player.record_expense("processing", total_cost)
     for _ in range(quantity_batches):
         output_quantity = recipe["output_quantity"]
         player.processing_jobs.append(ProcessingJob(

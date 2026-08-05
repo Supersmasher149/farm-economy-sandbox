@@ -18,12 +18,21 @@ class NoUpgradePlayer(Agent):
         ]
         if not candidates:
             return None
+        safe_candidates = [
+            crop for crop in candidates
+            if economy_rules.can_spend_with_reserve(player, crop["seed_cost"])
+        ]
+        if not safe_candidates:
+            return min(candidates, key=lambda c: c["growth_days"])
+        candidates = safe_candidates
         return max(candidates, key=lambda c: economy_rules.expected_profit_per_day(c, player, upgrades_by_id))
 
     def should_buy_upgrade(self, player, upgrade):
         return False
 
     def should_use_fertilizer(self, player, crop, fertilizer_config):
-        if player.money < crop["seed_cost"] + fertilizer_config["cost"]:
+        if not economy_rules.can_spend_with_reserve(
+            player, crop["seed_cost"] + fertilizer_config["cost"]
+        ):
             return False
         return economy_rules.fertilizer_expected_marginal_profit(crop, fertilizer_config) > 0

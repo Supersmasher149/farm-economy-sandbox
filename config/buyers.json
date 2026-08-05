@@ -1,5 +1,5 @@
 [
   {"id": "local_grocer", "name": "Local Grocer", "items": ["quickweed", "greenleaf"], "quantity_range": [6, 14], "min_quality": "standard", "contract_price_multiplier": 1.2, "deadline_days": 14, "penalty_rate": 0.12},
   {"id": "premium_coop", "name": "Premium Cooperative", "items": ["greenleaf", "purplehaze", "dried_greenleaf"], "quantity_range": [5, 10], "min_quality": "premium", "contract_price_multiplier": 1.55, "deadline_days": 18, "penalty_rate": 0.18, "min_reputation": 15},
-  {"id": "regional_processor", "name": "Regional Processor", "items": ["quickweed", "greenleaf"], "quantity_range": [12, 24], "min_quality": "processing", "contract_price_multiplier": 0.9, "deadline_days": 12, "penalty_rate": 0.1}
+  {"id": "regional_processor", "name": "Regional Processor", "items": ["quickweed", "greenleaf"], "quantity_range": [6, 15], "min_quality": "processing", "contract_price_multiplier": 0.9, "deadline_days": 14, "penalty_rate": 0.1}
 ]

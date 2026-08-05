@@ -14,7 +14,12 @@ def run_single(config: dict, agent, crops: list, upgrades: list, watering_settin
     upgrades_by_id = {u["id"]: u for u in upgrades}
 
     rng = RandomEvents(seed)
-    player = PlayerState(money=config["start_money"], slots_total=config["start_slots"])
+    player = PlayerState(
+        money=config["start_money"],
+        slots_total=config["start_slots"],
+        operating_reserve=config.get("operating_reserve", 0.0),
+        total_days=config.get("days"),
+    )
     if world:
         initial_soil = world.get("soil", {}).get("initial", {})
         for plot in player.plots:
@@ -43,6 +48,12 @@ def run_single(config: dict, agent, crops: list, upgrades: list, watering_settin
                 "upgrades_owned": sorted(player.upgrades_owned),
                 "total_revenue": round(player.total_revenue, 2),
                 "total_expenses": round(player.total_expenses, 2),
+                "expenses_by_category": {
+                    key: round(value, 2)
+                    for key, value in player.expenses_by_category.items()
+                },
+                "bankrupt": player.bankrupt,
+                "bankruptcy_day": player.bankruptcy_day,
                 "fertilizer_inventory": player.fertilizer_inventory,
                 "weather": dict(player.current_weather),
                 "market_prices": {key: round(value, 2) for key, value in player.market_prices.items()},
@@ -51,6 +62,7 @@ def run_single(config: dict, agent, crops: list, upgrades: list, watering_settin
                     for lot in player.inventory_lots
                 ],
                 "reputation": round(player.reputation, 2),
+                "occupied_slot_days": player.occupied_slot_days,
             })
 
     return player, rng.seed, history

@@ -5,7 +5,7 @@ prefers the standard crop as the balanced default. Purpose: test the
 intended progression path.
 """
 from agents.base import Agent
-from simulation import economy_rules
+from simulation import contracts, economy_rules
 
 # Below this multiple of the cheapest seed cost, prioritize recovery over
 # the balanced/standard crop choice.
@@ -26,23 +26,50 @@ class ProgressionPlayer(Agent):
         if not affordable:
             return None
 
-        if player.money < cheapest_cost * RECOVERY_MONEY_MULTIPLE:
+        recovery_threshold = max(
+            economy_rules.operating_reserve(player),
+            cheapest_cost * RECOVERY_MONEY_MULTIPLE,
+        )
+        active = next(
+            (contract for contract in player.active_contracts if not contract.resolved),
+            None,
+        )
+        if active:
+            contracted_crop = next((c for c in affordable if c["id"] == active.item_id), None)
+            if contracted_crop:
+                return contracted_crop
+
+        if player.money < recovery_threshold:
             return min(affordable, key=lambda c: c["growth_days"])
 
-        standard = next((c for c in affordable if c.get("role") == "standard"), None)
+        safe = [
+            crop for crop in affordable
+            if economy_rules.crop_seed_reserve_gate(crop, player, 1.0)
+        ]
+        if not safe:
+            return min(affordable, key=lambda c: c["growth_days"])
+        standard = next((c for c in safe if c.get("role") == "standard"), None)
         if standard:
             return standard
-        return min(affordable, key=lambda c: c["seed_cost"])
+        return min(safe, key=lambda c: c["seed_cost"])
 
     def should_buy_upgrade(self, player, upgrade):
-        return player.money >= upgrade["cost"]
+        return economy_rules.should_buy_upgrade_within_budget(player, upgrade)
 
     def should_fertilize(self, player, planted, crop, fertilizer_config):
-        return crop.get("role") != "fast"
+        return (
+            crop.get("role") != "fast"
+            and economy_rules.can_spend_with_reserve(player, fertilizer_config["cost"])
+        )
 
     def choose_contracts(self, player, offers):
         if any(not contract.resolved for contract in player.active_contracts):
             return []
         affordable_scale = max(6, player.slots_total * 3)
-        suitable = [offer for offer in offers if offer.quantity <= affordable_scale]
+        suitable = [
+            offer for offer in offers
+            if offer.quantity <= affordable_scale
+            and contracts.is_offer_profitable(player, offer)
+            and contracts.is_offer_feasible(player, offer)
+        ]
         return [max(suitable, key=lambda offer: offer.unit_price).id] if suitable else []

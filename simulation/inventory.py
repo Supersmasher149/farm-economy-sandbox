@@ -72,6 +72,6 @@ def age_and_spoil(player, storage_config: dict) -> int:
     if player.inventory_lots and daily_cost > 0:
         charged = min(player.money, daily_cost)
         player.money -= charged
-        player.total_expenses += charged
+        player.record_expense("storage", charged)
     player.rebuild_crop_inventory()
     return spoiled

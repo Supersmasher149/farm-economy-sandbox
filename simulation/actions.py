@@ -17,7 +17,7 @@ def buy_seeds(player, crop: dict, quantity: int = 1) -> bool:
     if quantity <= 0 or player.money < cost:
         return False
     player.money -= cost
-    player.total_expenses += cost
+    player.record_expense("seeds", cost)
     player.seed_inventory[crop["id"]] = player.seed_inventory.get(crop["id"], 0) + quantity
     return True
 
@@ -55,7 +55,7 @@ def water_crop(player, planted: PlantedCrop, watering_settings: dict) -> bool:
     if plot is None:
         return False
     player.money -= cost
-    player.total_expenses += cost
+    player.record_expense("watering", cost)
     planted.last_watered_day = player.day
     planted.neglect_days = 0
     plot.moisture = min(1.0, plot.moisture + watering_settings.get("moisture_added", 0.45))
@@ -89,7 +89,7 @@ def buy_fertilizer(player, fertilizer_config: dict, quantity: int = 1) -> bool:
     if quantity <= 0 or player.money < cost:
         return False
     player.money -= cost
-    player.total_expenses += cost
+    player.record_expense("fertilizer", cost)
     player.fertilizer_inventory += quantity
     player.total_fertilizer_bought += quantity
     return True
@@ -188,7 +188,7 @@ def buy_upgrade(player, upgrade: dict) -> bool:
     if upgrade["id"] in player.upgrades_owned or player.money < upgrade["cost"]:
         return False
     player.money -= upgrade["cost"]
-    player.total_expenses += upgrade["cost"]
+    player.record_expense("upgrades", upgrade["cost"])
     player.upgrades_owned.add(upgrade["id"])
     player.upgrade_purchase_days[upgrade["id"]] = player.day
     effect = upgrade["effect"]

@@ -95,6 +95,8 @@ class PlayerState:
     money: float
     slots_total: int
     day: int = 0
+    operating_reserve: float = 0.0
+    total_days: int | None = None
 
     crop_inventory: dict = field(default_factory=dict)
     inventory_lots: list[InventoryLot] = field(default_factory=list)
@@ -114,6 +116,10 @@ class PlayerState:
     market_prices: dict = field(default_factory=dict)
     market_supply: dict = field(default_factory=dict)
     channel_capacity_used: dict = field(default_factory=dict)
+    market_channels: list = field(default_factory=list)
+    crop_catalog: dict = field(default_factory=dict)
+    upgrades_catalog: dict = field(default_factory=dict)
+    contract_config: dict = field(default_factory=dict)
     current_weather: dict = field(default_factory=dict)
 
     total_planted: int = 0
@@ -121,8 +127,11 @@ class PlayerState:
     total_sold: int = 0
     total_revenue: float = 0.0
     total_expenses: float = 0.0
+    expenses_by_category: dict = field(default_factory=dict)
     idle_days: int = 0
     bankrupt: bool = False
+    bankruptcy_day: int | None = None
+    bankruptcy_reason: str | None = None
     milestones: list = field(default_factory=list)
 
     total_waterings: int = 0
@@ -141,8 +150,10 @@ class PlayerState:
     losses_by_cause: dict = field(default_factory=dict)
 
     slot_days: int = 0
+    occupied_slot_days: int = 0
     lowest_money: float | None = None
     highest_money: float | None = None
+    crop_decision_observations: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if not self.plots:
@@ -162,6 +173,42 @@ class PlayerState:
             if lot.item_type == "crop" and lot.quantity > 0:
                 inventory[lot.item_id] = inventory.get(lot.item_id, 0) + lot.quantity
         self.crop_inventory = inventory
+
+    def record_expense(self, category: str, amount: float) -> None:
+        if amount <= 0:
+            return
+        self.total_expenses += amount
+        self.expenses_by_category[category] = (
+            self.expenses_by_category.get(category, 0.0) + amount
+        )
+
+    def observe_crop_decision(
+        self,
+        crop: dict,
+        unlocked: bool,
+        affordable: bool,
+        selected: bool = False,
+        blocked_reason: str | None = None,
+        count_opportunity: bool = True,
+    ) -> None:
+        crop_id = crop["id"]
+        observation = self.crop_decision_observations.setdefault(crop_id, {
+            "opportunities": 0,
+            "unlocked": 0,
+            "affordable": 0,
+            "selected": 0,
+            "blocked_locked": 0,
+            "blocked_unaffordable": 0,
+        })
+        if count_opportunity:
+            observation["opportunities"] += 1
+            observation["unlocked"] += int(unlocked)
+            observation["affordable"] += int(affordable)
+        observation["selected"] += int(selected)
+        if blocked_reason == "locked":
+            observation["blocked_locked"] += 1
+        elif blocked_reason == "unaffordable":
+            observation["blocked_unaffordable"] += 1
 
     def import_legacy_inventory(self, crops_by_id: dict) -> None:
         represented = {}
