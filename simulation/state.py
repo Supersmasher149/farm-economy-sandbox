@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 QUALITY_ORDER = {"rejected": 0, "processing": 1, "standard": 2, "premium": 3}
 
 
-@dataclass
+@dataclass(slots=True)
 class PlantedCrop:
     crop_id: str
     day_planted: int
@@ -28,7 +28,7 @@ class PlantedCrop:
         return current_day - self.day_planted >= self.growth_days_required
 
 
-@dataclass
+@dataclass(slots=True)
 class PlotState:
     moisture: float = 0.65
     nitrogen: float = 0.75
@@ -42,7 +42,7 @@ class PlotState:
     crop: PlantedCrop | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class InventoryLot:
     item_id: str
     quantity: int
@@ -60,7 +60,7 @@ class InventoryLot:
         return shelf_life - self.age_days
 
 
-@dataclass
+@dataclass(slots=True)
 class ContractState:
     id: str
     buyer_id: str
@@ -80,7 +80,7 @@ class ContractState:
         return max(0, self.quantity - self.delivered)
 
 
-@dataclass
+@dataclass(slots=True)
 class ProcessingJob:
     recipe_id: str
     output_item_id: str
@@ -90,7 +90,7 @@ class ProcessingJob:
     unit_cost: float
 
 
-@dataclass
+@dataclass(slots=True)
 class PlayerState:
     money: float
     slots_total: int
@@ -192,14 +192,21 @@ class PlayerState:
         count_opportunity: bool = True,
     ) -> None:
         crop_id = crop["id"]
-        observation = self.crop_decision_observations.setdefault(crop_id, {
-            "opportunities": 0,
-            "unlocked": 0,
-            "affordable": 0,
-            "selected": 0,
-            "blocked_locked": 0,
-            "blocked_unaffordable": 0,
-        })
+        # .get + explicit insert rather than setdefault: this runs for every
+        # candidate crop on every planting attempt, and setdefault would build
+        # the default dict on every call including the overwhelming majority
+        # that already have an entry.
+        observation = self.crop_decision_observations.get(crop_id)
+        if observation is None:
+            observation = {
+                "opportunities": 0,
+                "unlocked": 0,
+                "affordable": 0,
+                "selected": 0,
+                "blocked_locked": 0,
+                "blocked_unaffordable": 0,
+            }
+            self.crop_decision_observations[crop_id] = observation
         if count_opportunity:
             observation["opportunities"] += 1
             observation["unlocked"] += int(unlocked)

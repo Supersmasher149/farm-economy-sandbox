@@ -1,5 +1,5 @@
 """Daily market prices, channel quotes, and sales."""
-from simulation import inventory
+from simulation import derived, inventory
 from simulation.state import QUALITY_ORDER
 
 
@@ -11,17 +11,26 @@ QUALITY_MULTIPLIERS = {
 }
 
 
-def update_daily_prices(player, items_by_id: dict, market_config: dict, rng) -> dict:
+def update_daily_prices(player, items_by_id: dict, market_config: dict, rng, profiles=None) -> dict:
+    # Per-item base price / variation / seasonal table are fixed config, so
+    # they come from a precomputed profile list instead of being re-read (with
+    # per-item .get defaults) every day. Its order matches items_by_id's, which
+    # keeps the sequence of rng draws -- and therefore every recorded seed --
+    # unchanged. The engine passes the list it already holds; omitting it
+    # falls back to an equivalent cached lookup.
+    if profiles is None:
+        profiles = derived.market_profiles(items_by_id, market_config)
     season = player.current_weather.get("season", "spring")
+    minimum_supply = market_config.get("minimum_supply_multiplier", 0.65)
+    supply_decay = market_config.get("supply_decay", 0.75)
+    market_supply = player.market_supply
     prices = {}
-    for item_id, item in items_by_id.items():
-        base = item.get("base_price", item.get("processed_base_price", 1.0))
-        variation = item.get("price_variation", market_config.get("default_variation", 0.12))
-        seasonal = item.get("seasonal_demand", {}).get(season, 1.0)
-        supply = player.market_supply.get(item_id, 0.0)
-        saturation = max(market_config.get("minimum_supply_multiplier", 0.65), 1.0 - supply * 0.01)
+    for item_id, base, variation, seasonal_demand in profiles:
+        seasonal = seasonal_demand.get(season, 1.0)
+        supply = market_supply.get(item_id, 0.0)
+        saturation = max(minimum_supply, 1.0 - supply * 0.01)
         prices[item_id] = max(0.01, base * seasonal * saturation * rng.uniform(1 - variation, 1 + variation))
-        player.market_supply[item_id] = supply * market_config.get("supply_decay", 0.75)
+        market_supply[item_id] = supply * supply_decay
     player.market_prices = prices
     player.channel_capacity_used = {}
     return prices

@@ -56,13 +56,17 @@ def age_and_spoil(player, storage_config: dict) -> int:
 
     remaining_total = sum(lot.quantity for lot in player.inventory_lots)
     overflow = max(0, remaining_total - capacity)
-    for lot in sorted(player.inventory_lots, key=lambda item: item.remaining_shelf_life):
-        if overflow <= 0:
-            break
-        removed = min(overflow, lot.quantity)
-        lot.quantity -= removed
-        overflow -= removed
-        spoiled += removed
+    # Only sort when something actually has to be trimmed -- storage sits
+    # under capacity on the overwhelming majority of days, and this sort ran
+    # every day regardless.
+    if overflow > 0:
+        for lot in sorted(player.inventory_lots, key=lambda item: item.remaining_shelf_life):
+            if overflow <= 0:
+                break
+            removed = min(overflow, lot.quantity)
+            lot.quantity -= removed
+            overflow -= removed
+            spoiled += removed
 
     player.inventory_lots = [lot for lot in player.inventory_lots if lot.quantity > 0]
     player.total_spoiled += spoiled
