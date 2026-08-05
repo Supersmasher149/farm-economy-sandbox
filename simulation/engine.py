@@ -58,7 +58,10 @@ def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgra
     player.contract_config = lookups.contracts
 
     player.current_weather = weather.generate_weather(player.day, lookups.weather, rng)
-    weather.apply_weather(player, crops_by_id, player.current_weather, crop_growth, lookups.crop_profiles)
+    weather.apply_weather(
+        player, crops_by_id, player.current_weather, crop_growth,
+        lookups.crop_profiles, lookups.plot_regen,
+    )
     harvested = actions.harvest_mature(player, crops_by_id, rng, watering_config, fertilizer)
     storage = _effective_storage(lookups.storage_config, player, upgrades_by_id, lookups)
     spoiled = inventory.age_and_spoil(player, storage)

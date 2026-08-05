@@ -8,5 +8,13 @@
     "soil_health": 0.7,
     "pest_pressure": 0.05,
     "disease_pressure": 0.03
+  },
+  "regen_per_day": {
+    "nitrogen": 0.02,
+    "phosphorus": 0.01,
+    "potassium": 0.01,
+    "soil_health": 0.01,
+    "pest_pressure": 0.005,
+    "disease_pressure": 0.01
   }
 }

@@ -51,7 +51,7 @@ class ProfitOptimizer(Agent):
                     return contracted_crop
 
         crop = economy_rules.choose_crop_with_relaxed_reserve(
-            candidates, player, upgrades_by_id, reserve_fractions=(1.0,)
+            candidates, player, upgrades_by_id, reserve_fractions=(1.0, 0.5, 0.25)
         )
         if crop is not None:
             return crop

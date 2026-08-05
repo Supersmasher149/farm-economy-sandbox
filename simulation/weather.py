@@ -27,15 +27,50 @@ def generate_weather(day: int, config: dict, rng) -> dict:
     }
 
 
-def apply_weather(player, crops_by_id: dict, weather: dict, growth_module, crop_profiles=None) -> None:
+def apply_weather(player, crops_by_id: dict, weather: dict, growth_module, crop_profiles=None, plot_regen=None) -> None:
     # Weather values are the same for every plot, so they are read once here
     # rather than per plot. `crop_profiles` maps crop_id to its cached static
     # growth inputs; the engine passes the one it already holds, and omitting
     # it just falls back to an equivalent per-crop lookup.
     rainfall = weather.get("rainfall", 0.0)
     day = player.day
+    # Resolved once per day, not per plot -- `plot_regen` is already a
+    # cached, per-world dict (see derived.WorldLookups.plot_regen), and
+    # defaults to no regen so a caller that omits it keeps today's behaviour.
+    # Covers nitrogen/phosphorus/potassium plus soil_health/pest_pressure/
+    # disease_pressure -- all four of these only otherwise recover when a
+    # plot sits completely fallow (see the `planted is None` branch below),
+    # which no shipped agent strategy ever deliberately does, so under
+    # continuous farming every one of them used to march to its worst value
+    # and stay there. This makes that recovery a small, constant trickle
+    # regardless of occupancy; the fallow-only bonuses below still stack on
+    # top, so deliberate rest/rotation keeps paying off faster.
+    regen_n = plot_regen.get("nitrogen", 0.0) if plot_regen else 0.0
+    regen_p = plot_regen.get("phosphorus", 0.0) if plot_regen else 0.0
+    regen_k = plot_regen.get("potassium", 0.0) if plot_regen else 0.0
+    regen_soil_health = plot_regen.get("soil_health", 0.0) if plot_regen else 0.0
+    regen_pest = plot_regen.get("pest_pressure", 0.0) if plot_regen else 0.0
+    regen_disease = plot_regen.get("disease_pressure", 0.0) if plot_regen else 0.0
+    regenerates_nutrients = regen_n or regen_p or regen_k
     for plot in player.plots:
         plot.moisture = min(1.0, plot.moisture + rainfall)
+        if regenerates_nutrients:
+            # A crop's own demand (see crop_growth.update_crop_stress) still
+            # outpaces this for nutrient-hungry crops under sustained
+            # monocropping; it only caps runaway depletion, it doesn't erase
+            # the cost of farming.
+            if regen_n:
+                plot.nitrogen = min(1.0, plot.nitrogen + regen_n)
+            if regen_p:
+                plot.phosphorus = min(1.0, plot.phosphorus + regen_p)
+            if regen_k:
+                plot.potassium = min(1.0, plot.potassium + regen_k)
+        if regen_soil_health:
+            plot.soil_health = min(1.0, plot.soil_health + regen_soil_health)
+        if regen_pest:
+            plot.pest_pressure = max(0.0, plot.pest_pressure - regen_pest)
+        if regen_disease:
+            plot.disease_pressure = max(0.0, plot.disease_pressure - regen_disease)
         planted = plot.crop
         if planted is None:
             plot.pest_pressure = max(0.0, plot.pest_pressure * 0.9)

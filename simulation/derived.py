@@ -76,7 +76,7 @@ class WorldLookups:
         "items_by_id", "recipes", "recipes_by_id", "channels", "channels_by_id",
         "market_profiles", "crop_profiles", "_storage", "_capacity",
         "watering", "fertilizer", "storage_config", "weather", "markets",
-        "contracts", "buyers", "processing",
+        "contracts", "buyers", "processing", "plot_regen",
     )
 
     def __init__(self, world: dict, crops_by_id: dict):
@@ -90,6 +90,13 @@ class WorldLookups:
         self.contracts = world["contracts"]
         self.buyers = world["buyers"]
         self.processing = world["processing"]
+        # Passive per-day recovery for nitrogen/phosphorus/potassium plus
+        # soil_health/pest_pressure/disease_pressure, independent of
+        # fertilizer or fallowing -- see simulation.weather.apply_weather.
+        # Defaults to no regen at all so a world config without a
+        # "soil.regen_per_day" section behaves exactly as before this was
+        # added.
+        self.plot_regen = world.get("soil", {}).get("regen_per_day", {})
         products = world["processing"].get("products", [])
         self.items_by_id = dict(crops_by_id)
         self.items_by_id.update({product["id"]: product for product in products})
