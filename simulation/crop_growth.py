@@ -1,39 +1,55 @@
 """Pure crop stress and harvest calculations."""
+from simulation.derived import crop_profile
 
 
 def _clamp(value, low=0.0, high=1.0):
     return max(low, min(high, value))
 
 
-def update_crop_stress(planted, plot, crop: dict, weather: dict) -> None:
-    """Accumulate bounded stress for one growing crop after today's weather."""
-    minimum_moisture = crop.get("min_moisture", 0.35)
-    planted.water_stress += max(0.0, minimum_moisture - plot.moisture)
+def update_crop_stress(planted, plot, crop: dict, weather: dict, profile=None) -> None:
+    """Accumulate bounded stress for one growing crop after today's weather.
 
-    needs = crop.get("nutrient_demand", {"nitrogen": 0.02, "phosphorus": 0.01, "potassium": 0.01})
-    nutrient_shortfall = sum(max(0.0, amount - getattr(plot, name)) for name, amount in needs.items())
-    preferred_ph = crop.get("ph_range", [5.8, 7.0])
+    `profile` is the crop's cached static inputs (see simulation.derived). The
+    engine passes the one it already has; callers that omit it get an
+    equivalent lookup, so the behaviour is identical either way.
+    """
+    # Runs once per growing plot per day -- the hottest path in the sim, hence
+    # the hoisted profile instead of re-reading the crop dict's defaults on
+    # every call, and the inlined _clamp below.
+    if profile is None:
+        profile = crop_profile(crop)
+    planted.water_stress += max(0.0, profile.min_moisture - plot.moisture)
+
+    needs = profile.nutrient_demand
+    # Must stay a sum() over the same terms in the same order: since 3.12
+    # sum() applies compensated (Neumaier) summation to floats, so replacing
+    # it with a plain += loop shifts the last bits and silently breaks
+    # seed-for-seed replay of previously recorded runs.
+    nutrient_shortfall = sum(max(0.0, amount - getattr(plot, name)) for name, amount in needs)
+    ph = plot.ph
     ph_stress = 0.0
-    if plot.ph < preferred_ph[0]:
-        ph_stress = (preferred_ph[0] - plot.ph) * 0.1
-    elif plot.ph > preferred_ph[1]:
-        ph_stress = (plot.ph - preferred_ph[1]) * 0.1
+    if ph < profile.ph_low:
+        ph_stress = (profile.ph_low - ph) * 0.1
+    elif ph > profile.ph_high:
+        ph_stress = (ph - profile.ph_high) * 0.1
     planted.nutrient_stress += nutrient_shortfall + ph_stress
 
-    preferred = crop.get("temperature_range", [10, 30])
     temperature = weather.get("temperature", 20)
-    if temperature < preferred[0]:
-        planted.temperature_stress += (preferred[0] - temperature) / 20
-    elif temperature > preferred[1]:
-        planted.temperature_stress += (temperature - preferred[1]) / 20
+    if temperature < profile.temperature_low:
+        planted.temperature_stress += (profile.temperature_low - temperature) / 20
+    elif temperature > profile.temperature_high:
+        planted.temperature_stress += (temperature - profile.temperature_high) / 20
 
-    planted.pest_stress += plot.pest_pressure * crop.get("pest_susceptibility", 1.0)
-    planted.disease_stress += plot.disease_pressure * crop.get("disease_susceptibility", 1.0)
+    planted.pest_stress += plot.pest_pressure * profile.pest_susceptibility
+    planted.disease_stress += plot.disease_pressure * profile.disease_susceptibility
 
+    # _clamp inlined as its literal max/min body -- it saves a Python-level
+    # call per plot per nutrient per day, and keeping the exact max/min form
+    # preserves the +0.0-vs--0.0 result that a comparison chain would not.
     evaporation = weather.get("evaporation", 0.08)
-    plot.moisture = _clamp(plot.moisture - evaporation)
-    for nutrient, amount in needs.items():
-        setattr(plot, nutrient, _clamp(getattr(plot, nutrient) - amount))
+    plot.moisture = max(0.0, min(1.0, plot.moisture - evaporation))
+    for nutrient, amount in needs:
+        setattr(plot, nutrient, max(0.0, min(1.0, getattr(plot, nutrient) - amount)))
 
 
 def harvest_multipliers(planted, crop: dict, plot=None) -> tuple[float, float]:
