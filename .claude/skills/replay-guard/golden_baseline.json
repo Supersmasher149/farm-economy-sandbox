@@ -1,0 +1,457 @@
+{
+  "diversifier:1": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "greenleaf": 24,
+      "purplehaze": 11,
+      "quickweed": 48
+    },
+    "money": 1.558335,
+    "total_crops_lost": 8,
+    "total_revenue": 1471.258335
+  },
+  "diversifier:123456789": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "greenleaf": 38,
+      "purplehaze": 23,
+      "quickweed": 53
+    },
+    "money": 0.180709,
+    "total_crops_lost": 16,
+    "total_revenue": 2291.430709
+  },
+  "diversifier:42": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 99,
+      "purplehaze": 69,
+      "quickweed": 107
+    },
+    "money": 0.551712,
+    "total_crops_lost": 37,
+    "total_revenue": 6407.051712
+  },
+  "diversifier:777": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 89,
+      "purplehaze": 88,
+      "quickweed": 89
+    },
+    "money": 418.37914,
+    "total_crops_lost": 34,
+    "total_revenue": 7405.67914
+  },
+  "fast_seller:1": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "quickweed": 576
+    },
+    "money": 868.013371,
+    "total_crops_lost": 19,
+    "total_revenue": 4007.863371
+  },
+  "fast_seller:123456789": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "quickweed": 578
+    },
+    "money": 898.933273,
+    "total_crops_lost": 12,
+    "total_revenue": 4049.483273
+  },
+  "fast_seller:42": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "quickweed": 572
+    },
+    "money": 786.574757,
+    "total_crops_lost": 16,
+    "total_revenue": 3905.024757
+  },
+  "fast_seller:777": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "quickweed": 572
+    },
+    "money": 672.429373,
+    "total_crops_lost": 19,
+    "total_revenue": 3790.879373
+  },
+  "fertilizer_maximalist:1": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 48,
+      "purplehaze": 122,
+      "quickweed": 116
+    },
+    "money": 13122.721912,
+    "total_crops_lost": 25,
+    "total_revenue": 23353.271912
+  },
+  "fertilizer_maximalist:123456789": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 62,
+      "purplehaze": 116,
+      "quickweed": 115
+    },
+    "money": 11729.848068,
+    "total_crops_lost": 23,
+    "total_revenue": 21991.198068
+  },
+  "fertilizer_maximalist:42": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 87,
+      "purplehaze": 103,
+      "quickweed": 75
+    },
+    "money": 11815.670672,
+    "total_crops_lost": 24,
+    "total_revenue": 21515.670672
+  },
+  "fertilizer_maximalist:777": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 46,
+      "purplehaze": 122,
+      "quickweed": 124
+    },
+    "money": 10183.412367,
+    "total_crops_lost": 33,
+    "total_revenue": 20464.262367
+  },
+  "neglectful_grower:1": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 54,
+      "purplehaze": 25,
+      "quickweed": 365
+    },
+    "money": 930.924311,
+    "total_crops_lost": 52,
+    "total_revenue": 6015.554311
+  },
+  "neglectful_grower:123456789": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 65,
+      "purplehaze": 22,
+      "quickweed": 276
+    },
+    "money": 184.206416,
+    "total_crops_lost": 53,
+    "total_revenue": 4488.696416
+  },
+  "neglectful_grower:42": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 82,
+      "purplehaze": 56,
+      "quickweed": 211
+    },
+    "money": 1058.660475,
+    "total_crops_lost": 61,
+    "total_revenue": 7747.440475
+  },
+  "neglectful_grower:777": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 52,
+      "purplehaze": 18,
+      "quickweed": 296
+    },
+    "money": 309.125602,
+    "total_crops_lost": 69,
+    "total_revenue": 4151.515602
+  },
+  "no_upgrade_player:1": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 27,
+      "purplehaze": 14,
+      "quickweed": 244
+    },
+    "money": 3365.940988,
+    "total_crops_lost": 9,
+    "total_revenue": 6106.740988
+  },
+  "no_upgrade_player:123456789": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 20,
+      "purplehaze": 6,
+      "quickweed": 293
+    },
+    "money": 2225.294584,
+    "total_crops_lost": 15,
+    "total_revenue": 4597.344584
+  },
+  "no_upgrade_player:42": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 29,
+      "purplehaze": 10,
+      "quickweed": 257
+    },
+    "money": 1880.480688,
+    "total_crops_lost": 18,
+    "total_revenue": 4509.230688
+  },
+  "no_upgrade_player:777": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 31,
+      "purplehaze": 19,
+      "quickweed": 215
+    },
+    "money": 4017.000413,
+    "total_crops_lost": 12,
+    "total_revenue": 6967.200413
+  },
+  "profit_optimizer:1": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 96,
+      "purplehaze": 84,
+      "quickweed": 161
+    },
+    "money": 11614.97862,
+    "total_crops_lost": 24,
+    "total_revenue": 20354.57862
+  },
+  "profit_optimizer:123456789": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 90,
+      "purplehaze": 85,
+      "quickweed": 183
+    },
+    "money": 8988.792361,
+    "total_crops_lost": 23,
+    "total_revenue": 17730.592361
+  },
+  "profit_optimizer:42": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 81,
+      "purplehaze": 74,
+      "quickweed": 255
+    },
+    "money": 13449.902211,
+    "total_crops_lost": 25,
+    "total_revenue": 21722.952211
+  },
+  "profit_optimizer:777": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 78,
+      "purplehaze": 65,
+      "quickweed": 313
+    },
+    "money": 12206.141569,
+    "total_crops_lost": 30,
+    "total_revenue": 20196.391569
+  },
+  "progression_player:1": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 224,
+      "quickweed": 166
+    },
+    "money": 1882.986063,
+    "total_crops_lost": 9,
+    "total_revenue": 9451.236063
+  },
+  "progression_player:123456789": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 223,
+      "quickweed": 148
+    },
+    "money": 2419.080347,
+    "total_crops_lost": 11,
+    "total_revenue": 9583.880347
+  },
+  "progression_player:42": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 226,
+      "quickweed": 130
+    },
+    "money": 2094.609121,
+    "total_crops_lost": 9,
+    "total_revenue": 9246.659121
+  },
+  "progression_player:777": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 218,
+      "quickweed": 168
+    },
+    "money": 2251.541244,
+    "total_crops_lost": 11,
+    "total_revenue": 9361.991244
+  },
+  "random_agent:1": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 70,
+      "purplehaze": 41,
+      "quickweed": 173
+    },
+    "money": 497.579457,
+    "total_crops_lost": 21,
+    "total_revenue": 6735.029457
+  },
+  "random_agent:123456789": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 51,
+      "purplehaze": 4,
+      "quickweed": 213
+    },
+    "money": 20.101347,
+    "total_crops_lost": 9,
+    "total_revenue": 3362.401347
+  },
+  "random_agent:42": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 93,
+      "purplehaze": 70,
+      "quickweed": 126
+    },
+    "money": 2797.121819,
+    "total_crops_lost": 25,
+    "total_revenue": 10927.371819
+  },
+  "random_agent:777": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "greenleaf": 16,
+      "purplehaze": 4,
+      "quickweed": 114
+    },
+    "money": 4.890605,
+    "total_crops_lost": 7,
+    "total_revenue": 1485.340605
+  },
+  "reckless_spender:1": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "greenleaf": 2,
+      "quickweed": 1
+    },
+    "money": 2.553676,
+    "total_crops_lost": 1,
+    "total_revenue": 121.303676
+  },
+  "reckless_spender:123456789": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 30,
+      "purplehaze": 100,
+      "quickweed": 87
+    },
+    "money": 1447.176756,
+    "total_crops_lost": 35,
+    "total_revenue": 9012.226756
+  },
+  "reckless_spender:42": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 25,
+      "purplehaze": 151,
+      "quickweed": 28
+    },
+    "money": 3672.874667,
+    "total_crops_lost": 33,
+    "total_revenue": 13484.124667
+  },
+  "reckless_spender:777": {
+    "bankrupt": false,
+    "crop_plant_counts": {
+      "greenleaf": 16,
+      "purplehaze": 115,
+      "quickweed": 76
+    },
+    "money": 2857.237428,
+    "total_crops_lost": 30,
+    "total_revenue": 10870.187428
+  },
+  "risk_averse_grower:1": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "quickweed": 42
+    },
+    "money": 3.9049,
+    "total_crops_lost": 1,
+    "total_revenue": 288.6049
+  },
+  "risk_averse_grower:123456789": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "quickweed": 39
+    },
+    "money": 0.946574,
+    "total_crops_lost": 0,
+    "total_revenue": 269.596574
+  },
+  "risk_averse_grower:42": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "quickweed": 48
+    },
+    "money": 4.731392,
+    "total_crops_lost": 1,
+    "total_revenue": 321.531392
+  },
+  "risk_averse_grower:777": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "quickweed": 42
+    },
+    "money": 1.310745,
+    "total_crops_lost": 1,
+    "total_revenue": 286.010745
+  },
+  "upgrade_rusher:1": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "quickweed": 42
+    },
+    "money": 3.9049,
+    "total_crops_lost": 1,
+    "total_revenue": 288.6049
+  },
+  "upgrade_rusher:123456789": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "quickweed": 39
+    },
+    "money": 0.946574,
+    "total_crops_lost": 0,
+    "total_revenue": 269.596574
+  },
+  "upgrade_rusher:42": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "quickweed": 48
+    },
+    "money": 4.731392,
+    "total_crops_lost": 1,
+    "total_revenue": 321.531392
+  },
+  "upgrade_rusher:777": {
+    "bankrupt": true,
+    "crop_plant_counts": {
+      "quickweed": 42
+    },
+    "money": 1.310745,
+    "total_crops_lost": 1,
+    "total_revenue": 286.010745
+  }
+}

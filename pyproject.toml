@@ -1,3 +1,12 @@
+[project]
+name = "farm-economy-sandbox"
+version = "0.1.0"
+description = "A headless, deterministic farm-economy simulator for balance testing, not a playable game."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Walter Gibbons" }]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100

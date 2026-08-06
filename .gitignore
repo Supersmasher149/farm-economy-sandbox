@@ -1,9 +1,13 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.ruff_cache/
 .DS_Store
 
 reports/*.csv
 reports/*.json
 reports/*.md
 reports/charts/
+
+# Local Claude Code permission grants -- machine-specific, not shared.
+.claude/settings.local.json

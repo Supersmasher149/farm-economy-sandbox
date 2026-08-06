@@ -75,7 +75,7 @@ resolve → storage liability collected → day finishes (bankruptcy check).
 Changing this order changes simulated outcomes for every existing recorded
 seed — treat it as a breaking change requiring explicit justification, not a
 casual refactor. The full design rationale is in
-`docs/superpowers/specs/2026-08-04-full-crop-market-simulation-design.md`;
+`docs/design/2026-08-04-full-crop-market-simulation-design.md`;
 later dated specs in the same directory record subsequent design decisions
 (soil/regen fixes, fertilizer atomicity, issue-board bug fixes, strategy
 control agents) — check there before assuming a behavior is accidental.
