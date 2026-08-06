@@ -118,6 +118,7 @@ def sell(
         player.rebuild_crop_inventory()
         player.channel_capacity_used[channel["id"]] = used + sold
         player.money += revenue
+        player.track_peak_cash()
         player.total_revenue += revenue
         player.total_sold += sold
         player.revenue_by_channel[channel["id"]] = player.revenue_by_channel.get(channel["id"], 0.0) + revenue

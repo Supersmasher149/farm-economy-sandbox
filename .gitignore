@@ -6,3 +6,4 @@ __pycache__/
 reports/*.csv
 reports/*.json
 reports/*.md
+reports/charts/

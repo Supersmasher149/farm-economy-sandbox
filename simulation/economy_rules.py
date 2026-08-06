@@ -3,6 +3,7 @@
 Kept free of RNG and of PlayerState mutation so agents can call these to
 evaluate options without side effects.
 """
+from simulation import derived
 
 
 def is_crop_unlocked(crop: dict, player) -> bool:
@@ -122,8 +123,7 @@ def soil_quality_risk(crop: dict, player) -> float:
     nominal-EV-only one over a long run.
     """
     health = soil_health_factor(player)
-    demand = crop.get("nutrient_demand", {"nitrogen": 0.02, "phosphorus": 0.01, "potassium": 0.01})
-    demand_weight = sum(demand.values())
+    demand_weight = derived.nutrient_demand_total(crop)
     nutrient_risk = (1.0 - health) * demand_weight * NUTRIENT_RISK_SENSITIVITY
 
     family = crop.get("family")
@@ -180,11 +180,15 @@ def best_crop_by_expected_profit(candidates: list, player, upgrades_by_id: dict)
     None -- except below CRITICAL_SOIL_HEALTH, where the lowest-nutrient-
     demand candidate is chosen outright regardless of EV, matching what an
     always-plant-the-gentlest-crop strategy would do to stop the bleeding.
+    Demand is read via derived.nutrient_demand_total, the same normalized
+    profile runtime nutrient consumption uses, so a crop that simply omits
+    `nutrient_demand` from its config isn't mistaken for a zero-demand crop
+    gentler than one with a small but explicit demand.
     """
     if not candidates:
         return None
     if soil_health_factor(player) < CRITICAL_SOIL_HEALTH:
-        return min(candidates, key=lambda c: sum(c.get("nutrient_demand", {}).values()))
+        return min(candidates, key=derived.nutrient_demand_total)
     return max(candidates, key=lambda c: quality_adjusted_profit_per_day(c, player, upgrades_by_id))
 
 
@@ -271,7 +275,13 @@ def should_buy_upgrade_within_budget(
         if days_since_last < cooldown_days:
             return False
 
-    peak_money = player.highest_money if player.highest_money is not None else player.money
+    # player.highest_money is kept live by PlayerState.track_peak_cash
+    # (called at every revenue site), so it should already reflect any
+    # same-day sale by the time an upgrade decision runs; max() here is a
+    # defensive floor, not the primary mechanism, so this gate is still
+    # correct even against a caller that mutates player.money directly
+    # (as some direct unit tests do) without going through that bookkeeping.
+    peak_money = max(player.highest_money, player.money) if player.highest_money is not None else player.money
     spent_on_upgrades = player.expenses_by_category.get("upgrades", 0.0)
     if peak_money <= 0 or spent_on_upgrades + upgrade["cost"] > peak_money * max_cumulative_spend_fraction:
         return False

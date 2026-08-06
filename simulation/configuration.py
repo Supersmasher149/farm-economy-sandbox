@@ -143,7 +143,11 @@ def _validate_products(products: list) -> set:
         _required_value(product, "processed_base_price", path)
         _string(product["name"], f"{path}.name")
         _number(product, "processed_base_price", path, minimum=0)
-        _number(product, "price_variation", path, minimum=0, maximum=1)
+        # Optional: derived.py's market profile builder falls back to
+        # markets.default_variation when a product omits this, so requiring
+        # it here would reject configuration the runtime already handles.
+        if "price_variation" in product:
+            _number(product, "price_variation", path, minimum=0, maximum=1)
         _seasonal_values(product.get("seasonal_demand", {}), f"{path}.seasonal_demand", minimum=0)
     return product_ids
 

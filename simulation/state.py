@@ -193,6 +193,20 @@ class PlayerState:
             self.expenses_by_category.get(category, 0.0) + amount
         )
 
+    def track_peak_cash(self) -> None:
+        """Update the recorded cash peak immediately, not just at day end.
+
+        Sales, contract deliveries, and any other source of revenue must call
+        this right after crediting `money` -- a same-day sale can push cash
+        to a new high that later spending the same day (upgrades, care,
+        planting) erases before engine._finish_day's once-per-day update
+        would ever see it. Budget gates that ration spend against the farm's
+        peak cash (economy_rules.should_buy_upgrade_within_budget) need to
+        see that peak the moment it happens, not the day after.
+        """
+        if self.highest_money is None or self.money > self.highest_money:
+            self.highest_money = self.money
+
     def observe_crop_decision(
         self,
         crop: dict,

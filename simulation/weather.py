@@ -45,6 +45,7 @@ def apply_weather(player, crops_by_id: dict, weather: dict, growth_module, crop_
     # and stay there. This makes that recovery a small, constant trickle
     # regardless of occupancy; the fallow-only bonuses below still stack on
     # top, so deliberate rest/rotation keeps paying off faster.
+    regen_moisture = plot_regen.get("moisture", 0.0) if plot_regen else 0.0
     regen_n = plot_regen.get("nitrogen", 0.0) if plot_regen else 0.0
     regen_p = plot_regen.get("phosphorus", 0.0) if plot_regen else 0.0
     regen_k = plot_regen.get("potassium", 0.0) if plot_regen else 0.0
@@ -53,7 +54,10 @@ def apply_weather(player, crops_by_id: dict, weather: dict, growth_module, crop_
     regen_disease = plot_regen.get("disease_pressure", 0.0) if plot_regen else 0.0
     regenerates_nutrients = regen_n or regen_p or regen_k
     for plot in player.plots:
-        plot.moisture = min(1.0, plot.moisture + rainfall)
+        # Config-accepted (soil.regen_per_day.moisture) alongside the other
+        # SOIL_LEVELS regen fields, folded into the same rainfall addition
+        # since both are a same-day, once-capped increase to moisture.
+        plot.moisture = min(1.0, plot.moisture + rainfall + regen_moisture)
         if regenerates_nutrients:
             # A crop's own demand (see crop_growth.update_crop_stress) still
             # outpaces this for nutrient-hungry crops under sustained
