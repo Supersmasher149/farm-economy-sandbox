@@ -10,6 +10,8 @@ from agents.reckless_spender import RecklessSpender
 from agents.risk_averse_grower import RiskAverseGrower
 from agents.upgrade_rusher import UpgradeRusher
 from runner.single_run import run_single
+from simulation import engine
+from simulation.state import PlayerState
 
 CONFIG = {"start_money": 60, "start_slots": 3, "days": 30}
 
@@ -124,3 +126,31 @@ def test_reckless_spender_prefers_the_most_expensive_affordable_crop():
     # rather than the cheaper options once unlocked -- sanity check it ran and
     # actually planted something at all.
     assert player.total_planted > 0
+
+
+def test_fertilizer_purchase_is_skipped_when_seed_and_fertilizer_do_not_fit():
+    crop = make_crops()[0]
+    player = PlayerState(money=10, slots_total=1)
+
+    class AlwaysFertilizes:
+        def choose_crop(self, player, crops, crops_by_id, upgrades_by_id):
+            return crops[0]
+
+        def should_use_fertilizer(self, player, crop, fertilizer_config):
+            return True
+
+    planted = engine._plant_open_slots(
+        player,
+        AlwaysFertilizes(),
+        [crop],
+        {crop["id"]: crop},
+        {},
+        FERTILIZER_CONFIG,
+    )
+
+    assert planted
+    assert player.money == 5
+    assert player.fertilizer_inventory == 0
+    assert player.total_fertilizer_bought == 0
+    assert len(player.planted) == 1
+    assert player.planted[0].fertilized is False

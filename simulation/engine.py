@@ -138,7 +138,13 @@ def _plant_open_slots(player, agent, crops, crops_by_id, upgrades_by_id, fertili
             and agent.should_use_fertilizer(player, crop, fertilizer_config)
         )
         if use_fertilizer and player.fertilizer_inventory == 0:
-            actions.buy_fertilizer(player, fertilizer_config, 1)
+            combined_cost = crop["seed_cost"] + fertilizer_config["cost"]
+            if player.money >= combined_cost:
+                actions.buy_fertilizer(player, fertilizer_config, 1)
+            else:
+                # Fertilizer is optional for planting; do not buy it if the
+                # same cash cannot also cover the seed.
+                use_fertilizer = False
         use_fertilizer = use_fertilizer and player.fertilizer_inventory > 0
         if not actions.buy_seeds(player, crop, 1):
             break
