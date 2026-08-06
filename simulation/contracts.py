@@ -167,7 +167,13 @@ def _future_crop_capacity(
 
     seed_inventory = player.seed_inventory.get(crop["id"], 0)
     seed_cost = crop["seed_cost"]
-    cash_seed_units = int(max(0.0, player.money - economy_rules.operating_reserve(player)) // seed_cost)
+    # A validly-configured crop may cost 0 (a free starter crop); cash can
+    # never be the limiting factor there, so cap at seeded_cycles itself
+    # rather than floor-dividing by a seed cost that may be zero.
+    if seed_cost > 0:
+        cash_seed_units = int(max(0.0, player.money - economy_rules.operating_reserve(player)) // seed_cost)
+    else:
+        cash_seed_units = seeded_cycles
     funded_seeded_cycles = min(seeded_cycles, seed_inventory + cash_seed_units)
     purchased = max(0, funded_seeded_cycles - seed_inventory)
     return (
