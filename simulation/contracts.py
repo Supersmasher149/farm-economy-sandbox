@@ -1,5 +1,5 @@
 """Buyer contract offers, deliveries, and deadline resolution."""
-from simulation import economy_rules, inventory, markets
+from simulation import crop_growth, economy_rules, inventory, markets
 from simulation.state import ContractState, QUALITY_ORDER
 
 PRODUCTION_SAFETY_FACTOR = 0.45
@@ -133,6 +133,32 @@ def _processing_capacity(player) -> int:
     return getattr(player, "contract_config", {}).get("processing_capacity", 0)
 
 
+def _effective_deadline(player, deadline: int) -> int:
+    """A deadline past the run's own end is never reachable: no `run_day`
+    call ever executes with `player.day >= player.total_days` (the loop in
+    runner.single_run runs exactly `total_days` times), so nothing can be
+    grown, processed, or delivered after that point regardless of what a
+    contract's own deadline_day says. Every production forecast in this
+    module must be capped here, not just at the contract's own deadline.
+    """
+    total_days = getattr(player, "total_days", None)
+    return min(deadline, total_days) if total_days is not None else deadline
+
+
+def _best_possible_grade(planted, crop: dict, plot) -> str:
+    """The best quality grade an already-planted crop could still reach.
+
+    simulation.crop_growth.update_crop_stress only ever adds to a planted
+    crop's accumulated stress fields between now and harvest -- nothing
+    reduces them -- so today's stress is a floor on quality_stress and
+    therefore a ceiling on the achievable grade. A crop already stressed
+    enough that even this best case grades below a contract's min_quality
+    can never satisfy it and must not be forecast as future supply for it.
+    """
+    _yield_multiplier, quality_score = crop_growth.harvest_multipliers(planted, crop, plot)
+    return crop_growth.quality_grade(quality_score)
+
+
 def _future_crop_capacity(
     player, crop: dict, deadline: int, min_quality: str = "standard"
 ) -> tuple[float, float, float]:
@@ -141,6 +167,7 @@ def _future_crop_capacity(
     # this conservative estimate can promise without a quality forecast.
     if QUALITY_ORDER.get(min_quality, 0) > QUALITY_ORDER["standard"]:
         return 0.0, 0.0, 0.0
+    deadline = _effective_deadline(player, deadline)
     growth_days = max(1, economy_rules.effective_growth_days(crop, player, player.upgrades_catalog))
     days_available = max(0, deadline - player.day)
     expected_yield = (
@@ -150,6 +177,7 @@ def _future_crop_capacity(
             "production_safety_factor", PRODUCTION_SAFETY_FACTOR
         )
     )
+    min_quality_rank = QUALITY_ORDER.get(min_quality, 0)
     free_cycles = 0
     seeded_cycles = 0
     for _ in range(max(0, player.open_slots)):
@@ -159,7 +187,13 @@ def _future_crop_capacity(
         if planted.crop_id == crop["id"]:
             if days_until_free > days_available:
                 continue
-            free_cycles += 1
+            plot = (
+                player.plots[planted.plot_index]
+                if planted.plot_index is not None and planted.plot_index < len(player.plots)
+                else None
+            )
+            if QUALITY_ORDER[_best_possible_grade(planted, crop, plot)] >= min_quality_rank:
+                free_cycles += 1
             seeded_cycles += max(0, (days_available - days_until_free) // growth_days)
         else:
             if days_until_free < days_available:
@@ -185,6 +219,7 @@ def _future_crop_capacity(
 
 def _item_capacity(player, item_id: str, min_quality: str, deadline: int, seen=()) -> tuple[float, float, float]:
     """Return current quantity, future quantity, and future funding needed."""
+    deadline = _effective_deadline(player, deadline)
     current = _inventory_quantity(player, item_id, min_quality)
     for job in player.processing_jobs:
         if (
@@ -203,33 +238,74 @@ def _item_capacity(player, item_id: str, min_quality: str, deadline: int, seen=(
 
     future = 0.0
     funding = 0.0
-    free_capacity = max(0, _processing_capacity(player) - len(player.processing_jobs))
+    if QUALITY_ORDER.get(min_quality, 0) > QUALITY_ORDER["standard"]:
+        return current, future, funding
+
+    days_available = max(0, deadline - player.day)
+    # Capacity as slot-*days*, not a static "currently free slots" count: an
+    # existing job frees its slot the moment it completes, and that freed
+    # slot is available for further batches for whatever's left of the
+    # window -- a job completing tomorrow with a 30-day-out deadline should
+    # not permanently look like an occupied slot for the whole window.
+    occupied_slot_days = sum(
+        max(0, min(job.completion_day, deadline) - player.day) for job in player.processing_jobs
+    )
+    capacity_slot_days = max(0, _processing_capacity(player) * days_available - occupied_slot_days)
+
+    # Multiple recipes producing this item can compete for the same input
+    # inventory and the same input crop's future yield -- each already-seen
+    # recipe in this loop reserves what it claims here, so a later recipe's
+    # batch count is computed against what's actually left, not the full,
+    # unreserved pool (previously two recipes sharing one input could each
+    # be forecast as if the other didn't exist).
+    #
+    # Cash to fund new plantings is NOT similarly reserved across recipes
+    # here (each recipe's funding need is still priced against the full
+    # cash pool) -- joint cash contention across multiple simultaneous
+    # forecasts is a pre-existing simplification this fix does not extend
+    # to (is_offer_feasible already evaluates each contract's own cash need
+    # independently of every other contract for the same reason).
+    reserved_current: dict = {}
+    reserved_future: dict = {}
     for recipe in _recipes(player):
-        if recipe.get("output_item_id") != item_id or free_capacity <= 0:
+        if recipe.get("output_item_id") != item_id or capacity_slot_days <= 0:
             continue
-        if QUALITY_ORDER.get(min_quality, 0) > QUALITY_ORDER["standard"]:
-            continue
-        input_current = _inventory_quantity(
-            player, recipe["input_item_id"], recipe.get("min_quality", "processing")
-        )
-        input_future, input_funding = 0.0, 0.0
-        input_crop = player.crop_catalog.get(recipe["input_item_id"])
+        recipe_days = max(1, recipe.get("processing_days", 1))
+        if player.day + recipe_days > deadline:
+            continue  # cannot complete even one batch of this recipe in time
+
+        input_id = recipe["input_item_id"]
+        input_min_quality = recipe.get("min_quality", "processing")
+        input_current_total = _inventory_quantity(player, input_id, input_min_quality)
+        already_current = reserved_current.get(input_id, 0)
+        input_current = max(0, input_current_total - already_current)
+
+        input_future_total, input_funding = 0.0, 0.0
+        input_crop = player.crop_catalog.get(input_id)
         if input_crop is not None:
-            input_future, input_funding, _free_input = _future_crop_capacity(
-                player, input_crop, deadline, recipe.get("min_quality", "processing")
+            input_future_total, input_funding, _free_input = _future_crop_capacity(
+                player, input_crop, deadline, input_min_quality
             )
-        batches = min(
-            free_capacity,
-            int((input_current + input_future) // recipe["input_quantity"]),
-        )
+        already_future = reserved_future.get(input_id, 0.0)
+        input_future = max(0.0, input_future_total - already_future)
+
+        batches_by_input = int((input_current + input_future) // recipe["input_quantity"])
+        batches_by_capacity = capacity_slot_days // recipe_days
+        batches = min(batches_by_input, batches_by_capacity)
         if batches <= 0:
             continue
+
         future += batches * recipe["output_quantity"]
-        future_input = max(0, batches * recipe["input_quantity"] - input_current)
-        if input_future:
-            funding += input_funding * min(1.0, future_input / input_future)
+        needed_input = batches * recipe["input_quantity"]
+        used_current = min(input_current, needed_input)
+        used_future = needed_input - used_current
+        reserved_current[input_id] = already_current + used_current
+        if used_future:
+            reserved_future[input_id] = already_future + used_future
+            if input_future_total:
+                funding += input_funding * min(1.0, used_future / input_future_total)
         funding += batches * recipe.get("cost", 0.0)
-        free_capacity -= batches
+        capacity_slot_days -= batches * recipe_days
     return current, future, funding
 
 
