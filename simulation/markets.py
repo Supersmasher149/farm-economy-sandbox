@@ -1,7 +1,7 @@
 """Daily market prices, channel quotes, and sales."""
-from simulation import derived, inventory
-from simulation.state import QUALITY_ORDER
 
+from simulation import derived
+from simulation.state import QUALITY_ORDER
 
 QUALITY_MULTIPLIERS = {
     "rejected": 0.0,
@@ -29,7 +29,9 @@ def update_daily_prices(player, items_by_id: dict, market_config: dict, rng, pro
         seasonal = seasonal_demand.get(season, 1.0)
         supply = market_supply.get(item_id, 0.0)
         saturation = max(minimum_supply, 1.0 - supply * 0.01)
-        prices[item_id] = max(0.01, base * seasonal * saturation * rng.uniform(1 - variation, 1 + variation))
+        prices[item_id] = max(
+            0.01, base * seasonal * saturation * rng.uniform(1 - variation, 1 + variation)
+        )
         market_supply[item_id] = supply * supply_decay
     player.market_prices = prices
     player.channel_capacity_used = {}
@@ -37,7 +39,11 @@ def update_daily_prices(player, items_by_id: dict, market_config: dict, rng, pro
 
 
 def quote(
-    player, item_id: str, quality: str, channel: dict, quantity: int,
+    player,
+    item_id: str,
+    quality: str,
+    channel: dict,
+    quantity: int,
     capacity_used: dict | None = None,
 ) -> dict | None:
     if item_id not in player.market_prices or quantity <= 0:
@@ -46,7 +52,9 @@ def quote(
         return None
     if player.reputation < channel.get("min_reputation", 0):
         return None
-    used = (capacity_used if capacity_used is not None else player.channel_capacity_used).get(channel["id"], 0)
+    used = (capacity_used if capacity_used is not None else player.channel_capacity_used).get(
+        channel["id"], 0
+    )
     capacity = channel.get("daily_capacity", quantity)
     accepted = min(quantity, max(0, capacity - used))
     if accepted <= 0:
@@ -61,12 +69,22 @@ def quote(
     fee = channel.get("flat_fee", 0.0) + gross * channel.get("fee_rate", 0.0)
     if gross <= fee:
         return None
-    return {"quantity": accepted, "unit_price": unit_price, "gross": gross, "fee": fee, "net": gross - fee}
+    return {
+        "quantity": accepted,
+        "unit_price": unit_price,
+        "gross": gross,
+        "fee": fee,
+        "net": gross - fee,
+    }
 
 
 def sell(
-    player, item_id: str, quantity: int, channel: dict,
-    quality: str | None = None, min_quality: str | None = None,
+    player,
+    item_id: str,
+    quantity: int,
+    channel: dict,
+    quality: str | None = None,
+    min_quality: str | None = None,
 ) -> tuple[float, int]:
     minimum = min_quality or channel.get("min_quality", "rejected")
     if (
@@ -82,18 +100,25 @@ def sell(
     used = player.channel_capacity_used.get(channel["id"], 0)
     quantity = min(quantity, max(0, channel.get("daily_capacity", quantity) - used))
     lots = sorted(
-        (lot for lot in player.inventory_lots
-         if lot.item_id == item_id
-         and (
-             quality is not None and lot.quality == quality
-             or quality is None and QUALITY_ORDER[lot.quality] >= QUALITY_ORDER[minimum]
-         )),
+        (
+            lot
+            for lot in player.inventory_lots
+            if lot.item_id == item_id
+            and (
+                quality is not None
+                and lot.quality == quality
+                or quality is None
+                and QUALITY_ORDER[lot.quality] >= QUALITY_ORDER[minimum]
+            )
+        ),
         key=lambda lot: (lot.remaining_shelf_life, -QUALITY_ORDER[lot.quality]),
     )
     planned = []
     sold = 0
     gross = 0.0
-    reputation_multiplier = 1 + min(0.25, player.reputation * channel.get("reputation_bonus", 0.002))
+    reputation_multiplier = 1 + min(
+        0.25, player.reputation * channel.get("reputation_bonus", 0.002)
+    )
     for lot in lots:
         if sold >= quantity:
             break
@@ -121,7 +146,9 @@ def sell(
         player.track_peak_cash()
         player.total_revenue += revenue
         player.total_sold += sold
-        player.revenue_by_channel[channel["id"]] = player.revenue_by_channel.get(channel["id"], 0.0) + revenue
+        player.revenue_by_channel[channel["id"]] = (
+            player.revenue_by_channel.get(channel["id"], 0.0) + revenue
+        )
         player.market_supply[item_id] = player.market_supply.get(item_id, 0.0) + sold
         return revenue, sold
     return 0.0, 0

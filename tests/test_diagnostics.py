@@ -65,15 +65,29 @@ def test_aggregate_separates_survivors_and_bankrupt_runs():
     crops, upgrades = make_crops(), make_upgrades()
     bankrupt_player, bankrupt_seed, _ = run_single(
         {"start_money": 1, "start_slots": 1, "days": 30},
-        ProfitOptimizer(), crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG, seed=6,
+        ProfitOptimizer(),
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        seed=6,
     )
     survivor_player, survivor_seed, _ = run_single(
         {"start_money": 100, "start_slots": 1, "days": 1},
-        FastSeller(), crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG, seed=7,
+        FastSeller(),
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        seed=7,
     )
     results = [
-        build_run_result(bankrupt_player, "test", bankrupt_seed, bankrupt_player.day, crops, upgrades),
-        build_run_result(survivor_player, "test", survivor_seed, survivor_player.day, crops, upgrades),
+        build_run_result(
+            bankrupt_player, "test", bankrupt_seed, bankrupt_player.day, crops, upgrades
+        ),
+        build_run_result(
+            survivor_player, "test", survivor_seed, survivor_player.day, crops, upgrades
+        ),
     ]
 
     stats = aggregate(results)["test"]

@@ -4,6 +4,7 @@ clean control group -- diff its results against ProfitOptimizer (which only
 fertilizes when expected-profitable) to see fertilizer's true ROI and
 whether "always fertilize" is close enough to optimal to be a safe default.
 """
+
 from agents.profit_optimizer import ProfitOptimizer
 
 

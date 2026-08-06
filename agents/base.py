@@ -1,6 +1,7 @@
 """Agent interface. Agents only make decisions; they never mutate state
 directly — the engine applies their choices through simulation/actions.py.
 """
+
 from abc import ABC, abstractmethod
 
 
@@ -14,7 +15,9 @@ class Agent(ABC):
     watering_diligence = 1.0
 
     @abstractmethod
-    def choose_crop(self, player, crops: list, crops_by_id: dict, upgrades_by_id: dict) -> dict | None:
+    def choose_crop(
+        self, player, crops: list, crops_by_id: dict, upgrades_by_id: dict
+    ) -> dict | None:
         """Return the crop dict to plant next, or None to leave slots open."""
         raise NotImplementedError
 
@@ -35,7 +38,8 @@ class Agent(ABC):
     def choose_contract_deliveries(self, player) -> list[dict]:
         return [
             {"contract_id": contract.id, "quantity": contract.remaining}
-            for contract in player.active_contracts if not contract.resolved
+            for contract in player.active_contracts
+            if not contract.resolved
         ]
 
     def choose_processing(self, player, recipes: list, items_by_id: dict) -> list[dict]:

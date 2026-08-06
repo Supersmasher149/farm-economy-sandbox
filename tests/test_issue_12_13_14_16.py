@@ -1,16 +1,13 @@
 from agents.profit_optimizer import ProfitOptimizer
 from agents.random_agent import RandomAgent
 from main import load_config
-from simulation import contracts, markets
-from simulation import engine
+from simulation import contracts, engine, markets
 from simulation.random_events import RandomEvents
 from simulation.state import ContractState, InventoryLot, PlantedCrop, PlayerState, ProcessingJob
 
 
 def offer(offer_id="offer", item_id="crop", quantity=1, min_quality="standard"):
-    return ContractState(
-        offer_id, "buyer", item_id, quantity, min_quality, 10, 0, 10, 0.1
-    )
+    return ContractState(offer_id, "buyer", item_id, quantity, min_quality, 10, 0, 10, 0.1)
 
 
 def test_retained_offers_are_visible_until_expiry_and_acceptance_rechecks_expiry():
@@ -83,10 +80,12 @@ def test_engine_passes_retained_offers_to_agent_hook():
 
 def test_contract_feasibility_uses_quality_age_and_existing_inventory():
     player = PlayerState(money=0, slots_total=1)
-    player.inventory_lots.extend([
-        InventoryLot("crop", 4, "standard", shelf_life_days=5),
-        InventoryLot("crop", 4, "premium", shelf_life_days=5, age_days=5),
-    ])
+    player.inventory_lots.extend(
+        [
+            InventoryLot("crop", 4, "standard", shelf_life_days=5),
+            InventoryLot("crop", 4, "premium", shelf_life_days=5, age_days=5),
+        ]
+    )
     assert contracts.available_quantity(player, "crop", "standard") == 4
     assert contracts.is_offer_feasible(player, offer(quantity=4))
     assert not contracts.is_offer_feasible(player, offer(quantity=5))
@@ -96,8 +95,12 @@ def test_contract_feasibility_uses_quality_age_and_existing_inventory():
 def test_contract_feasibility_uses_seed_inventory_and_processing_capacity():
     player = PlayerState(money=0, slots_total=1)
     crop = {
-        "id": "crop", "seed_cost": 10, "growth_days": 2,
-        "min_yield": 4, "max_yield": 4, "loss_chance": 0.0,
+        "id": "crop",
+        "seed_cost": 10,
+        "growth_days": 2,
+        "min_yield": 4,
+        "max_yield": 4,
+        "loss_chance": 0.0,
     }
     player.crop_catalog = {"crop": crop}
     player.seed_inventory["crop"] = 1
@@ -111,11 +114,17 @@ def test_contract_feasibility_uses_seed_inventory_and_processing_capacity():
     player = PlayerState(money=0, slots_total=1)
     player.inventory_lots.append(InventoryLot("crop", 4, "standard"))
     player.processing_capacity = 1
-    player.processing_recipes = [{
-        "id": "process", "input_item_id": "crop", "input_quantity": 4,
-        "min_quality": "processing", "output_item_id": "product",
-        "output_quantity": 1, "cost": 0,
-    }]
+    player.processing_recipes = [
+        {
+            "id": "process",
+            "input_item_id": "crop",
+            "input_quantity": 4,
+            "min_quality": "processing",
+            "output_item_id": "product",
+            "output_quantity": 1,
+            "cost": 0,
+        }
+    ]
     assert contracts.is_offer_feasible(player, offer("product-offer", "product"))
 
     player.processing_jobs.append(ProcessingJob("process", "product", 1, 5, 10, 0))
@@ -142,10 +151,12 @@ def test_random_agent_uses_run_seed_without_consuming_event_rng():
 def test_quality_constrained_market_sale_consumes_only_requested_tier():
     player = PlayerState(money=0, slots_total=1)
     player.market_prices = {"crop": 10}
-    player.inventory_lots.extend([
-        InventoryLot("crop", 2, "standard"),
-        InventoryLot("crop", 2, "premium"),
-    ])
+    player.inventory_lots.extend(
+        [
+            InventoryLot("crop", 2, "standard"),
+            InventoryLot("crop", 2, "premium"),
+        ]
+    )
     channel = {"id": "spot", "min_quality": "processing", "daily_capacity": 10}
     _revenue, sold = markets.sell(player, "crop", 1, channel, quality="premium")
     assert sold == 1
@@ -163,5 +174,6 @@ def test_optimizer_plans_quality_tiers_across_capacity_and_fallback_channels():
     ]
     decisions = ProfitOptimizer().choose_sales(player, channels, {})
     assert {(d["channel_id"], d["quality"], d["quantity"]) for d in decisions} == {
-        ("premium", "premium", 2), ("spot", "premium", 3)
+        ("premium", "premium", 2),
+        ("spot", "premium", 3),
     }

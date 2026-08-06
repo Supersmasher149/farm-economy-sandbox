@@ -1,4 +1,5 @@
 """Seasonal deterministic weather generation and plot updates."""
+
 from simulation import derived
 
 SEASONS = ("spring", "summer", "autumn", "winter")
@@ -15,7 +16,9 @@ def generate_weather(day: int, config: dict, rng) -> dict:
     # rain check, then the rainfall draw only if it rained.
     params = derived.weather_params(config)
     season = SEASONS[(day // params.season_length) % 4]
-    temp_low, temp_high, rain_chance, rain_low, rain_high, base_evaporation = params.by_season[season]
+    temp_low, temp_high, rain_chance, rain_low, rain_high, base_evaporation = params.by_season[
+        season
+    ]
     temperature = rng.uniform(temp_low, temp_high)
     rainfall = rng.uniform(rain_low, rain_high) if rng.chance(rain_chance) else 0.0
     evaporation = base_evaporation + max(0.0, temperature - 25) * 0.005
@@ -27,7 +30,9 @@ def generate_weather(day: int, config: dict, rng) -> dict:
     }
 
 
-def apply_weather(player, crops_by_id: dict, weather: dict, growth_module, crop_profiles=None, plot_regen=None) -> None:
+def apply_weather(
+    player, crops_by_id: dict, weather: dict, growth_module, crop_profiles=None, plot_regen=None
+) -> None:
     # Weather values are the same for every plot, so they are read once here
     # rather than per plot. `crop_profiles` maps crop_id to its cached static
     # growth inputs; the engine passes the one it already holds, and omitting
@@ -84,7 +89,10 @@ def apply_weather(player, crops_by_id: dict, weather: dict, growth_module, crop_
         crop_id = planted.crop_id
         crop = crops_by_id[crop_id]
         growth_module.update_crop_stress(
-            planted, plot, crop, weather,
+            planted,
+            plot,
+            crop,
+            weather,
             crop_profiles[crop_id] if crop_profiles is not None else None,
         )
         interval = crop.get("water_interval_days", 3)

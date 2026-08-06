@@ -12,28 +12,39 @@ from simulation.state import ContractState, InventoryLot, PlantedCrop, PlayerSta
 def policy_inputs(fertilizer_config):
     crops = [
         {
-            "id": "quickweed", "seed_cost": 5, "growth_days": 3,
-            "min_yield": 1, "max_yield": 2, "base_price": 5,
-            "loss_chance": 0.03, "water_interval_days": 2,
+            "id": "quickweed",
+            "seed_cost": 5,
+            "growth_days": 3,
+            "min_yield": 1,
+            "max_yield": 2,
+            "base_price": 5,
+            "loss_chance": 0.03,
+            "water_interval_days": 2,
             "unlock_requirement": None,
         },
         {
-            "id": "greenleaf", "seed_cost": 18, "growth_days": 7,
-            "min_yield": 4, "max_yield": 6, "base_price": 7,
-            "loss_chance": 0.05, "water_interval_days": 3,
+            "id": "greenleaf",
+            "seed_cost": 18,
+            "growth_days": 7,
+            "min_yield": 4,
+            "max_yield": 6,
+            "base_price": 7,
+            "loss_chance": 0.05,
+            "water_interval_days": 3,
             "unlock_requirement": None,
         },
     ]
     crops_by_id = {crop["id"]: crop for crop in crops}
-    player = PlayerState(
-        money=100, slots_total=3, day=4, total_days=30, operating_reserve=10
-    )
+    player = PlayerState(money=100, slots_total=3, day=4, total_days=30, operating_reserve=10)
     player.highest_money = player.money
     player.market_prices = {"quickweed": 5, "greenleaf": 7, "flour": 20}
     player.market_channels = [
         {
-            "id": "farm_stand", "min_quality": "standard", "price_multiplier": 1.45,
-            "daily_capacity": 20, "flat_fee": 1,
+            "id": "farm_stand",
+            "min_quality": "standard",
+            "price_multiplier": 1.45,
+            "daily_capacity": 20,
+            "flat_fee": 1,
         }
     ]
     player.crop_catalog = crops_by_id
@@ -47,14 +58,18 @@ def policy_inputs(fertilizer_config):
         ContractState("active", "local", "greenleaf", 2, "standard", 11, 0, 14, 0.1)
     ]
     planted = PlantedCrop("greenleaf", day_planted=0, growth_days_required=7)
-    recipes = [{
-        "id": "mill_greenleaf", "input_item_id": "greenleaf", "input_quantity": 2,
-        "output_item_id": "flour", "output_quantity": 1, "cost": 1,
-        "min_quality": "processing",
-    }]
-    offers = [
-        ContractState("offer", "regional", "greenleaf", 6, "standard", 11, 4, 18, 0.1)
+    recipes = [
+        {
+            "id": "mill_greenleaf",
+            "input_item_id": "greenleaf",
+            "input_quantity": 2,
+            "output_item_id": "flour",
+            "output_quantity": 1,
+            "cost": 1,
+            "min_quality": "processing",
+        }
     ]
+    offers = [ContractState("offer", "regional", "greenleaf", 6, "standard", 11, 4, 18, 0.1)]
     upgrade = {"id": "capacity_1", "cost": 20, "effect": {"type": "capacity", "amount": 1}}
     return player, crops, crops_by_id, planted, recipes, offers, upgrade, fertilizer_config
 
@@ -71,7 +86,13 @@ def test_control_agents_match_optimizer_for_non_control_decisions(
     control_cls, intentional_methods, fertilizer_config
 ):
     (
-        player, crops, crops_by_id, planted, recipes, offers, upgrade,
+        player,
+        crops,
+        crops_by_id,
+        planted,
+        recipes,
+        offers,
+        upgrade,
         fertilizer_config,
     ) = policy_inputs(fertilizer_config)
     optimizer = ProfitOptimizer()

@@ -1,6 +1,7 @@
 """Buyer contract offers, deliveries, and deadline resolution."""
+
 from simulation import crop_growth, economy_rules, inventory, markets
-from simulation.state import ContractState, QUALITY_ORDER
+from simulation.state import QUALITY_ORDER, ContractState
 
 PRODUCTION_SAFETY_FACTOR = 0.45
 DEFAULT_OFFER_EXPIRY_DAYS = 3
@@ -35,7 +36,11 @@ def generate_offers(player, contract_config: dict, buyers: list, items_by_id: di
     if player.day == 0 or player.day % interval != 0:
         return []
     player.contract_offers = visible_offers(player)
-    unresolved_ids = {contract.id for contract in player.contract_offers + player.active_contracts if not contract.resolved}
+    unresolved_ids = {
+        contract.id
+        for contract in player.contract_offers + player.active_contracts
+        if not contract.resolved
+    }
     offers = []
     for buyer in buyers:
         if player.reputation < buyer.get("min_reputation", 0):
@@ -49,24 +54,37 @@ def generate_offers(player, contract_config: dict, buyers: list, items_by_id: di
             continue
         quantity_range = buyer.get("quantity_range", [5, 12])
         quantity = rng.roll_yield(quantity_range[0], quantity_range[1])
-        base = items_by_id[item_id].get("base_price", items_by_id[item_id].get("processed_base_price", 1.0))
-        offers.append(ContractState(
-            id=identifier,
-            buyer_id=buyer["id"],
-            item_id=item_id,
-            quantity=quantity,
-            min_quality=buyer.get("min_quality", "standard"),
-            unit_price=base * buyer.get("contract_price_multiplier", 1.2),
-            offered_day=player.day,
-            deadline_day=player.day + buyer.get("deadline_days", 10),
-            penalty_rate=buyer.get("penalty_rate", contract_config.get("default_penalty_rate", 0.35)),
-        ))
+        base = items_by_id[item_id].get(
+            "base_price", items_by_id[item_id].get("processed_base_price", 1.0)
+        )
+        offers.append(
+            ContractState(
+                id=identifier,
+                buyer_id=buyer["id"],
+                item_id=item_id,
+                quantity=quantity,
+                min_quality=buyer.get("min_quality", "standard"),
+                unit_price=base * buyer.get("contract_price_multiplier", 1.2),
+                offered_day=player.day,
+                deadline_day=player.day + buyer.get("deadline_days", 10),
+                penalty_rate=buyer.get(
+                    "penalty_rate", contract_config.get("default_penalty_rate", 0.35)
+                ),
+            )
+        )
     player.contract_offers.extend(offers)
     return offers
 
 
 def accept(player, contract_id: str) -> bool:
-    contract = next((offer for offer in player.contract_offers if offer.id == contract_id and not offer.resolved), None)
+    contract = next(
+        (
+            offer
+            for offer in player.contract_offers
+            if offer.id == contract_id and not offer.resolved
+        ),
+        None,
+    )
     if contract is None:
         return False
     if is_offer_expired(player, contract):
@@ -174,7 +192,8 @@ def _future_crop_capacity(
     growth_days = max(1, economy_rules.effective_growth_days(crop, player, player.upgrades_catalog))
     days_available = max(0, deadline - player.day)
     expected_yield = (
-        (crop["min_yield"] + crop["max_yield"]) / 2
+        (crop["min_yield"] + crop["max_yield"])
+        / 2
         * (1 - crop.get("loss_chance", 0.0))
         * getattr(player, "contract_config", {}).get(
             "production_safety_factor", PRODUCTION_SAFETY_FACTOR
@@ -219,7 +238,9 @@ def _future_crop_capacity(
     # never be the limiting factor there, so cap at seeded_cycles itself
     # rather than floor-dividing by a seed cost that may be zero.
     if seed_cost > 0:
-        cash_seed_units = int(max(0.0, player.money - economy_rules.operating_reserve(player)) // seed_cost)
+        cash_seed_units = int(
+            max(0.0, player.money - economy_rules.operating_reserve(player)) // seed_cost
+        )
     else:
         cash_seed_units = seeded_cycles
     funded_seeded_cycles = min(seeded_cycles, seed_inventory + cash_seed_units)
@@ -231,7 +252,9 @@ def _future_crop_capacity(
     )
 
 
-def _item_capacity(player, item_id: str, min_quality: str, deadline: int, seen=()) -> tuple[float, float, float]:
+def _item_capacity(
+    player, item_id: str, min_quality: str, deadline: int, seen=()
+) -> tuple[float, float, float]:
     """Return current quantity, future quantity, and future funding needed."""
     deadline = _effective_deadline(player, deadline)
     current = _inventory_quantity(player, item_id, min_quality)
@@ -390,7 +413,10 @@ def is_offer_feasible(player, contract) -> bool:
 
 
 def deliver(player, contract_id: str, quantity: int) -> tuple[float, int]:
-    contract = next((item for item in player.active_contracts if item.id == contract_id and not item.resolved), None)
+    contract = next(
+        (item for item in player.active_contracts if item.id == contract_id and not item.resolved),
+        None,
+    )
     if contract is None or player.day > contract.deadline_day:
         return 0.0, 0
     requested = min(quantity, contract.remaining)

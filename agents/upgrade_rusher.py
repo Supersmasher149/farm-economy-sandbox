@@ -4,6 +4,7 @@ instant they're affordable. Purpose: tests the "upgrade too fast" balance
 rule and whether rushing upgrades ahead of any real income is a dominant
 exploit.
 """
+
 from agents.base import Agent
 from simulation import economy_rules
 
@@ -14,7 +15,8 @@ class UpgradeRusher(Agent):
 
     def choose_crop(self, player, crops, crops_by_id, upgrades_by_id):
         candidates = [
-            c for c in crops
+            c
+            for c in crops
             if economy_rules.is_crop_unlocked(c, player) and player.money >= c["seed_cost"]
         ]
         if not candidates:

@@ -11,6 +11,7 @@ Three schema/runtime consistency defects, each covered here:
   simulation/derived.py already falls back to markets.default_variation
   when it's omitted -- validation was stricter than the runtime.
 """
+
 from copy import deepcopy
 
 import pytest
@@ -20,8 +21,8 @@ from simulation import contracts, crop_growth, derived, weather
 from simulation.configuration import validate
 from simulation.state import ContractState, PlayerState
 
-
 # -- seed_cost == 0 must not crash contract feasibility -----------------------
+
 
 def test_zero_seed_cost_crop_validates():
     crops, upgrades, _config, world = load_config()
@@ -59,12 +60,15 @@ def test_zero_seed_cost_never_leaves_cash_as_the_limiting_factor():
     poor_player = PlayerState(money=0, slots_total=1)
     poor_player.crop_catalog = {c["id"]: c for c in malformed}
     poor_player.upgrades_catalog = {}
-    contract = ContractState("c", "buyer", crop["id"], 1, "standard", 10, 0, crop["growth_days"] + 2, 0.1)
+    contract = ContractState(
+        "c", "buyer", crop["id"], 1, "standard", 10, 0, crop["growth_days"] + 2, 0.1
+    )
 
     assert contracts.producible_quantity(poor_player, contract) > 0
 
 
 # -- soil.regen_per_day.moisture must validate and actually apply ------------
+
 
 def test_soil_regen_moisture_validates():
     crops, upgrades, _config, world = load_config()
@@ -83,7 +87,10 @@ def test_soil_regen_moisture_is_applied_at_runtime():
     player.plots[0].moisture = 0.5
 
     weather.apply_weather(
-        player, crops_by_id, {"rainfall": 0.0}, crop_growth,
+        player,
+        crops_by_id,
+        {"rainfall": 0.0},
+        crop_growth,
         plot_regen=malformed["soil"]["regen_per_day"],
     )
 
@@ -92,6 +99,7 @@ def test_soil_regen_moisture_is_applied_at_runtime():
 
 
 # -- processing product price_variation must be optional, like the runtime ---
+
 
 def test_product_without_price_variation_validates():
     crops, upgrades, _config, world = load_config()

@@ -5,6 +5,7 @@ fertilizer on impulse any time it's affordable rather than checking if it
 pays for itself. Purpose: isolate financial mismanagement from crop-care
 neglect (the opposite failure mode from NeglectfulGrower).
 """
+
 from agents.base import Agent
 from simulation import economy_rules
 
@@ -15,7 +16,8 @@ class RecklessSpender(Agent):
 
     def choose_crop(self, player, crops, crops_by_id, upgrades_by_id):
         candidates = [
-            c for c in crops
+            c
+            for c in crops
             if economy_rules.is_crop_unlocked(c, player) and player.money >= c["seed_cost"]
         ]
         if not candidates:

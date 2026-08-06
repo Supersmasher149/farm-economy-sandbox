@@ -3,8 +3,8 @@ from copy import deepcopy
 import pytest
 
 from main import load_config
-from simulation.configuration import validate, validate_simulation_config
 from simulation import processing
+from simulation.configuration import validate, validate_simulation_config
 from simulation.state import InventoryLot, PlayerState
 
 
@@ -43,7 +43,9 @@ def test_validation_rejects_invalid_market_quality_enum():
 
 def test_validation_rejects_invalid_simulation_settings():
     with pytest.raises(ValueError, match="days"):
-        validate_simulation_config({"start_money": 10, "start_slots": 1, "days": 0, "operating_reserve": 0})
+        validate_simulation_config(
+            {"start_money": 10, "start_slots": 1, "days": 0, "operating_reserve": 0}
+        )
 
 
 def test_processing_rejects_non_integer_batch_decision():

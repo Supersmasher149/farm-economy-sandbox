@@ -16,6 +16,7 @@ covered here:
   could look feasible even though the run ends before it could be
   produced.
 """
+
 import pytest
 
 from simulation import contracts
@@ -38,15 +39,22 @@ def offer(item_id="product", quantity=1, deadline_day=10, min_quality="standard"
 
 # -- processing_days must gate future output by completion time --------------
 
+
 def test_recipe_output_excluded_when_it_cannot_complete_by_deadline():
     player = base_player(day=0)
     player.inventory_lots.append(InventoryLot("grain", 100, "standard"))
     player.processing_capacity = 5
-    player.processing_recipes = [{
-        "id": "slow", "input_item_id": "grain", "input_quantity": 1,
-        "output_item_id": "bread", "output_quantity": 1,
-        "processing_days": 5, "cost": 0,
-    }]
+    player.processing_recipes = [
+        {
+            "id": "slow",
+            "input_item_id": "grain",
+            "input_quantity": 1,
+            "output_item_id": "bread",
+            "output_quantity": 1,
+            "processing_days": 5,
+            "cost": 0,
+        }
+    ]
 
     tight = offer("bread", quantity=1, deadline_day=2)  # only 2 days -- a 5-day job can't finish
     assert contracts.producible_quantity(player, tight) == 0
@@ -57,15 +65,22 @@ def test_recipe_output_excluded_when_it_cannot_complete_by_deadline():
 
 # -- capacity must account for slots freed by jobs completing before deadline
 
+
 def test_capacity_reuses_a_slot_freed_by_an_existing_job_before_deadline():
     player = base_player(day=0)
     player.inventory_lots.append(InventoryLot("grain", 100, "standard"))
     player.processing_capacity = 1
-    player.processing_recipes = [{
-        "id": "quick", "input_item_id": "grain", "input_quantity": 1,
-        "output_item_id": "bread", "output_quantity": 1,
-        "processing_days": 2, "cost": 0,
-    }]
+    player.processing_recipes = [
+        {
+            "id": "quick",
+            "input_item_id": "grain",
+            "input_quantity": 1,
+            "output_item_id": "bread",
+            "output_quantity": 1,
+            "processing_days": 2,
+            "cost": 0,
+        }
+    ]
     # The single slot is occupied by an existing job, but that job
     # completes on day 2 -- with 10 days until the deadline, the freed
     # slot should still be able to run further 2-day batches afterward.
@@ -81,6 +96,7 @@ def test_capacity_reuses_a_slot_freed_by_an_existing_job_before_deadline():
 
 # -- multiple recipes must not double-count a shared input -------------------
 
+
 def test_two_recipes_sharing_one_input_do_not_double_count_it():
     player = base_player(day=0)
     player.inventory_lots.append(InventoryLot("grain", 4, "standard"))
@@ -89,14 +105,22 @@ def test_two_recipes_sharing_one_input_do_not_double_count_it():
     # of them can actually run.
     player.processing_recipes = [
         {
-            "id": "recipe_a", "input_item_id": "grain", "input_quantity": 4,
-            "output_item_id": "bread", "output_quantity": 2,
-            "processing_days": 1, "cost": 0,
+            "id": "recipe_a",
+            "input_item_id": "grain",
+            "input_quantity": 4,
+            "output_item_id": "bread",
+            "output_quantity": 2,
+            "processing_days": 1,
+            "cost": 0,
         },
         {
-            "id": "recipe_b", "input_item_id": "grain", "input_quantity": 4,
-            "output_item_id": "bread", "output_quantity": 3,
-            "processing_days": 1, "cost": 0,
+            "id": "recipe_b",
+            "input_item_id": "grain",
+            "input_quantity": 4,
+            "output_item_id": "bread",
+            "output_quantity": 3,
+            "processing_days": 1,
+            "cost": 0,
         },
     ]
 
@@ -111,11 +135,17 @@ def test_two_recipes_sharing_one_input_do_not_double_count_it():
 
 # -- an already-doomed planted crop must not count toward quality contracts --
 
+
 def test_already_rejected_grade_planted_crop_excluded_from_standard_forecast():
     player = base_player(day=0, slots_total=1)
     crop = {
-        "id": "crop", "seed_cost": 5, "growth_days": 3,
-        "min_yield": 4, "max_yield": 4, "base_price": 5, "loss_chance": 0.0,
+        "id": "crop",
+        "seed_cost": 5,
+        "growth_days": 3,
+        "min_yield": 4,
+        "max_yield": 4,
+        "base_price": 5,
+        "loss_chance": 0.0,
     }
     player.crop_catalog = {"crop": crop}
     planted = PlantedCrop("crop", day_planted=0, growth_days_required=3, plot_index=0)
@@ -142,8 +172,13 @@ def test_already_rejected_grade_planted_crop_still_counts_for_processing_quality
     """
     player = base_player(day=0, slots_total=1)
     crop = {
-        "id": "crop", "seed_cost": 5, "growth_days": 3,
-        "min_yield": 4, "max_yield": 4, "base_price": 5, "loss_chance": 0.0,
+        "id": "crop",
+        "seed_cost": 5,
+        "growth_days": 3,
+        "min_yield": 4,
+        "max_yield": 4,
+        "base_price": 5,
+        "loss_chance": 0.0,
     }
     player.crop_catalog = {"crop": crop}
     planted = PlantedCrop("crop", day_planted=0, growth_days_required=3, plot_index=0)
@@ -160,10 +195,16 @@ def test_already_rejected_grade_planted_crop_still_counts_for_processing_quality
 
 # -- future production must be capped at player.total_days -------------------
 
+
 def test_future_production_is_capped_at_total_days_not_contract_deadline():
     crop = {
-        "id": "crop", "seed_cost": 1, "growth_days": 3,
-        "min_yield": 2, "max_yield": 2, "base_price": 5, "loss_chance": 0.0,
+        "id": "crop",
+        "seed_cost": 1,
+        "growth_days": 3,
+        "min_yield": 2,
+        "max_yield": 2,
+        "base_price": 5,
+        "loss_chance": 0.0,
     }
     # Deadline is far beyond the run itself (total_days=5): without capping,
     # 50 days of runway lets one open slot cycle through a 3-day crop

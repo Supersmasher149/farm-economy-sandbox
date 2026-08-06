@@ -4,6 +4,7 @@ to the fastest crop when money is dangerously low to recover, otherwise
 prefers the standard crop as the balanced default. Purpose: test the
 intended progression path.
 """
+
 from agents.base import Agent
 from simulation import contracts, economy_rules
 
@@ -32,7 +33,8 @@ class ProgressionPlayer(Agent):
         )
         active = next(
             (
-                contract for contract in player.active_contracts
+                contract
+                for contract in player.active_contracts
                 # Deadline resolution runs at end of day, after crop
                 # decisions -- a contract past its deadline but not yet
                 # resolved must not still drive today's planting.
@@ -44,10 +46,11 @@ class ProgressionPlayer(Agent):
             contracted_crop = next((c for c in affordable if c["id"] == active.item_id), None)
             if contracted_crop:
                 days_to_deadline = active.deadline_day - player.day
-                growth_days = economy_rules.effective_growth_days(contracted_crop, player, upgrades_by_id)
-                matures_in_time = (
-                    growth_days <= days_to_deadline
-                    and (player.total_days is None or growth_days <= player.total_days - player.day)
+                growth_days = economy_rules.effective_growth_days(
+                    contracted_crop, player, upgrades_by_id
+                )
+                matures_in_time = growth_days <= days_to_deadline and (
+                    player.total_days is None or growth_days <= player.total_days - player.day
                 )
                 still_short = contracts.forecast_committed_supply(player, active) < active.remaining
                 if matures_in_time and still_short:
@@ -57,8 +60,7 @@ class ProgressionPlayer(Agent):
             return min(affordable, key=lambda c: c["growth_days"])
 
         safe = [
-            crop for crop in affordable
-            if economy_rules.crop_seed_reserve_gate(crop, player, 1.0)
+            crop for crop in affordable if economy_rules.crop_seed_reserve_gate(crop, player, 1.0)
         ]
         if not safe:
             return min(affordable, key=lambda c: c["growth_days"])
@@ -71,9 +73,8 @@ class ProgressionPlayer(Agent):
         return economy_rules.should_buy_upgrade_within_budget(player, upgrade)
 
     def should_fertilize(self, player, planted, crop, fertilizer_config):
-        return (
-            crop.get("role") != "fast"
-            and economy_rules.can_spend_with_reserve(player, fertilizer_config["cost"])
+        return crop.get("role") != "fast" and economy_rules.can_spend_with_reserve(
+            player, fertilizer_config["cost"]
         )
 
     def choose_contracts(self, player, offers):
@@ -81,7 +82,8 @@ class ProgressionPlayer(Agent):
             return []
         affordable_scale = max(6, player.slots_total * 3)
         suitable = [
-            offer for offer in offers
+            offer
+            for offer in offers
             if offer.quantity <= affordable_scale
             and contracts.is_offer_profitable(player, offer)
             and contracts.is_offer_feasible(player, offer)

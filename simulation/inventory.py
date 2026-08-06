@@ -1,22 +1,29 @@
 """Lot inventory aging, eligibility, and FIFO consumption."""
+
 from simulation.state import QUALITY_ORDER
 
 
 def available_quantity(player, item_id: str, min_quality: str = "rejected") -> int:
     threshold = QUALITY_ORDER[min_quality]
     return sum(
-        lot.quantity for lot in player.inventory_lots
+        lot.quantity
+        for lot in player.inventory_lots
         if lot.item_id == item_id and QUALITY_ORDER[lot.quality] >= threshold
     )
 
 
-def consume(player, item_id: str, quantity: int, min_quality: str = "rejected") -> tuple[int, float]:
+def consume(
+    player, item_id: str, quantity: int, min_quality: str = "rejected"
+) -> tuple[int, float]:
     if quantity <= 0:
         return 0, 0.0
     threshold = QUALITY_ORDER[min_quality]
     eligible = sorted(
-        (lot for lot in player.inventory_lots
-         if lot.item_id == item_id and QUALITY_ORDER[lot.quality] >= threshold),
+        (
+            lot
+            for lot in player.inventory_lots
+            if lot.item_id == item_id and QUALITY_ORDER[lot.quality] >= threshold
+        ),
         key=lambda lot: (lot.remaining_shelf_life, QUALITY_ORDER[lot.quality]),
     )
     consumed = 0

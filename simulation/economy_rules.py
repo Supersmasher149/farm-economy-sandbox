@@ -3,6 +3,7 @@
 Kept free of RNG and of PlayerState mutation so agents can call these to
 evaluate options without side effects.
 """
+
 from simulation import derived
 
 
@@ -61,11 +62,15 @@ def fertilizer_expected_marginal_profit(crop: dict, fertilizer_config: dict) -> 
     """
     avg_yield = (crop["min_yield"] + crop["max_yield"]) / 2
     original_loss_chance = crop["loss_chance"]
-    reduced_loss_chance = max(0.0, original_loss_chance - fertilizer_config["loss_chance_reduction"])
+    reduced_loss_chance = max(
+        0.0, original_loss_chance - fertilizer_config["loss_chance_reduction"]
+    )
 
     yield_bonus = avg_yield * fertilizer_config["yield_bonus_pct"]
     revenue_from_yield_bonus = yield_bonus * crop["base_price"] * (1 - original_loss_chance)
-    revenue_from_loss_reduction = (original_loss_chance - reduced_loss_chance) * avg_yield * crop["base_price"]
+    revenue_from_loss_reduction = (
+        (original_loss_chance - reduced_loss_chance) * avg_yield * crop["base_price"]
+    )
 
     return revenue_from_yield_bonus + revenue_from_loss_reduction - fertilizer_config["cost"]
 
@@ -77,8 +82,12 @@ def fertilizer_safety_value(crop: dict, fertilizer_config: dict) -> float:
     """
     avg_yield = (crop["min_yield"] + crop["max_yield"]) / 2
     original_loss_chance = crop["loss_chance"]
-    reduced_loss_chance = max(0.0, original_loss_chance - fertilizer_config["loss_chance_reduction"])
-    revenue_from_loss_reduction = (original_loss_chance - reduced_loss_chance) * avg_yield * crop["base_price"]
+    reduced_loss_chance = max(
+        0.0, original_loss_chance - fertilizer_config["loss_chance_reduction"]
+    )
+    revenue_from_loss_reduction = (
+        (original_loss_chance - reduced_loss_chance) * avg_yield * crop["base_price"]
+    )
     return revenue_from_loss_reduction - fertilizer_config["cost"]
 
 
@@ -128,8 +137,10 @@ def soil_quality_risk(crop: dict, player) -> float:
 
     family = crop.get("family")
     same_family_fraction = (
-        sum(1 for plot in player.plots if family and plot.previous_crop_family == family) / len(player.plots)
-        if player.plots else 0.0
+        sum(1 for plot in player.plots if family and plot.previous_crop_family == family)
+        / len(player.plots)
+        if player.plots
+        else 0.0
     )
     family_risk = same_family_fraction * SAME_FAMILY_REPLANT_DISCOUNT
 
@@ -193,7 +204,9 @@ def best_crop_by_expected_profit(candidates: list, player, upgrades_by_id: dict)
 
 
 def choose_crop_with_relaxed_reserve(
-    candidates: list, player, upgrades_by_id: dict,
+    candidates: list,
+    player,
+    upgrades_by_id: dict,
     reserve_fractions: tuple = (1.0, 0.5),
 ) -> dict | None:
     """Rank affordable candidates by EV/day at the full reserve; if none
@@ -209,7 +222,9 @@ def choose_crop_with_relaxed_reserve(
     return None
 
 
-def upgrade_payback_days(upgrade: dict, player, crops_by_id: dict, upgrades_by_id: dict) -> float | None:
+def upgrade_payback_days(
+    upgrade: dict, player, crops_by_id: dict, upgrades_by_id: dict
+) -> float | None:
     """Days of incremental profit needed to recoup this upgrade's cost,
     priced off the single best-EV crop the player could plant today.
 
@@ -252,7 +267,8 @@ def upgrade_payback_days(upgrade: dict, player, crops_by_id: dict, upgrades_by_i
 
 
 def should_buy_upgrade_within_budget(
-    player, upgrade,
+    player,
+    upgrade,
     cooldown_days: int = 6,
     min_payback_multiple: float = 2.0,
     max_cumulative_spend_fraction: float = 0.6,
@@ -281,15 +297,23 @@ def should_buy_upgrade_within_budget(
     # defensive floor, not the primary mechanism, so this gate is still
     # correct even against a caller that mutates player.money directly
     # (as some direct unit tests do) without going through that bookkeeping.
-    peak_money = max(player.highest_money, player.money) if player.highest_money is not None else player.money
+    peak_money = (
+        max(player.highest_money, player.money)
+        if player.highest_money is not None
+        else player.money
+    )
     spent_on_upgrades = player.expenses_by_category.get("upgrades", 0.0)
-    if peak_money <= 0 or spent_on_upgrades + upgrade["cost"] > peak_money * max_cumulative_spend_fraction:
+    if (
+        peak_money <= 0
+        or spent_on_upgrades + upgrade["cost"] > peak_money * max_cumulative_spend_fraction
+    ):
         return False
 
     payback = upgrade_payback_days(upgrade, player, player.crop_catalog, player.upgrades_catalog)
     if payback is not None:
         remaining_days = (
-            player.total_days - player.day if getattr(player, "total_days", None) is not None
+            player.total_days - player.day
+            if getattr(player, "total_days", None) is not None
             else default_payback_horizon_days
         )
         if payback * min_payback_multiple > remaining_days:

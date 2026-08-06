@@ -1,14 +1,35 @@
 """Deterministic daily simulation orchestration."""
+
 from simulation import (
-    actions, contracts, crop_growth, derived, economy_rules, inventory, markets, processing, weather,
+    actions,
+    contracts,
+    crop_growth,
+    derived,
+    economy_rules,
+    inventory,
+    markets,
+    processing,
+    weather,
 )
 
 
-def _legacy_run_day(player, agent, crops, crops_by_id, upgrades, upgrades_by_id, watering_settings, fertilizer_config, rng):
+def _legacy_run_day(
+    player,
+    agent,
+    crops,
+    crops_by_id,
+    upgrades,
+    upgrades_by_id,
+    watering_settings,
+    fertilizer_config,
+    rng,
+):
     player.slot_days += player.slots_total
     player.occupied_slot_days += len(player.planted)
     watered = actions.water_farm(player, agent, crops_by_id, rng, watering_settings)
-    harvested = actions.harvest_mature(player, crops_by_id, rng, watering_settings, fertilizer_config)
+    harvested = actions.harvest_mature(
+        player, crops_by_id, rng, watering_settings, fertilizer_config
+    )
     _revenue, sold = actions.sell_all(player, crops_by_id, rng)
     upgrade_bought = False
     for upgrade in upgrades:
@@ -17,7 +38,9 @@ def _legacy_run_day(player, agent, crops, crops_by_id, upgrades, upgrades_by_id,
     planted_something = _plant_open_slots(
         player, agent, crops, crops_by_id, upgrades_by_id, fertilizer_config
     )
-    _finish_day(player, crops, bool(watered or harvested or sold or upgrade_bought or planted_something))
+    _finish_day(
+        player, crops, bool(watered or harvested or sold or upgrade_bought or planted_something)
+    )
 
 
 def _effective_storage(base: dict, player, upgrades_by_id: dict, lookups) -> dict:
@@ -28,9 +51,22 @@ def _processing_capacity(config: dict, player, upgrades_by_id: dict, lookups) ->
     return lookups.processing_capacity(config, player.upgrades_owned, upgrades_by_id)
 
 
-def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgrades_by_id: dict, *args, world=None) -> None:
+def run_day(
+    player,
+    agent,
+    crops: list,
+    crops_by_id: dict,
+    upgrades: list,
+    upgrades_by_id: dict,
+    *args,
+    world=None,
+) -> None:
     if len(args) == 1:
-        watering_settings, fertilizer_config, rng = actions.DEFAULT_WATERING, actions.DEFAULT_FERTILIZER, args[0]
+        watering_settings, fertilizer_config, rng = (
+            actions.DEFAULT_WATERING,
+            actions.DEFAULT_FERTILIZER,
+            args[0],
+        )
     elif len(args) == 3:
         watering_settings, fertilizer_config, rng = args
         watering_settings = watering_settings or actions.DEFAULT_WATERING
@@ -40,8 +76,15 @@ def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgra
     player.run_seed = rng.seed
     if not world:
         _legacy_run_day(
-            player, agent, crops, crops_by_id, upgrades, upgrades_by_id,
-            watering_settings, fertilizer_config, rng,
+            player,
+            agent,
+            crops,
+            crops_by_id,
+            upgrades,
+            upgrades_by_id,
+            watering_settings,
+            fertilizer_config,
+            rng,
         )
         return
 
@@ -63,8 +106,12 @@ def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgra
 
     player.current_weather = weather.generate_weather(player.day, lookups.weather, rng)
     weather.apply_weather(
-        player, crops_by_id, player.current_weather, crop_growth,
-        lookups.crop_profiles, lookups.plot_regen,
+        player,
+        crops_by_id,
+        player.current_weather,
+        crop_growth,
+        lookups.crop_profiles,
+        lookups.plot_regen,
     )
     storage = _effective_storage(lookups.storage_config, player, upgrades_by_id, lookups)
     storage_liability = inventory.capture_storage_liability(player, storage)
@@ -79,21 +126,27 @@ def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgra
     for contract_id in agent.choose_contracts(player, contracts.visible_offers(player)):
         acted = contracts.accept(player, contract_id) or acted
     for decision in agent.choose_contract_deliveries(player):
-        _revenue, delivered = contracts.deliver(player, decision["contract_id"], decision["quantity"])
+        _revenue, delivered = contracts.deliver(
+            player, decision["contract_id"], decision["quantity"]
+        )
         acted = delivered > 0 or acted
 
     recipes_by_id = lookups.recipes_by_id
     for decision in agent.choose_processing(player, lookups.recipes, items_by_id):
         recipe = recipes_by_id.get(decision["recipe_id"])
         if recipe:
-            acted = processing.start_job(player, recipe, decision.get("batches", 1), capacity) or acted
+            acted = (
+                processing.start_job(player, recipe, decision.get("batches", 1), capacity) or acted
+            )
 
     channels = lookups.channels
     channels_by_id = lookups.channels_by_id
     for decision in agent.choose_sales(player, channels, items_by_id):
         channel = channels_by_id.get(decision["channel_id"])
         if channel:
-            _revenue, sold = markets.sell(player, decision["item_id"], decision["quantity"], channel)
+            _revenue, sold = markets.sell(
+                player, decision["item_id"], decision["quantity"], channel
+            )
             acted = sold > 0 or acted
 
     for upgrade in upgrades:
@@ -109,15 +162,17 @@ def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgra
                 actions.buy_fertilizer(player, fertilizer)
             acted = actions.fertilize_crop(player, planted, fertilizer) or acted
 
-    acted = _plant_open_slots(
-        player, agent, crops, crops_by_id, upgrades_by_id, fertilizer
-    ) or acted
+    acted = (
+        _plant_open_slots(player, agent, crops, crops_by_id, upgrades_by_id, fertilizer) or acted
+    )
     contracts.resolve_expired(player)
     inventory.collect_storage_liability(player, storage_liability)
     _finish_day(player, crops, acted)
 
 
-def _plant_open_slots(player, agent, crops, crops_by_id, upgrades_by_id, fertilizer_config=None) -> bool:
+def _plant_open_slots(
+    player, agent, crops, crops_by_id, upgrades_by_id, fertilizer_config=None
+) -> bool:
     planted_something = False
     while player.open_slots > 0:
         for candidate in crops:
@@ -139,8 +194,7 @@ def _plant_open_slots(player, agent, crops, crops_by_id, upgrades_by_id, fertili
             )
             break
         use_fertilizer = bool(
-            fertilizer_config
-            and agent.should_use_fertilizer(player, crop, fertilizer_config)
+            fertilizer_config and agent.should_use_fertilizer(player, crop, fertilizer_config)
         )
         if use_fertilizer and player.fertilizer_inventory == 0:
             combined_cost = crop["seed_cost"] + fertilizer_config["cost"]
@@ -155,9 +209,16 @@ def _plant_open_slots(player, agent, crops, crops_by_id, upgrades_by_id, fertili
             break
         player.observe_crop_decision(crop, True, True, selected=True, count_opportunity=False)
         growth_days = economy_rules.effective_growth_days(crop, player, upgrades_by_id)
-        planted_something = actions.plant_seed(
-            player, crop, growth_days, fertilized=use_fertilizer, fertilizer_config=fertilizer_config
-        ) or planted_something
+        planted_something = (
+            actions.plant_seed(
+                player,
+                crop,
+                growth_days,
+                fertilized=use_fertilizer,
+                fertilizer_config=fertilizer_config,
+            )
+            or planted_something
+        )
     return planted_something
 
 

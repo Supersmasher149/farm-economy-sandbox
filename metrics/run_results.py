@@ -1,9 +1,9 @@
 """Per-run metrics: one RunResult per completed simulation, plus CSV export."""
+
 import csv
 import json
 from dataclasses import asdict, dataclass
-from decimal import Decimal, ROUND_HALF_UP
-
+from decimal import ROUND_HALF_UP, Decimal
 
 _CENT = Decimal("0.01")
 
@@ -65,26 +65,26 @@ class RunResult:
     crop_decision_observations: dict
 
 
-def build_run_result(player, strategy_name: str, seed: int, days_simulated: int, crops: list, upgrades: list) -> RunResult:
+def build_run_result(
+    player, strategy_name: str, seed: int, days_simulated: int, crops: list, upgrades: list
+) -> RunResult:
     expenses = {key: _money(value) for key, value in player.expenses_by_category.items()}
-    revenue_by_channel = {
-        key: _money(value) for key, value in player.revenue_by_channel.items()
-    }
+    revenue_by_channel = {key: _money(value) for key, value in player.revenue_by_channel.items()}
     total_revenue = _money_sum(revenue_by_channel.values())
     total_expenses = _money_sum(expenses.values())
     production_costs = _money_sum(
-        expenses.get(category, 0.0)
-        for category in ("seeds", "watering", "fertilizer")
+        expenses.get(category, 0.0) for category in ("seeds", "watering", "fertilizer")
     )
     net_profit = _money(total_revenue - total_expenses)
     gross_profit = _money(total_revenue - production_costs)
     operating_profit = _money(gross_profit - expenses.get("contract_penalties", 0.0))
 
     crop_counts = {crop["id"]: player.crop_plant_counts.get(crop["id"], 0) for crop in crops}
-    crop_percentages = {
-        cid: round(100 * count / player.total_planted, 2)
-        for cid, count in crop_counts.items()
-    } if player.total_planted else {}
+    crop_percentages = (
+        {cid: round(100 * count / player.total_planted, 2) for cid, count in crop_counts.items()}
+        if player.total_planted
+        else {}
+    )
 
     upgrade_days = sorted(player.upgrade_purchase_days.values())
     first_upgrade_day = upgrade_days[0] if len(upgrade_days) > 0 else None
@@ -92,11 +92,16 @@ def build_run_result(player, strategy_name: str, seed: int, days_simulated: int,
 
     avg_profit_per_day = net_profit / days_simulated if days_simulated else 0.0
     avg_profit_per_slot_day = net_profit / player.slot_days if player.slot_days else 0.0
-    crop_loss_rate = 100 * player.total_crops_lost / player.total_harvest_events if player.total_harvest_events else 0.0
+    crop_loss_rate = (
+        100 * player.total_crops_lost / player.total_harvest_events
+        if player.total_harvest_events
+        else 0.0
+    )
     watering_rate = 100 * player.total_waterings / player.slot_days if player.slot_days else 0.0
     occupied_watering_rate = (
         100 * player.total_waterings / player.occupied_slot_days
-        if player.occupied_slot_days else 0.0
+        if player.occupied_slot_days
+        else 0.0
     )
 
     rounded_observations = {
@@ -152,17 +157,46 @@ def build_run_result(player, strategy_name: str, seed: int, days_simulated: int,
 
 def write_csv(results: list, path: str, crop_ids: list) -> None:
     fieldnames = [
-        "strategy", "seed", "days_simulated", "final_money", "total_revenue", "total_expenses",
+        "strategy",
+        "seed",
+        "days_simulated",
+        "final_money",
+        "total_revenue",
+        "total_expenses",
         "total_costs",
-        "net_profit", "crops_planted", "crops_harvested", "crops_sold",
-        "gross_profit", "operating_profit", "net_cash_change", "expenses_by_category",
-        "avg_profit_per_day", "avg_profit_per_slot_day",
-        "first_upgrade_day", "second_upgrade_day", "idle_days", "bankrupt", "bankruptcy_day",
-        "bankruptcy_reason", "lowest_money", "minimum_cash_balance", "highest_money",
-        "crops_lost", "crop_loss_rate", "watering_rate", "occupied_watering_rate",
-        "occupied_slot_days", "fertilizer_applications",
-        "spoiled_units", "processed_units", "contracts_completed", "contracts_failed",
-        "final_reputation", "revenue_by_channel", "quality_harvested", "crop_decision_observations",
+        "net_profit",
+        "crops_planted",
+        "crops_harvested",
+        "crops_sold",
+        "gross_profit",
+        "operating_profit",
+        "net_cash_change",
+        "expenses_by_category",
+        "avg_profit_per_day",
+        "avg_profit_per_slot_day",
+        "first_upgrade_day",
+        "second_upgrade_day",
+        "idle_days",
+        "bankrupt",
+        "bankruptcy_day",
+        "bankruptcy_reason",
+        "lowest_money",
+        "minimum_cash_balance",
+        "highest_money",
+        "crops_lost",
+        "crop_loss_rate",
+        "watering_rate",
+        "occupied_watering_rate",
+        "occupied_slot_days",
+        "fertilizer_applications",
+        "spoiled_units",
+        "processed_units",
+        "contracts_completed",
+        "contracts_failed",
+        "final_reputation",
+        "revenue_by_channel",
+        "quality_harvested",
+        "crop_decision_observations",
     ] + [f"pct_{cid}" for cid in crop_ids]
 
     with open(path, "w", newline="") as f:
@@ -177,5 +211,7 @@ def write_csv(results: list, path: str, crop_ids: list) -> None:
             row["expenses_by_category"] = json.dumps(row["expenses_by_category"], sort_keys=True)
             row["revenue_by_channel"] = json.dumps(row["revenue_by_channel"], sort_keys=True)
             row["quality_harvested"] = json.dumps(row["quality_harvested"], sort_keys=True)
-            row["crop_decision_observations"] = json.dumps(row["crop_decision_observations"], sort_keys=True)
+            row["crop_decision_observations"] = json.dumps(
+                row["crop_decision_observations"], sort_keys=True
+            )
             writer.writerow(row)

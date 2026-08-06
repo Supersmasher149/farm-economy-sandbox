@@ -37,6 +37,10 @@ python3 -m pytest
 # Single test file / single test
 python3 -m pytest tests/test_engine.py
 python3 -m pytest tests/test_engine.py::test_same_seed_produces_identical_results
+
+# Lint (ruff) -- config lives in pyproject.toml
+ruff check
+ruff format --check
 ```
 
 `batch` writes `reports/run_results.csv`, `reports/config_snapshot.json`, and

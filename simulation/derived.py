@@ -53,9 +53,14 @@ class CropProfile:
     """
 
     __slots__ = (
-        "min_moisture", "nutrient_demand", "ph_low", "ph_high",
-        "temperature_low", "temperature_high",
-        "pest_susceptibility", "disease_susceptibility",
+        "min_moisture",
+        "nutrient_demand",
+        "ph_low",
+        "ph_high",
+        "temperature_low",
+        "temperature_high",
+        "pest_susceptibility",
+        "disease_susceptibility",
     )
 
     def __init__(self, crop: dict):
@@ -82,10 +87,24 @@ class WorldLookups:
     """
 
     __slots__ = (
-        "items_by_id", "recipes", "recipes_by_id", "channels", "channels_by_id",
-        "market_profiles", "crop_profiles", "_storage", "_capacity",
-        "watering", "fertilizer", "storage_config", "weather", "markets",
-        "contracts", "buyers", "processing", "plot_regen",
+        "items_by_id",
+        "recipes",
+        "recipes_by_id",
+        "channels",
+        "channels_by_id",
+        "market_profiles",
+        "crop_profiles",
+        "_storage",
+        "_capacity",
+        "watering",
+        "fertilizer",
+        "storage_config",
+        "weather",
+        "markets",
+        "contracts",
+        "buyers",
+        "processing",
+        "plot_regen",
     )
 
     def __init__(self, world: dict, crops_by_id: dict):
@@ -109,7 +128,9 @@ class WorldLookups:
         products = world["processing"].get("products", [])
         self.items_by_id = dict(crops_by_id)
         self.items_by_id.update({product["id"]: product for product in products})
-        self.recipes_by_id = {recipe["id"]: recipe for recipe in world["processing"].get("recipes", [])}
+        self.recipes_by_id = {
+            recipe["id"]: recipe for recipe in world["processing"].get("recipes", [])
+        }
         # Materialized once; the engine hands this same list to agents every
         # day, which previously got a fresh list() built per day. Safe because
         # no agent mutates the list it is given.
@@ -140,10 +161,12 @@ class WorldLookups:
             for upgrade_id in sorted(upgrades_owned):
                 effect = upgrades_by_id[upgrade_id]["effect"]
                 if effect["type"] == "storage":
-                    cached["capacity"] = cached.get("capacity", 100) + effect.get("capacity_bonus", 0)
-                    cached["shelf_life_multiplier"] = (
-                        cached.get("shelf_life_multiplier", 1) * effect.get("shelf_life_multiplier", 1)
+                    cached["capacity"] = cached.get("capacity", 100) + effect.get(
+                        "capacity_bonus", 0
                     )
+                    cached["shelf_life_multiplier"] = cached.get(
+                        "shelf_life_multiplier", 1
+                    ) * effect.get("shelf_life_multiplier", 1)
             self._storage[key] = cached
         return dict(cached)
 
@@ -193,9 +216,11 @@ class WeatherParams:
             temperature_range = values.get("temperature_range", [12, 24])
             rainfall_range = values.get("rainfall_range", [0.08, 0.25])
             self.by_season[season] = (
-                temperature_range[0], temperature_range[1],
+                temperature_range[0],
+                temperature_range[1],
                 values.get("rain_chance", 0.25),
-                rainfall_range[0], rainfall_range[1],
+                rainfall_range[0],
+                rainfall_range[1],
                 values.get("evaporation", 0.08),
             )
 

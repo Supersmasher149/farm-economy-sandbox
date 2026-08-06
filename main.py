@@ -6,6 +6,7 @@ Examples:
     python main.py batch --runs 1000
     python main.py replay --strategy fast_seller --seed 123456789
 """
+
 import argparse
 import json
 import math
@@ -94,21 +95,39 @@ def print_player_summary(player, seed, strategy_name):
     print(f"Operating profit: {round(operating_profit, 2)}")
     print(f"Net cash change: {round(player.total_revenue - player.total_expenses, 2)}")
     print(f"Expenses by category: {dict(sorted(player.expenses_by_category.items()))}")
-    print(f"Crops planted / harvested / sold: {player.total_planted} / {player.total_harvested} / {player.total_sold}")
+    print(
+        f"Crops planted / harvested / sold: {player.total_planted} / {player.total_harvested} / {player.total_sold}"
+    )
     print(f"Crop plant counts: {player.crop_plant_counts}")
     print(f"Upgrades owned: {sorted(player.upgrades_owned)}")
     print(f"Upgrade purchase days: {player.upgrade_purchase_days}")
     print(f"Idle days: {player.idle_days}")
     print(f"Bankrupt: {player.bankrupt}")
     print(f"Bankruptcy day / reason: {player.bankruptcy_day} / {player.bankruptcy_reason}")
-    print(f"Lowest / highest money: {round(player.lowest_money, 2)} / {round(player.highest_money, 2)}")
+    print(
+        f"Lowest / highest money: {round(player.lowest_money, 2)} / {round(player.highest_money, 2)}"
+    )
     watering_rate = 100 * player.total_waterings / player.slot_days if player.slot_days else 0.0
-    occupied_watering_rate = 100 * player.total_waterings / player.occupied_slot_days if player.occupied_slot_days else 0.0
-    loss_rate = 100 * player.total_crops_lost / player.total_harvest_events if player.total_harvest_events else 0.0
-    print(f"Watering coverage: {round(watering_rate, 1)}% of plot-days ({player.total_waterings}/{player.slot_days})")
-    print(f"Watering coverage of occupied plot-days: {round(occupied_watering_rate, 1)}% ({player.total_waterings}/{player.occupied_slot_days})")
+    occupied_watering_rate = (
+        100 * player.total_waterings / player.occupied_slot_days
+        if player.occupied_slot_days
+        else 0.0
+    )
+    loss_rate = (
+        100 * player.total_crops_lost / player.total_harvest_events
+        if player.total_harvest_events
+        else 0.0
+    )
+    print(
+        f"Watering coverage: {round(watering_rate, 1)}% of plot-days ({player.total_waterings}/{player.slot_days})"
+    )
+    print(
+        f"Watering coverage of occupied plot-days: {round(occupied_watering_rate, 1)}% ({player.total_waterings}/{player.occupied_slot_days})"
+    )
     print(f"Crops lost: {player.total_crops_lost} ({round(loss_rate, 1)}% of matured crops)")
-    print(f"Fertilizer bought / applied: {player.total_fertilizer_bought} / {player.total_fertilizer_applied}")
+    print(
+        f"Fertilizer bought / applied: {player.total_fertilizer_bought} / {player.total_fertilizer_applied}"
+    )
     print(f"Quality harvested: {player.quality_harvested}")
     print(f"Revenue by channel: {dict(sorted(player.revenue_by_channel.items()))}")
     print(f"Spoiled / processed: {player.total_spoiled} / {player.total_processed}")
@@ -121,8 +140,15 @@ def cmd_single(args):
     watering_settings, fertilizer_config = world["watering"], world["fertilizer"]
     agent = AGENT_REGISTRY[args.strategy]()
     player, seed, history = run_single(
-        config, agent, crops, upgrades, watering_settings, fertilizer_config,
-        seed=args.seed, record_history=args.verbose, world=world,
+        config,
+        agent,
+        crops,
+        upgrades,
+        watering_settings,
+        fertilizer_config,
+        seed=args.seed,
+        record_history=args.verbose,
+        world=world,
     )
     print_player_summary(player, seed, agent.name)
     if args.verbose and history:
@@ -136,8 +162,15 @@ def cmd_replay(args):
     watering_settings, fertilizer_config = world["watering"], world["fertilizer"]
     agent = AGENT_REGISTRY[args.strategy]()
     player, seed, _ = run_single(
-        config, agent, crops, upgrades, watering_settings, fertilizer_config,
-        seed=args.seed, record_history=False, world=world,
+        config,
+        agent,
+        crops,
+        upgrades,
+        watering_settings,
+        fertilizer_config,
+        seed=args.seed,
+        record_history=False,
+        world=world,
     )
     print_player_summary(player, seed, agent.name)
 
@@ -156,8 +189,16 @@ def cmd_batch(args):
     total_runs = args.runs * len(agents)
 
     results = run_batch(
-        config, agents, crops, upgrades, watering_settings, fertilizer_config,
-        num_runs=args.runs, base_seed=base_seed, world=world, workers=args.workers,
+        config,
+        agents,
+        crops,
+        upgrades,
+        watering_settings,
+        fertilizer_config,
+        num_runs=args.runs,
+        base_seed=base_seed,
+        world=world,
+        workers=args.workers,
     )
 
     os.makedirs(REPORTS_DIR, exist_ok=True)
@@ -197,8 +238,14 @@ def cmd_batch(args):
             json.dump(snapshot, f, indent=2)
 
         report_text = generate_markdown_report(
-            config, args.runs, summary, warning_list, crop_names, agent_descriptions,
-            economics_audit, base_seed=base_seed,
+            config,
+            args.runs,
+            summary,
+            warning_list,
+            crop_names,
+            agent_descriptions,
+            economics_audit,
+            base_seed=base_seed,
         )
         staged_report_path = os.path.join(staging_dir, "summary_report.md")
         with open(staged_report_path, "w") as f:
@@ -258,20 +305,38 @@ def build_parser():
     single.add_argument("--verbose", action="store_true", help="Print full daily history.")
     single.set_defaults(func=cmd_single)
 
-    replay = subparsers.add_parser("replay", help="Reproduce a run from a previously recorded seed.")
+    replay = subparsers.add_parser(
+        "replay", help="Reproduce a run from a previously recorded seed."
+    )
     replay.add_argument("--strategy", choices=AGENT_REGISTRY.keys(), required=True)
     replay.add_argument("--seed", type=int, required=True)
     replay.set_defaults(func=cmd_replay)
 
-    batch = subparsers.add_parser("batch", help="Run a batch across all strategies and generate a report.")
+    batch = subparsers.add_parser(
+        "batch", help="Run a batch across all strategies and generate a report."
+    )
     batch.add_argument("--runs", type=_positive_int, default=1000)
-    batch.add_argument("--seed", type=int, default=None, help="Base seed for generating per-run seeds.")
-    batch.add_argument("--workers", type=_positive_int, default=None,
-                        help="Parallel worker processes (default: all CPU cores; 1 for sequential).")
-    batch.add_argument("--days", type=_positive_int, default=None,
-                       help="Override simulated days for this batch without changing config files.")
-    batch.add_argument("--start-money", type=_nonnegative_float, default=None,
-                       help="Override starting money for this batch without changing config files.")
+    batch.add_argument(
+        "--seed", type=int, default=None, help="Base seed for generating per-run seeds."
+    )
+    batch.add_argument(
+        "--workers",
+        type=_positive_int,
+        default=None,
+        help="Parallel worker processes (default: all CPU cores; 1 for sequential).",
+    )
+    batch.add_argument(
+        "--days",
+        type=_positive_int,
+        default=None,
+        help="Override simulated days for this batch without changing config files.",
+    )
+    batch.add_argument(
+        "--start-money",
+        type=_nonnegative_float,
+        default=None,
+        help="Override starting money for this batch without changing config files.",
+    )
     batch.set_defaults(func=cmd_batch)
 
     return parser

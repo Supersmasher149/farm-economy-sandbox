@@ -4,6 +4,7 @@ quantity (inventory + in-flight crops + processing output deducted) and
 must not plant crops that can't mature by the contract deadline, the final
 simulated day, or influence planting once expired but unresolved.
 """
+
 from agents.no_upgrade_player import NoUpgradePlayer
 from agents.profit_optimizer import ProfitOptimizer
 from agents.progression_player import ProgressionPlayer
@@ -13,9 +14,16 @@ from simulation.state import ContractState, InventoryLot, PlantedCrop, PlayerSta
 
 def _crops():
     contracted = {
-        "id": "contracted", "seed_cost": 5, "growth_days": 3,
-        "min_yield": 4, "max_yield": 4, "base_price": 5, "loss_chance": 0.0,
-        "water_interval_days": 2, "unlock_requirement": None, "role": "fast",
+        "id": "contracted",
+        "seed_cost": 5,
+        "growth_days": 3,
+        "min_yield": 4,
+        "max_yield": 4,
+        "base_price": 5,
+        "loss_chance": 0.0,
+        "water_interval_days": 2,
+        "unlock_requirement": None,
+        "role": "fast",
     }
     # Deliberately much higher EV/day than "contracted", and a shorter
     # growth window, so once the contract override steps aside, normal
@@ -24,9 +32,16 @@ def _crops():
     # either way -- and so it alone survives a final-simulation-day filter
     # tight enough to exclude "contracted".
     other = {
-        "id": "other", "seed_cost": 5, "growth_days": 1,
-        "min_yield": 4, "max_yield": 4, "base_price": 50, "loss_chance": 0.0,
-        "water_interval_days": 2, "unlock_requirement": None, "role": "standard",
+        "id": "other",
+        "seed_cost": 5,
+        "growth_days": 1,
+        "min_yield": 4,
+        "max_yield": 4,
+        "base_price": 50,
+        "loss_chance": 0.0,
+        "water_interval_days": 2,
+        "unlock_requirement": None,
+        "role": "standard",
     }
     crops = [contracted, other]
     return crops, {c["id"]: c for c in crops}
@@ -43,6 +58,7 @@ def _player(day=0, total_days=None, money=200):
 
 
 # -- simulation.contracts.forecast_committed_supply --------------------------
+
 
 def test_forecast_committed_supply_counts_inventory_processing_and_planted_crop():
     player = _player()
@@ -71,6 +87,7 @@ def test_forecast_committed_supply_excludes_unplanted_open_slot_capacity():
 
 
 # -- premium-quality contracts -----------------------------------------------
+
 
 def test_forecast_committed_supply_counts_planted_crop_for_premium_contract():
     """A crop already in the ground that can still reach premium (no stress
@@ -113,6 +130,7 @@ def test_forecast_committed_supply_excludes_future_plantings_from_premium_contra
 
 
 # -- profit_optimizer.choose_crop --------------------------------------------
+
 
 def test_profit_optimizer_stops_planting_once_forecast_covers_remaining():
     """The exact bug scenario: a small contract (remaining=1) already
@@ -230,6 +248,7 @@ def test_inherited_optimizer_control_agent_also_stops_overplanting():
 
 
 # -- progression_player.choose_crop ------------------------------------------
+
 
 def test_progression_player_stops_planting_once_forecast_covers_remaining():
     crops, crops_by_id = _crops()

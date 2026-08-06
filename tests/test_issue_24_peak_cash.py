@@ -3,6 +3,7 @@ cash peak (a sale, a contract delivery, ...) immediately, not only after
 engine._finish_day's once-per-day highest_money update -- and whatever peak
 gets reported must be the same one the gate used.
 """
+
 import pytest
 
 from simulation import contracts, economy_rules, markets
@@ -19,6 +20,7 @@ def make_player(money=100, highest_money=None):
 
 
 # -- PlayerState.track_peak_cash ---------------------------------------------
+
 
 def test_track_peak_cash_raises_recorded_peak():
     player = make_player(money=100, highest_money=100)
@@ -42,11 +44,17 @@ def test_track_peak_cash_initializes_from_none():
 
 # -- revenue sites update the peak live --------------------------------------
 
+
 def test_market_sale_updates_peak_immediately():
     player = make_player(money=10, highest_money=10)
     player.market_prices = {"crop": 100}
     player.inventory_lots.append(InventoryLot("crop", 5, "standard"))
-    channel = {"id": "spot", "min_quality": "processing", "price_multiplier": 1, "daily_capacity": 10}
+    channel = {
+        "id": "spot",
+        "min_quality": "processing",
+        "price_multiplier": 1,
+        "daily_capacity": 10,
+    }
 
     markets.sell(player, "crop", 5, channel)
 
@@ -81,6 +89,7 @@ def test_contract_delivery_updates_peak_immediately():
 
 # -- the gate itself ----------------------------------------------------------
 
+
 def test_upgrade_gate_uses_same_day_sale_peak_not_stale_day_start_peak():
     """The issue's exact reproduction: current money 500, recorded highest
     money 100 -- rejected under the old gate, accepted once the peak is
@@ -102,7 +111,12 @@ def test_upgrade_gate_sees_peak_from_a_sale_made_earlier_the_same_day():
     player = make_player(money=100, highest_money=100)
     player.market_prices = {"crop": 100}
     player.inventory_lots.append(InventoryLot("crop", 4, "standard"))
-    channel = {"id": "spot", "min_quality": "processing", "price_multiplier": 1, "daily_capacity": 10}
+    channel = {
+        "id": "spot",
+        "min_quality": "processing",
+        "price_multiplier": 1,
+        "daily_capacity": 10,
+    }
     markets.sell(player, "crop", 4, channel)  # money: 100 -> 500, mid-day
 
     upgrade = {"id": "u", "cost": 250, "effect": {"type": "capacity", "amount": 1}}

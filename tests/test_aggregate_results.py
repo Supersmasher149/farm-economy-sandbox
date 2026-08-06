@@ -7,6 +7,7 @@ simulator) so cohort sizes, edge cases, and ordering can be controlled
 exactly, and check the incremental accumulator against hand-computed
 expected values and against itself under different feed orders.
 """
+
 import random
 import statistics
 
@@ -44,7 +45,9 @@ def _make_run_result(
         gross_profit=40.0,
         operating_profit=35.0,
         net_cash_change=50.0,
-        expenses_by_category=expenses_by_category if expenses_by_category is not None else {"seeds": 5.0},
+        expenses_by_category=expenses_by_category
+        if expenses_by_category is not None
+        else {"seeds": 5.0},
         crops_planted=crops_planted,
         crops_harvested=2,
         crops_sold=2,
@@ -75,7 +78,8 @@ def _make_run_result(
         revenue_by_channel=revenue_by_channel if revenue_by_channel is not None else {"spot": 50.0},
         quality_harvested=quality_harvested if quality_harvested is not None else {"standard": 1},
         crop_decision_observations=(
-            crop_decision_observations if crop_decision_observations is not None
+            crop_decision_observations
+            if crop_decision_observations is not None
             else {"quickweed": {"opportunities": 3, "selected": 2}}
         ),
     )
@@ -85,16 +89,32 @@ def _make_run_result(
 
 def test_aggregate_matches_hand_computed_stats_for_mixed_cohort():
     survivors = [
-        _make_run_result(final_money=10.0, minimum_cash_balance=5.0, first_upgrade_day=2, second_upgrade_day=6),
+        _make_run_result(
+            final_money=10.0, minimum_cash_balance=5.0, first_upgrade_day=2, second_upgrade_day=6
+        ),
         _make_run_result(final_money=20.0, minimum_cash_balance=10.0, expenses_by_category={}),
-        _make_run_result(final_money=30.0, minimum_cash_balance=15.0, first_upgrade_day=4,
-                          expenses_by_category={"seeds": 5.0, "watering": 2.0}),
+        _make_run_result(
+            final_money=30.0,
+            minimum_cash_balance=15.0,
+            first_upgrade_day=4,
+            expenses_by_category={"seeds": 5.0, "watering": 2.0},
+        ),
     ]
     bankrupt = [
-        _make_run_result(final_money=5.0, minimum_cash_balance=2.5, bankrupt=True,
-                          bankruptcy_day=3, bankruptcy_reason="no_viable_reinvestment"),
-        _make_run_result(final_money=15.0, minimum_cash_balance=7.5, bankrupt=True,
-                          bankruptcy_day=7, bankruptcy_reason="no_viable_reinvestment"),
+        _make_run_result(
+            final_money=5.0,
+            minimum_cash_balance=2.5,
+            bankrupt=True,
+            bankruptcy_day=3,
+            bankruptcy_reason="no_viable_reinvestment",
+        ),
+        _make_run_result(
+            final_money=15.0,
+            minimum_cash_balance=7.5,
+            bankrupt=True,
+            bankruptcy_day=7,
+            bankruptcy_reason="no_viable_reinvestment",
+        ),
     ]
     results = survivors + bankrupt
 
@@ -127,7 +147,9 @@ def test_aggregate_matches_hand_computed_stats_for_mixed_cohort():
     assert stats["avg_expenses_by_category"] == {"seeds": 4.0, "watering": 0.4}
     assert stats["revenue_by_channel"] == {"spot": 50.0}
     assert stats["quality_harvested"] == {"standard": 5}
-    assert stats["crop_decision_observations"] == {"quickweed": {"opportunities": 15, "selected": 10}}
+    assert stats["crop_decision_observations"] == {
+        "quickweed": {"opportunities": 15, "selected": 10}
+    }
     assert stats["avg_watering_rate"] == 50.0
     assert stats["avg_total_costs"] == 50.0
     assert stats["avg_gross_profit"] == 40.0
@@ -155,8 +177,12 @@ def test_aggregate_handles_zero_bankrupt_runs():
 
 def test_aggregate_handles_zero_survivor_runs():
     results = [
-        _make_run_result(final_money=1.0, bankrupt=True, bankruptcy_day=1, bankruptcy_reason="ruin"),
-        _make_run_result(final_money=2.0, bankrupt=True, bankruptcy_day=2, bankruptcy_reason="ruin"),
+        _make_run_result(
+            final_money=1.0, bankrupt=True, bankruptcy_day=1, bankruptcy_reason="ruin"
+        ),
+        _make_run_result(
+            final_money=2.0, bankrupt=True, bankruptcy_day=2, bankruptcy_reason="ruin"
+        ),
     ]
 
     stats = aggregate(results)["test"]
@@ -174,22 +200,26 @@ def _synthetic_results(n=20):
     for i in range(n):
         strategy = "alpha" if i % 2 == 0 else "beta"
         bankrupt = i % 3 == 0
-        results.append(_make_run_result(
-            strategy=strategy,
-            seed=i,
-            final_money=round(rng.uniform(-20.0, 500.0), 2),
-            bankrupt=bankrupt,
-            bankruptcy_day=(i % 15) + 1 if bankrupt else None,
-            bankruptcy_reason="no_viable_reinvestment" if bankrupt else None,
-            minimum_cash_balance=round(rng.uniform(0.0, 50.0), 2),
-            first_upgrade_day=i if i % 4 == 0 else None,
-            second_upgrade_day=i if i % 7 == 0 else None,
-            crop_counts={"quickweed": i % 5, "purplehaze": i % 3},
-            crops_planted=(i % 5) + (i % 3),
-            expenses_by_category={} if i % 6 == 0 else {"seeds": round(rng.uniform(1.0, 10.0), 2)},
-            revenue_by_channel={"spot": round(rng.uniform(10.0, 100.0), 2)},
-            quality_harvested={"standard": i % 4, "premium": i % 2},
-        ))
+        results.append(
+            _make_run_result(
+                strategy=strategy,
+                seed=i,
+                final_money=round(rng.uniform(-20.0, 500.0), 2),
+                bankrupt=bankrupt,
+                bankruptcy_day=(i % 15) + 1 if bankrupt else None,
+                bankruptcy_reason="no_viable_reinvestment" if bankrupt else None,
+                minimum_cash_balance=round(rng.uniform(0.0, 50.0), 2),
+                first_upgrade_day=i if i % 4 == 0 else None,
+                second_upgrade_day=i if i % 7 == 0 else None,
+                crop_counts={"quickweed": i % 5, "purplehaze": i % 3},
+                crops_planted=(i % 5) + (i % 3),
+                expenses_by_category={}
+                if i % 6 == 0
+                else {"seeds": round(rng.uniform(1.0, 10.0), 2)},
+                revenue_by_channel={"spot": round(rng.uniform(10.0, 100.0), 2)},
+                quality_harvested={"standard": i % 4, "premium": i % 2},
+            )
+        )
     return results
 
 
@@ -220,5 +250,7 @@ def test_neumaier_running_mean_matches_statistics_mean():
     stats = aggregate(results)
 
     for strategy in ("alpha", "beta"):
-        expected = round(statistics.mean(r.final_money for r in results if r.strategy == strategy), 2)
+        expected = round(
+            statistics.mean(r.final_money for r in results if r.strategy == strategy), 2
+        )
         assert stats[strategy]["avg_final_money"] == expected

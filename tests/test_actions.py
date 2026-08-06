@@ -42,13 +42,17 @@ def test_plant_seed_consumes_seed_and_occupies_slot(player, fast_crop):
     assert player.crop_plant_counts["fast"] == 1
 
 
-def test_harvest_mature_adds_yield_to_inventory(player, fast_crop, watering_settings, fertilizer_config):
+def test_harvest_mature_adds_yield_to_inventory(
+    player, fast_crop, watering_settings, fertilizer_config
+):
     crops_by_id = {"fast": fast_crop}
     rng = RandomEvents(seed=1)
     actions.buy_seeds(player, fast_crop, 1)
     actions.plant_seed(player, fast_crop, growth_days=3)
     player.day = 3
-    harvested = actions.harvest_mature(player, crops_by_id, watering_settings, fertilizer_config, rng)
+    harvested = actions.harvest_mature(
+        player, crops_by_id, watering_settings, fertilizer_config, rng
+    )
     assert harvested
     assert player.crop_inventory["fast"] >= fast_crop["min_yield"]
     assert len(player.planted) == 0
@@ -56,18 +60,24 @@ def test_harvest_mature_adds_yield_to_inventory(player, fast_crop, watering_sett
     assert player.total_crops_lost == 0
 
 
-def test_harvest_mature_leaves_immature_crops_planted(player, fast_crop, watering_settings, fertilizer_config):
+def test_harvest_mature_leaves_immature_crops_planted(
+    player, fast_crop, watering_settings, fertilizer_config
+):
     crops_by_id = {"fast": fast_crop}
     rng = RandomEvents(seed=1)
     actions.buy_seeds(player, fast_crop, 1)
     actions.plant_seed(player, fast_crop, growth_days=3)
     player.day = 1
-    harvested = actions.harvest_mature(player, crops_by_id, watering_settings, fertilizer_config, rng)
+    harvested = actions.harvest_mature(
+        player, crops_by_id, watering_settings, fertilizer_config, rng
+    )
     assert not harvested
     assert len(player.planted) == 1
 
 
-def test_harvest_with_neglect_reduces_yield_and_raises_loss_chance(player, fast_crop, watering_settings, fertilizer_config):
+def test_harvest_with_neglect_reduces_yield_and_raises_loss_chance(
+    player, fast_crop, watering_settings, fertilizer_config
+):
     crops_by_id = {"fast": fast_crop}
     rng = RandomEvents(seed=1)
     actions.buy_seeds(player, fast_crop, 1)
@@ -78,11 +88,15 @@ def test_harvest_with_neglect_reduces_yield_and_raises_loss_chance(player, fast_
     assert player.total_harvest_events == 1
     # either lost outright, or the surviving yield reflects the capped neglect penalty
     if player.total_crops_lost == 0:
-        max_possible_yield = fast_crop["max_yield"] * (1 - watering_settings["max_neglect_yield_penalty"])
+        max_possible_yield = fast_crop["max_yield"] * (
+            1 - watering_settings["max_neglect_yield_penalty"]
+        )
         assert player.crop_inventory.get("fast", 0) <= round(max_possible_yield) + 1
 
 
-def test_fertilized_crop_never_receives_neglect_penalty_when_never_neglected(player, standard_crop, watering_settings, fertilizer_config):
+def test_fertilized_crop_never_receives_neglect_penalty_when_never_neglected(
+    player, standard_crop, watering_settings, fertilizer_config
+):
     crops_by_id = {"standard": standard_crop}
     rng = RandomEvents(seed=2)
     actions.buy_seeds(player, standard_crop, 1)
@@ -128,9 +142,7 @@ def test_configured_yield_effects_are_applied_once_and_allow_zero(player, fast_c
 
 def test_fertilizer_quality_bonus_is_independent_of_yield_bonus(fast_crop):
     plain = PlantedCrop(crop_id="fast", day_planted=0, growth_days_required=1)
-    fertilized = PlantedCrop(
-        crop_id="fast", day_planted=0, growth_days_required=1, fertilized=True
-    )
+    fertilized = PlantedCrop(crop_id="fast", day_planted=0, growth_days_required=1, fertilized=True)
 
     plain_yield, plain_quality = crop_growth.harvest_multipliers(plain, fast_crop)
     fertilized_yield, fertilized_quality = crop_growth.harvest_multipliers(fertilized, fast_crop)
@@ -205,7 +217,9 @@ def test_buy_fertilizer_deducts_money_and_adds_inventory(player, fertilizer_conf
     assert player.total_fertilizer_bought == 2
 
 
-def test_plant_seed_with_fertilizer_consumes_fertilizer_inventory(player, fast_crop, fertilizer_config):
+def test_plant_seed_with_fertilizer_consumes_fertilizer_inventory(
+    player, fast_crop, fertilizer_config
+):
     actions.buy_seeds(player, fast_crop, 1)
     actions.buy_fertilizer(player, fertilizer_config, 1)
     ok = actions.plant_seed(player, fast_crop, growth_days=3, fertilized=True)

@@ -29,35 +29,64 @@ FERTILIZER_CONFIG = {
 }
 
 ALL_AGENTS = (
-    FastSeller, ProfitOptimizer, ProgressionPlayer, NeglectfulGrower, RecklessSpender,
-    RandomAgent, NoUpgradePlayer, FertilizerMaximalist, Diversifier, RiskAverseGrower, UpgradeRusher,
+    FastSeller,
+    ProfitOptimizer,
+    ProgressionPlayer,
+    NeglectfulGrower,
+    RecklessSpender,
+    RandomAgent,
+    NoUpgradePlayer,
+    FertilizerMaximalist,
+    Diversifier,
+    RiskAverseGrower,
+    UpgradeRusher,
 )
 
 
 def make_crops():
     return [
         {
-            "id": "fast", "name": "Fast", "role": "fast",
-            "seed_cost": 5, "growth_days": 3,
-            "min_yield": 1, "max_yield": 2,
-            "base_price": 5, "price_variation": 0.1,
-            "loss_chance": 0.03, "water_interval_days": 2,
-            "unlock_requirement": None, "processing_value": None,
+            "id": "fast",
+            "name": "Fast",
+            "role": "fast",
+            "seed_cost": 5,
+            "growth_days": 3,
+            "min_yield": 1,
+            "max_yield": 2,
+            "base_price": 5,
+            "price_variation": 0.1,
+            "loss_chance": 0.03,
+            "water_interval_days": 2,
+            "unlock_requirement": None,
+            "processing_value": None,
         },
         {
-            "id": "standard", "name": "Standard", "role": "standard",
-            "seed_cost": 18, "growth_days": 7,
-            "min_yield": 4, "max_yield": 6,
-            "base_price": 7, "price_variation": 0.15,
-            "loss_chance": 0.05, "water_interval_days": 3,
-            "unlock_requirement": None, "processing_value": None,
+            "id": "standard",
+            "name": "Standard",
+            "role": "standard",
+            "seed_cost": 18,
+            "growth_days": 7,
+            "min_yield": 4,
+            "max_yield": 6,
+            "base_price": 7,
+            "price_variation": 0.15,
+            "loss_chance": 0.05,
+            "water_interval_days": 3,
+            "unlock_requirement": None,
+            "processing_value": None,
         },
         {
-            "id": "premium", "name": "Premium", "role": "premium",
-            "seed_cost": 45, "growth_days": 12,
-            "min_yield": 5, "max_yield": 10,
-            "base_price": 16, "price_variation": 0.35,
-            "loss_chance": 0.15, "water_interval_days": 2,
+            "id": "premium",
+            "name": "Premium",
+            "role": "premium",
+            "seed_cost": 45,
+            "growth_days": 12,
+            "min_yield": 5,
+            "max_yield": 10,
+            "base_price": 16,
+            "price_variation": 0.35,
+            "loss_chance": 0.15,
+            "water_interval_days": 2,
             "unlock_requirement": {"type": "total_revenue", "value": 150},
             "processing_value": None,
         },
@@ -66,17 +95,35 @@ def make_crops():
 
 def make_upgrades():
     return [
-        {"id": "capacity_1", "name": "Second Plot", "description": "", "cost": 120,
-         "effect": {"type": "capacity", "amount": 2}},
-        {"id": "efficiency_1", "name": "Irrigation", "description": "", "cost": 200,
-         "effect": {"type": "growth_time_reduction", "amount": 0.20}},
+        {
+            "id": "capacity_1",
+            "name": "Second Plot",
+            "description": "",
+            "cost": 120,
+            "effect": {"type": "capacity", "amount": 2},
+        },
+        {
+            "id": "efficiency_1",
+            "name": "Irrigation",
+            "description": "",
+            "cost": 200,
+            "effect": {"type": "growth_time_reduction", "amount": 0.20},
+        },
     ]
 
 
 def run(agent, config=CONFIG, seed=42, record_history=False):
     crops, upgrades = make_crops(), make_upgrades()
-    return run_single(config, agent, crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG,
-                       seed=seed, record_history=record_history)
+    return run_single(
+        config,
+        agent,
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        seed=seed,
+        record_history=record_history,
+    )
 
 
 def test_single_run_completes_and_tracks_days():

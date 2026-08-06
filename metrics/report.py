@@ -4,9 +4,16 @@ strategy, warnings called out at the top.
 """
 
 
-def generate_markdown_report(config: dict, num_runs: int, summary: dict, warning_list: list, crop_names: dict,
-                              agent_descriptions: dict = None, economics_audit: dict = None,
-                              base_seed: int = None) -> str:
+def generate_markdown_report(
+    config: dict,
+    num_runs: int,
+    summary: dict,
+    warning_list: list,
+    crop_names: dict,
+    agent_descriptions: dict = None,
+    economics_audit: dict = None,
+    base_seed: int = None,
+) -> str:
     agent_descriptions = agent_descriptions or {}
     lines = []
     lines.append("# Farm Economy Batch Report")
@@ -31,7 +38,9 @@ def generate_markdown_report(config: dict, num_runs: int, summary: dict, warning
     if economics_audit:
         lines.append("## Economics Audit")
         lines.append("")
-        lines.append("Nominal values use configured base prices, average yield, and configured loss chance; they exclude weather, quality, capacity, and neglect effects.")
+        lines.append(
+            "Nominal values use configured base prices, average yield, and configured loss chance; they exclude weather, quality, capacity, and neglect effects."
+        )
         lines.append("")
         for crop in economics_audit["crops"]:
             lines.append(
@@ -57,7 +66,9 @@ def generate_markdown_report(config: dict, num_runs: int, summary: dict, warning
 
     lines.append("## Accounting Definitions")
     lines.append("")
-    lines.append("- Total costs include every recorded cash outflow; gross profit subtracts seeds, watering, and fertilizer; operating profit also subtracts contract penalties; net cash change includes upgrades and all other costs.")
+    lines.append(
+        "- Total costs include every recorded cash outflow; gross profit subtracts seeds, watering, and fertilizer; operating profit also subtracts contract penalties; net cash change includes upgrades and all other costs."
+    )
     lines.append("")
 
     lines.append("## Warnings")
@@ -80,8 +91,12 @@ def generate_markdown_report(config: dict, num_runs: int, summary: dict, warning
         lines.append(f"- Runs: {stats['num_runs']}")
         lines.append(f"- Average final money: {stats['avg_final_money']}")
         lines.append(f"- Median final money: {stats['median_final_money']}")
-        lines.append(f"- Min / Max final money: {stats['min_final_money']} / {stats['max_final_money']}")
-        lines.append(f"- Surviving / bankrupt runs: {stats['surviving_runs']} / {stats['bankrupt_runs']}")
+        lines.append(
+            f"- Min / Max final money: {stats['min_final_money']} / {stats['max_final_money']}"
+        )
+        lines.append(
+            f"- Surviving / bankrupt runs: {stats['surviving_runs']} / {stats['bankrupt_runs']}"
+        )
         lines.append(
             f"- Average final money, survivors / bankrupt: "
             f"{stats['avg_final_money_survivors']} / {stats['avg_final_money_bankrupt']}"
@@ -115,14 +130,24 @@ def generate_markdown_report(config: dict, num_runs: int, summary: dict, warning
             f"- Average day of second upgrade (purchasing runs): {stats['avg_second_upgrade_day']}"
         )
         lines.append(f"- Watering coverage: {stats['avg_watering_rate']}% of plot-days")
-        lines.append(f"- Watering coverage of occupied plot-days: {stats['avg_occupied_watering_rate']}%")
+        lines.append(
+            f"- Watering coverage of occupied plot-days: {stats['avg_occupied_watering_rate']}%"
+        )
         lines.append(f"- Crop loss rate: {stats['avg_crop_loss_rate']}% of matured crops")
-        lines.append(f"- Avg fertilizer applications per run: {stats['avg_fertilizer_applications']}")
-        lines.append(f"- Avg spoiled / processed units: {stats['avg_spoiled_units']} / {stats['avg_processed_units']}")
-        lines.append(f"- Avg contracts completed / failed: {stats['avg_contracts_completed']} / {stats['avg_contracts_failed']}")
+        lines.append(
+            f"- Avg fertilizer applications per run: {stats['avg_fertilizer_applications']}"
+        )
+        lines.append(
+            f"- Avg spoiled / processed units: {stats['avg_spoiled_units']} / {stats['avg_processed_units']}"
+        )
+        lines.append(
+            f"- Avg contracts completed / failed: {stats['avg_contracts_completed']} / {stats['avg_contracts_failed']}"
+        )
         lines.append(f"- Average final reputation: {stats['avg_final_reputation']}")
         lines.append(f"- Average total costs: {stats['avg_total_costs']}")
-        lines.append(f"- Average gross / operating / net cash change: {stats['avg_gross_profit']} / {stats['avg_operating_profit']} / {stats['avg_net_cash_change']}")
+        lines.append(
+            f"- Average gross / operating / net cash change: {stats['avg_gross_profit']} / {stats['avg_operating_profit']} / {stats['avg_net_cash_change']}"
+        )
         lines.append(f"- Average costs by category: {stats['avg_expenses_by_category'] or 'None'}")
         lines.append(f"- Average revenue by channel: {stats['revenue_by_channel'] or 'None'}")
         lines.append(f"- Harvest quality mix: {stats['quality_harvested']}")
@@ -132,8 +157,16 @@ def generate_markdown_report(config: dict, num_runs: int, summary: dict, warning
             lines.append(f"- {name}: {pct}%")
         for cid, observation in sorted(stats["crop_decision_observations"].items()):
             opportunities = observation.get("opportunities", 0)
-            unlocked_pct = round(100 * observation.get("unlocked", 0) / opportunities, 2) if opportunities else 0.0
-            affordable_pct = round(100 * observation.get("affordable", 0) / opportunities, 2) if opportunities else 0.0
+            unlocked_pct = (
+                round(100 * observation.get("unlocked", 0) / opportunities, 2)
+                if opportunities
+                else 0.0
+            )
+            affordable_pct = (
+                round(100 * observation.get("affordable", 0) / opportunities, 2)
+                if opportunities
+                else 0.0
+            )
             lines.append(
                 f"- Crop decision `{cid}`: opportunities {opportunities}, unlocked {unlocked_pct}%, "
                 f"affordable {affordable_pct}%, selected {observation.get('selected', 0)}, "

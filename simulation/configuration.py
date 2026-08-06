@@ -1,14 +1,22 @@
 """Validation for configuration consumed by the simulation runtime."""
 
-from collections.abc import Mapping
 import math
-
+from collections.abc import Mapping
 
 QUALITY_LEVELS = {"rejected", "processing", "standard", "premium"}
 SEASONS = ("spring", "summer", "autumn", "winter")
 EFFECT_TYPES = {"capacity", "growth_time_reduction", "storage", "processing_capacity"}
 UNLOCK_TYPES = {"total_revenue", "upgrade"}
-SOIL_LEVELS = {"moisture", "nitrogen", "phosphorus", "potassium", "ph", "soil_health", "pest_pressure", "disease_pressure"}
+SOIL_LEVELS = {
+    "moisture",
+    "nitrogen",
+    "phosphorus",
+    "potassium",
+    "ph",
+    "soil_health",
+    "pest_pressure",
+    "disease_pressure",
+}
 
 
 def validate(crops: list, upgrades: list, world: dict) -> None:
@@ -45,14 +53,18 @@ def validate(crops: list, upgrades: list, world: dict) -> None:
         if requirement is None:
             continue
         _require_mapping(requirement, f"crop '{crop['id']}'.unlock_requirement")
-        requirement_type = _required_value(requirement, "type", f"crop '{crop['id']}'.unlock_requirement")
+        requirement_type = _required_value(
+            requirement, "type", f"crop '{crop['id']}'.unlock_requirement"
+        )
         _enum(requirement_type, UNLOCK_TYPES, f"crop '{crop['id']}'.unlock_requirement.type")
         if requirement_type == "total_revenue":
             _number(requirement, "value", f"crop '{crop['id']}.unlock_requirement", minimum=0)
         else:
             requirement_id = requirement.get("id")
             if not isinstance(requirement_id, str) or requirement_id not in upgrade_ids:
-                raise ValueError(f"Crop '{crop['id']}' references unknown upgrade '{requirement_id}'")
+                raise ValueError(
+                    f"Crop '{crop['id']}' references unknown upgrade '{requirement_id}'"
+                )
 
 
 def validate_simulation_config(config: dict) -> None:
@@ -63,9 +75,12 @@ def validate_simulation_config(config: dict) -> None:
     _number(config, "start_money", "simulation_settings", minimum=0)
     if "operating_reserve" in config:
         _number(config, "operating_reserve", "simulation_settings", minimum=0)
-    if "seed" in config and config["seed"] is not None:
-        if not isinstance(config["seed"], int) or isinstance(config["seed"], bool):
-            raise ValueError("simulation_settings.seed must be an integer or null")
+    if (
+        "seed" in config
+        and config["seed"] is not None
+        and (not isinstance(config["seed"], int) or isinstance(config["seed"], bool))
+    ):
+        raise ValueError("simulation_settings.seed must be an integer or null")
 
 
 def _validate_crops(crops: list) -> set:
@@ -73,8 +88,15 @@ def _validate_crops(crops: list) -> set:
         raise ValueError("At least one crop is required")
     crop_ids = _unique_ids(crops, "crop")
     required = (
-        "name", "seed_cost", "growth_days", "min_yield", "max_yield",
-        "base_price", "price_variation", "loss_chance", "water_interval_days",
+        "name",
+        "seed_cost",
+        "growth_days",
+        "min_yield",
+        "max_yield",
+        "base_price",
+        "price_variation",
+        "loss_chance",
+        "water_interval_days",
     )
     for crop in crops:
         path = f"crop '{crop['id']}'"
@@ -128,10 +150,14 @@ def _validate_upgrades(upgrades: list) -> set:
         if effect_type in {"capacity", "processing_capacity"}:
             _integer(effect, "amount", f"{path}.effect", minimum=1)
         elif effect_type == "growth_time_reduction":
-            _number(effect, "amount", f"{path}.effect", minimum=0, maximum=None, exclusive_maximum=1)
+            _number(
+                effect, "amount", f"{path}.effect", minimum=0, maximum=None, exclusive_maximum=1
+            )
         else:
             _integer(effect, "capacity_bonus", f"{path}.effect", minimum=0)
-            _number(effect, "shelf_life_multiplier", f"{path}.effect", minimum=0, exclusive_minimum=0)
+            _number(
+                effect, "shelf_life_multiplier", f"{path}.effect", minimum=0, exclusive_minimum=0
+            )
     return upgrade_ids
 
 
@@ -190,7 +216,12 @@ def _validate_fertilizer(config: dict) -> None:
     _number(config, "cost", path, minimum=0)
     _number(config, "yield_bonus_pct", path, minimum=0)
     _number(config, "loss_chance_reduction", path, minimum=0, maximum=1)
-    _nonnegative_mapping(config.get("nutrients_added", {}), f"{path}.nutrients_added", {"nitrogen", "phosphorus", "potassium"}, maximum=1)
+    _nonnegative_mapping(
+        config.get("nutrients_added", {}),
+        f"{path}.nutrients_added",
+        {"nitrogen", "phosphorus", "potassium"},
+        maximum=1,
+    )
 
 
 def _validate_soil(config: dict) -> None:
@@ -219,9 +250,16 @@ def _validate_weather(config: dict) -> None:
     for season in SEASONS:
         values = _required_mapping(seasons, season, "weather.seasons")
         path = f"weather.seasons.{season}"
-        _ordered_range(_required_value(values, "temperature_range", path), f"{path}.temperature_range")
+        _ordered_range(
+            _required_value(values, "temperature_range", path), f"{path}.temperature_range"
+        )
         _number(values, "rain_chance", path, minimum=0, maximum=1)
-        _ordered_range(_required_value(values, "rainfall_range", path), f"{path}.rainfall_range", minimum=0, maximum=1)
+        _ordered_range(
+            _required_value(values, "rainfall_range", path),
+            f"{path}.rainfall_range",
+            minimum=0,
+            maximum=1,
+        )
         _number(values, "evaporation", path, minimum=0, maximum=1)
 
 
@@ -331,7 +369,15 @@ def _string(value, path: str) -> None:
         raise ValueError(f"{path} must be a non-empty string")
 
 
-def _number(mapping_or_value, key, path: str, minimum=None, maximum=None, exclusive_minimum=None, exclusive_maximum=None) -> None:
+def _number(
+    mapping_or_value,
+    key,
+    path: str,
+    minimum=None,
+    maximum=None,
+    exclusive_minimum=None,
+    exclusive_maximum=None,
+) -> None:
     value = mapping_or_value if key is None else mapping_or_value.get(key)
     field_path = path if key is None else f"{path}.{key}"
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
@@ -366,9 +412,7 @@ def _ordered_range(value, path: str, minimum=None, maximum=None, integer=False) 
         if any(not isinstance(item, int) or isinstance(item, bool) for item in value):
             raise ValueError(f"{path} values must be integers")
     elif any(
-        isinstance(item, bool)
-        or not isinstance(item, (int, float))
-        or not math.isfinite(item)
+        isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item)
         for item in value
     ):
         raise ValueError(f"{path} values must be numeric")

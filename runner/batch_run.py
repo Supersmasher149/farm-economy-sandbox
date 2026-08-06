@@ -31,6 +31,7 @@ problem streaming is meant to fix. Pulling jobs off a lazy generator in
 window_size-sized slices, against one long-lived pool reused across windows,
 keeps peak in-flight jobs/futures bounded independent of total batch size.
 """
+
 import itertools
 import os
 import random
@@ -46,7 +47,7 @@ _worker_config = None
 def resolve_base_seed(base_seed=None) -> int:
     """Resolve an omitted batch seed to a fresh, recordable 32-bit seed."""
     if base_seed is None:
-        return random.SystemRandom().randrange(2 ** 32)
+        return random.SystemRandom().randrange(2**32)
     return base_seed
 
 
@@ -58,8 +59,15 @@ def _init_worker(config, crops, upgrades, watering_settings, fertilizer_config, 
 def _execute(agent, run_seed, config, crops, upgrades, watering_settings, fertilizer_config, world):
     try:
         player, used_seed, _history = run_single(
-            config, agent, crops, upgrades, watering_settings, fertilizer_config,
-            seed=run_seed, record_history=False, world=world,
+            config,
+            agent,
+            crops,
+            upgrades,
+            watering_settings,
+            fertilizer_config,
+            seed=run_seed,
+            record_history=False,
+            world=world,
         )
         return build_run_result(player, agent.name, used_seed, player.day, crops, upgrades)
     except Exception as exc:
@@ -71,16 +79,37 @@ def _execute(agent, run_seed, config, crops, upgrades, watering_settings, fertil
 def _run_in_worker(job):
     agent, run_seed = job
     config, crops, upgrades, watering_settings, fertilizer_config, world = _worker_config
-    return _execute(agent, run_seed, config, crops, upgrades, watering_settings, fertilizer_config, world)
+    return _execute(
+        agent, run_seed, config, crops, upgrades, watering_settings, fertilizer_config, world
+    )
 
 
-def run_batch(config: dict, agents: list, crops: list, upgrades: list, watering_settings: dict,
-              fertilizer_config: dict, num_runs: int, base_seed=None, world=None, workers=None,
-              window_size=None):
+def run_batch(
+    config: dict,
+    agents: list,
+    crops: list,
+    upgrades: list,
+    watering_settings: dict,
+    fertilizer_config: dict,
+    num_runs: int,
+    base_seed=None,
+    world=None,
+    workers=None,
+    window_size=None,
+):
     _validate_batch_inputs(config, num_runs, workers)
     return _iter_batch(
-        config, agents, crops, upgrades, watering_settings, fertilizer_config,
-        num_runs, base_seed, world, workers, window_size,
+        config,
+        agents,
+        crops,
+        upgrades,
+        watering_settings,
+        fertilizer_config,
+        num_runs,
+        base_seed,
+        world,
+        workers,
+        window_size,
     )
 
 
@@ -94,9 +123,19 @@ def _validate_batch_inputs(config: dict, num_runs: int, workers: int | None) -> 
         raise ValueError("workers must be a positive integer")
 
 
-def _iter_batch(config: dict, agents: list, crops: list, upgrades: list, watering_settings: dict,
-                fertilizer_config: dict, num_runs: int, base_seed=None, world=None, workers=None,
-                window_size=None):
+def _iter_batch(
+    config: dict,
+    agents: list,
+    crops: list,
+    upgrades: list,
+    watering_settings: dict,
+    fertilizer_config: dict,
+    num_runs: int,
+    base_seed=None,
+    world=None,
+    workers=None,
+    window_size=None,
+):
     base_seed = resolve_base_seed(base_seed)
     seed_rng = random.Random(base_seed)
     total_jobs = len(agents) * num_runs
@@ -107,11 +146,7 @@ def _iter_batch(config: dict, agents: list, crops: list, upgrades: list, waterin
     # once. Seeds are still minted single-threaded and in the same
     # agent-major order as before, so a given base_seed keeps producing the
     # same per-run seeds regardless of worker count or window size.
-    jobs = (
-        (agent, seed_rng.randrange(2 ** 32))
-        for agent in agents
-        for _ in range(num_runs)
-    )
+    jobs = ((agent, seed_rng.randrange(2**32)) for agent in agents for _ in range(num_runs))
 
     if workers is None:
         workers = os.cpu_count() or 1
@@ -119,7 +154,16 @@ def _iter_batch(config: dict, agents: list, crops: list, upgrades: list, waterin
 
     if workers <= 1:
         for agent, run_seed in jobs:
-            yield _execute(agent, run_seed, config, crops, upgrades, watering_settings, fertilizer_config, world)
+            yield _execute(
+                agent,
+                run_seed,
+                config,
+                crops,
+                upgrades,
+                watering_settings,
+                fertilizer_config,
+                world,
+            )
         return
 
     if window_size is None:

@@ -117,6 +117,10 @@ every strategy's numbers.
 
 ```bash
 python3 -m pytest
+
+# Lint and format checks (ruff, configured in pyproject.toml)
+ruff check
+ruff format --check
 ```
 
 ## Balance-testing workflow

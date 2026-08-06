@@ -3,6 +3,7 @@ upgrade. Purpose: a clean control group -- diff its results against
 ProfitOptimizer to see exactly how much upgrades are worth, and whether
 skipping them entirely is still a viable way to play.
 """
+
 from agents.profit_optimizer import ProfitOptimizer
 
 

@@ -3,13 +3,14 @@
 Every run is driven by exactly one RandomEvents instance so the whole run
 (yields, prices, losses) is reproducible from a single recorded seed.
 """
+
 import random
 
 
 class RandomEvents:
     def __init__(self, seed=None):
         if seed is None:
-            seed = random.SystemRandom().randrange(2 ** 32)
+            seed = random.SystemRandom().randrange(2**32)
         self.seed = seed
         self._rng = random.Random(seed)
 

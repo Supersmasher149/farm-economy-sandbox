@@ -4,6 +4,7 @@ farm. Purpose: isolate how much watering neglect alone erodes an otherwise
 sound crop strategy (this agent's crop and upgrade logic is deliberately
 identical to ProfitOptimizer so the only variable is watering diligence).
 """
+
 from agents.profit_optimizer import ProfitOptimizer
 
 # Waters roughly 1 day in 7: this agent "means well" but keeps forgetting.

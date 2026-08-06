@@ -1,7 +1,7 @@
 """Validated state-changing farm actions."""
+
 from simulation import crop_growth, inventory
 from simulation.state import InventoryLot, PlantedCrop
-
 
 DEFAULT_WATERING = {
     "neglect_loss_chance_penalty_per_day": 0.05,
@@ -22,7 +22,9 @@ def buy_seeds(player, crop: dict, quantity: int = 1) -> bool:
     return True
 
 
-def plant_seed(player, crop: dict, growth_days: int, fertilized: bool = False, fertilizer_config=None) -> bool:
+def plant_seed(
+    player, crop: dict, growth_days: int, fertilized: bool = False, fertilizer_config=None
+) -> bool:
     if player.open_slots <= 0 or player.seed_inventory.get(crop["id"], 0) <= 0:
         return False
     if fertilized and player.fertilizer_inventory <= 0:
@@ -30,7 +32,9 @@ def plant_seed(player, crop: dict, growth_days: int, fertilized: bool = False, f
     plot_index = next((index for index, plot in enumerate(player.plots) if plot.crop is None), None)
     if plot_index is None:
         return False
-    planted = PlantedCrop(crop["id"], player.day, growth_days, plot_index=plot_index, fertilized=fertilized)
+    planted = PlantedCrop(
+        crop["id"], player.day, growth_days, plot_index=plot_index, fertilized=fertilized
+    )
     player.seed_inventory[crop["id"]] -= 1
     if fertilized:
         player.fertilizer_inventory -= 1
@@ -39,9 +43,15 @@ def plant_seed(player, crop: dict, growth_days: int, fertilized: bool = False, f
     player.plots[plot_index].crop = planted
     if fertilized:
         fertilizer_config = fertilizer_config or DEFAULT_FERTILIZER
-        nutrients = fertilizer_config.get("nutrients_added", {"nitrogen": 0.25, "phosphorus": 0.15, "potassium": 0.15})
+        nutrients = fertilizer_config.get(
+            "nutrients_added", {"nitrogen": 0.25, "phosphorus": 0.15, "potassium": 0.15}
+        )
         for name, amount in nutrients.items():
-            setattr(player.plots[plot_index], name, min(1.0, getattr(player.plots[plot_index], name) + amount))
+            setattr(
+                player.plots[plot_index],
+                name,
+                min(1.0, getattr(player.plots[plot_index], name) + amount),
+            )
     player.total_planted += 1
     player.crop_plant_counts[crop["id"]] = player.crop_plant_counts.get(crop["id"], 0) + 1
     return True
@@ -67,9 +77,11 @@ def water_farm(player, agent, crops_by_id: dict, rng, watering_settings=None) ->
     """Compatibility action: water every overdue crop on one diligence roll."""
     watering_settings = watering_settings or DEFAULT_WATERING
     overdue = [
-        planted for planted in player.planted
+        planted
+        for planted in player.planted
         if planted.neglect_days > 0
-        or player.day - planted.last_watered_day >= crops_by_id[planted.crop_id].get("water_interval_days", 3)
+        or player.day - planted.last_watered_day
+        >= crops_by_id[planted.crop_id].get("water_interval_days", 3)
     ]
     if not overdue:
         return False
@@ -103,7 +115,9 @@ def fertilize_crop(player, planted: PlantedCrop, fertilizer_config: dict) -> boo
     player.total_fertilizer_applied += 1
     if planted.plot_index is not None:
         plot = player.plots[planted.plot_index]
-        nutrients = fertilizer_config.get("nutrients_added", {"nitrogen": 0.25, "phosphorus": 0.15, "potassium": 0.15})
+        nutrients = fertilizer_config.get(
+            "nutrients_added", {"nitrogen": 0.25, "phosphorus": 0.15, "potassium": 0.15}
+        )
         for name, amount in nutrients.items():
             setattr(plot, name, min(1.0, getattr(plot, name) + amount))
     return True
@@ -140,19 +154,23 @@ def harvest_mature(player, crops_by_id: dict, *args) -> bool:
             _yield_multiplier, quality_score = crop_growth.harvest_multipliers(planted, crop, plot)
             grade = crop_growth.quality_grade(quality_score)
             if grade != "rejected":
-                player.inventory_lots.append(InventoryLot(
-                    item_id=planted.crop_id,
-                    quantity=amount,
-                    quality=grade,
-                    produced_day=player.day,
-                    shelf_life_days=crop.get("shelf_life_days", 7),
-                    unit_cost=crop["seed_cost"] / amount,
-                ))
+                player.inventory_lots.append(
+                    InventoryLot(
+                        item_id=planted.crop_id,
+                        quantity=amount,
+                        quality=grade,
+                        produced_day=player.day,
+                        shelf_life_days=crop.get("shelf_life_days", 7),
+                        unit_cost=crop["seed_cost"] / amount,
+                    )
+                )
                 player.total_harvested += amount
                 player.quality_harvested[grade] = player.quality_harvested.get(grade, 0) + amount
             else:
                 player.total_crops_lost += 1
-                player.losses_by_cause["rejected_quality"] = player.losses_by_cause.get("rejected_quality", 0) + amount
+                player.losses_by_cause["rejected_quality"] = (
+                    player.losses_by_cause.get("rejected_quality", 0) + amount
+                )
         if plot is not None:
             plot.previous_crop_family = crop.get("family", crop["id"])
             plot.crop = None

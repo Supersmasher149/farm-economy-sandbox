@@ -5,6 +5,7 @@ if this agent can never keep pace with the profit-seeking agents, that's a
 balance red flag (the game would be teaching players that caution doesn't
 pay).
 """
+
 from agents.base import Agent
 from simulation import economy_rules
 
@@ -15,14 +16,18 @@ class RiskAverseGrower(Agent):
 
     def choose_crop(self, player, crops, crops_by_id, upgrades_by_id):
         candidates = [
-            c for c in crops
+            c
+            for c in crops
             if economy_rules.is_crop_unlocked(c, player) and player.money >= c["seed_cost"]
         ]
         if not candidates:
             return None
         return min(
             candidates,
-            key=lambda c: (c["loss_chance"], -economy_rules.expected_profit_per_day(c, player, upgrades_by_id)),
+            key=lambda c: (
+                c["loss_chance"],
+                -economy_rules.expected_profit_per_day(c, player, upgrades_by_id),
+            ),
         )
 
     def should_buy_upgrade(self, player, upgrade):

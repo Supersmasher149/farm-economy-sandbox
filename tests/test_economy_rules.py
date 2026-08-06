@@ -39,11 +39,14 @@ def test_effective_growth_days_uses_upgrade_configuration_order(player, fast_cro
     second = {"id": "second", "effect": {"type": "growth_time_reduction", "amount": 0.20}}
     player.upgrades_owned.update(("first", "second"))
 
-    assert economy_rules.effective_growth_days(
-        dict(fast_crop, growth_days=10),
-        player,
-        {"first": first, "second": second},
-    ) == 6
+    assert (
+        economy_rules.effective_growth_days(
+            dict(fast_crop, growth_days=10),
+            player,
+            {"first": first, "second": second},
+        )
+        == 6
+    )
 
 
 def test_expected_profit_per_day_is_positive_for_profitable_crop(player, standard_crop):
@@ -52,6 +55,7 @@ def test_expected_profit_per_day_is_positive_for_profitable_crop(player, standar
 
 
 # -- upgrade-purchase budget gate -------------------------------------------
+
 
 def test_upgrade_payback_days_none_without_crop_catalog(player, capacity_upgrade):
     assert economy_rules.upgrade_payback_days(capacity_upgrade, player, {}, {}) is None
@@ -94,6 +98,7 @@ def test_should_buy_upgrade_within_budget_allows_when_clear(player, capacity_upg
 
 # -- crop-selection reserve ladder -------------------------------------------
 
+
 def test_crop_seed_reserve_gate_relaxes_with_fraction(player, standard_crop):
     player.money = 68
     player.operating_reserve = 100
@@ -110,8 +115,10 @@ def test_choose_crop_with_relaxed_reserve_returns_none_below_loosest_tier(player
 
 # -- soil-quality-aware ranking -----------------------------------------------
 
+
 def test_soil_health_factor_defaults_healthy_without_plots():
     from simulation.state import PlayerState
+
     empty = PlayerState(money=10, slots_total=0)
     assert economy_rules.soil_health_factor(empty) == 1.0
 
@@ -120,8 +127,13 @@ def test_quality_adjusted_profit_matches_nominal_at_full_soil_health(player):
     for plot in player.plots:
         plot.nitrogen = plot.phosphorus = plot.potassium = 1.0
     crop = {
-        "id": "demanding", "seed_cost": 45, "growth_days": 12,
-        "min_yield": 5, "max_yield": 10, "base_price": 16, "loss_chance": 0.0,
+        "id": "demanding",
+        "seed_cost": 45,
+        "growth_days": 12,
+        "min_yield": 5,
+        "max_yield": 10,
+        "base_price": 16,
+        "loss_chance": 0.0,
         "nutrient_demand": {"nitrogen": 0.04, "phosphorus": 0.03, "potassium": 0.035},
         "family": "flowering",
     }
@@ -134,8 +146,13 @@ def test_quality_adjusted_profit_discounted_when_soil_depleted(player):
     for plot in player.plots:
         plot.nitrogen = plot.phosphorus = plot.potassium = 0.0
     crop = {
-        "id": "demanding", "seed_cost": 45, "growth_days": 12,
-        "min_yield": 5, "max_yield": 10, "base_price": 16, "loss_chance": 0.0,
+        "id": "demanding",
+        "seed_cost": 45,
+        "growth_days": 12,
+        "min_yield": 5,
+        "max_yield": 10,
+        "base_price": 16,
+        "loss_chance": 0.0,
         "nutrient_demand": {"nitrogen": 0.04, "phosphorus": 0.03, "potassium": 0.035},
         "family": "flowering",
     }
@@ -147,22 +164,40 @@ def test_quality_adjusted_profit_discounted_when_soil_depleted(player):
 def test_soil_quality_risk_favors_low_demand_crop_when_depleted(player):
     for plot in player.plots:
         plot.nitrogen = plot.phosphorus = plot.potassium = 0.0
-    low_demand = {"nutrient_demand": {"nitrogen": 0.01, "phosphorus": 0.01, "potassium": 0.01}, "family": "leafy"}
-    high_demand = {"nutrient_demand": {"nitrogen": 0.04, "phosphorus": 0.03, "potassium": 0.035}, "family": "flowering"}
-    assert economy_rules.soil_quality_risk(low_demand, player) < economy_rules.soil_quality_risk(high_demand, player)
+    low_demand = {
+        "nutrient_demand": {"nitrogen": 0.01, "phosphorus": 0.01, "potassium": 0.01},
+        "family": "leafy",
+    }
+    high_demand = {
+        "nutrient_demand": {"nitrogen": 0.04, "phosphorus": 0.03, "potassium": 0.035},
+        "family": "flowering",
+    }
+    assert economy_rules.soil_quality_risk(low_demand, player) < economy_rules.soil_quality_risk(
+        high_demand, player
+    )
 
 
 def test_best_crop_by_expected_profit_triages_to_lowest_demand_when_soil_critical(player):
     for plot in player.plots:
         plot.nitrogen = plot.phosphorus = plot.potassium = 0.0
     low_demand = {
-        "id": "low", "seed_cost": 5, "growth_days": 3, "min_yield": 1, "max_yield": 2,
-        "base_price": 5, "loss_chance": 0.0,
+        "id": "low",
+        "seed_cost": 5,
+        "growth_days": 3,
+        "min_yield": 1,
+        "max_yield": 2,
+        "base_price": 5,
+        "loss_chance": 0.0,
         "nutrient_demand": {"nitrogen": 0.01, "phosphorus": 0.01, "potassium": 0.01},
     }
     high_demand = {
-        "id": "high", "seed_cost": 45, "growth_days": 12, "min_yield": 5, "max_yield": 10,
-        "base_price": 16, "loss_chance": 0.0,
+        "id": "high",
+        "seed_cost": 45,
+        "growth_days": 12,
+        "min_yield": 5,
+        "max_yield": 10,
+        "base_price": 16,
+        "loss_chance": 0.0,
         "nutrient_demand": {"nitrogen": 0.04, "phosphorus": 0.03, "potassium": 0.035},
     }
     # Nominal EV would favor "high" (higher price/yield); soil is fully
@@ -182,13 +217,23 @@ def test_best_crop_by_expected_profit_normalizes_omitted_demand_when_critical(pl
     for plot in player.plots:
         plot.nitrogen = plot.phosphorus = plot.potassium = 0.0
     omitted_demand = {
-        "id": "omitted", "seed_cost": 5, "growth_days": 3, "min_yield": 1, "max_yield": 2,
-        "base_price": 5, "loss_chance": 0.0,
+        "id": "omitted",
+        "seed_cost": 5,
+        "growth_days": 3,
+        "min_yield": 1,
+        "max_yield": 2,
+        "base_price": 5,
+        "loss_chance": 0.0,
         # No "nutrient_demand" key at all -- effective total demand is 0.04.
     }
     explicit_low_demand = {
-        "id": "explicit_low", "seed_cost": 5, "growth_days": 3, "min_yield": 1, "max_yield": 2,
-        "base_price": 5, "loss_chance": 0.0,
+        "id": "explicit_low",
+        "seed_cost": 5,
+        "growth_days": 3,
+        "min_yield": 1,
+        "max_yield": 2,
+        "base_price": 5,
+        "loss_chance": 0.0,
         # Explicit total demand 0.015 -- genuinely gentler than the 0.04
         # default, even though it's the one with a JSON-present field.
         "nutrient_demand": {"nitrogen": 0.005, "phosphorus": 0.005, "potassium": 0.005},

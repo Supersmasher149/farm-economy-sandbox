@@ -19,10 +19,10 @@ single pass). Batch callers that want to interleave aggregation with other
 per-result work (e.g. streaming a CSV row per result) should drive
 `BatchAggregator` directly instead.
 """
+
 import hashlib
 import random
 import statistics
-
 
 MEDIAN_RESERVOIR_CAPACITY = 1024
 
@@ -101,9 +101,14 @@ _SIMPLE_MEAN_FIELDS = (
 # Mean fields that are conditional (only some runs contribute) and so need
 # their own named accumulator rather than a blanket per-run add.
 _CONDITIONAL_MEAN_FIELDS = (
-    "final_money", "final_money_survivors", "final_money_bankrupt",
-    "bankruptcy_day", "minimum_cash_balance", "minimum_cash_balance_bankrupt",
-    "first_upgrade_day", "second_upgrade_day",
+    "final_money",
+    "final_money_survivors",
+    "final_money_bankrupt",
+    "bankruptcy_day",
+    "minimum_cash_balance",
+    "minimum_cash_balance_bankrupt",
+    "first_upgrade_day",
+    "second_upgrade_day",
 )
 
 

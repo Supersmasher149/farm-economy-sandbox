@@ -6,7 +6,13 @@ from agents.random_agent import RandomAgent
 from metrics.aggregate_results import BatchAggregator, aggregate
 from metrics.run_results import write_csv
 from runner.batch_run import run_batch
-from tests.test_engine import CONFIG, FERTILIZER_CONFIG, WATERING_SETTINGS, make_crops, make_upgrades
+from tests.test_engine import (
+    CONFIG,
+    FERTILIZER_CONFIG,
+    WATERING_SETTINGS,
+    make_crops,
+    make_upgrades,
+)
 
 # RandomAgent is included deliberately: its choices used to be derived from
 # Python's builtin hash(), which is randomized per interpreter process, so a
@@ -26,12 +32,26 @@ def test_parallel_batch_matches_sequential_batch():
     crops, upgrades = make_crops(), make_upgrades()
 
     sequential = run_batch(
-        CONFIG, AGENTS, crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG,
-        num_runs=5, base_seed=123, workers=1,
+        CONFIG,
+        AGENTS,
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        num_runs=5,
+        base_seed=123,
+        workers=1,
     )
     parallel = run_batch(
-        CONFIG, AGENTS, crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG,
-        num_runs=5, base_seed=123, workers=4,
+        CONFIG,
+        AGENTS,
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        num_runs=5,
+        base_seed=123,
+        workers=4,
     )
 
     assert _run_result_tuples(sequential) == _run_result_tuples(parallel)
@@ -43,12 +63,26 @@ def test_batch_workers_are_capped_to_job_count():
     # 2 jobs (1 agent x 2 runs) requesting 8 workers should not error, and
     # should still match a sequential run.
     sequential = run_batch(
-        CONFIG, [ProfitOptimizer()], crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG,
-        num_runs=2, base_seed=7, workers=1,
+        CONFIG,
+        [ProfitOptimizer()],
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        num_runs=2,
+        base_seed=7,
+        workers=1,
     )
     over_provisioned = run_batch(
-        CONFIG, [ProfitOptimizer()], crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG,
-        num_runs=2, base_seed=7, workers=8,
+        CONFIG,
+        [ProfitOptimizer()],
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        num_runs=2,
+        base_seed=7,
+        workers=8,
     )
 
     assert _run_result_tuples(sequential) == _run_result_tuples(over_provisioned)
@@ -61,12 +95,26 @@ def test_run_batch_returns_a_lazy_iterator_not_a_list():
     crops, upgrades = make_crops(), make_upgrades()
 
     sequential = run_batch(
-        CONFIG, [ProfitOptimizer()], crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG,
-        num_runs=2, base_seed=1, workers=1,
+        CONFIG,
+        [ProfitOptimizer()],
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        num_runs=2,
+        base_seed=1,
+        workers=1,
     )
     parallel = run_batch(
-        CONFIG, [ProfitOptimizer()], crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG,
-        num_runs=2, base_seed=1, workers=4,
+        CONFIG,
+        [ProfitOptimizer()],
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        num_runs=2,
+        base_seed=1,
+        workers=4,
     )
 
     for results in (sequential, parallel):
@@ -82,12 +130,27 @@ def test_batch_streams_correctly_across_a_window_boundary():
     agents = [ProfitOptimizer(), RandomAgent(), FastSeller()]
 
     sequential = run_batch(
-        CONFIG, agents, crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG,
-        num_runs=4, base_seed=99, workers=1,
+        CONFIG,
+        agents,
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        num_runs=4,
+        base_seed=99,
+        workers=1,
     )
     windowed = run_batch(
-        CONFIG, agents, crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG,
-        num_runs=4, base_seed=99, workers=3, window_size=5,
+        CONFIG,
+        agents,
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        num_runs=4,
+        base_seed=99,
+        workers=3,
+        window_size=5,
     )
 
     assert _run_result_tuples(sequential) == _run_result_tuples(windowed)
@@ -99,15 +162,31 @@ def test_streaming_pipeline_matches_full_materialization(tmp_path):
     # aggregating a fully materialized list, and correct CSV row count.
     crops, upgrades = make_crops(), make_upgrades()
 
-    reference_results = list(run_batch(
-        CONFIG, AGENTS, crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG,
-        num_runs=6, base_seed=555, workers=1,
-    ))
+    reference_results = list(
+        run_batch(
+            CONFIG,
+            AGENTS,
+            crops,
+            upgrades,
+            WATERING_SETTINGS,
+            FERTILIZER_CONFIG,
+            num_runs=6,
+            base_seed=555,
+            workers=1,
+        )
+    )
     reference_summary = aggregate(reference_results)
 
     streamed_results = run_batch(
-        CONFIG, AGENTS, crops, upgrades, WATERING_SETTINGS, FERTILIZER_CONFIG,
-        num_runs=6, base_seed=555, workers=1,
+        CONFIG,
+        AGENTS,
+        crops,
+        upgrades,
+        WATERING_SETTINGS,
+        FERTILIZER_CONFIG,
+        num_runs=6,
+        base_seed=555,
+        workers=1,
     )
     aggregator = BatchAggregator()
 

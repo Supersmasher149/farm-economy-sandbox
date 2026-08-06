@@ -1,11 +1,12 @@
+import csv
 import json
 import os
-import csv
 from types import SimpleNamespace
 
 import pytest
 
 import main
+from agents.fast_seller import FastSeller
 from metrics.aggregate_results import (
     MEDIAN_RESERVOIR_CAPACITY,
     BatchAggregator,
@@ -14,12 +15,10 @@ from metrics.aggregate_results import (
 from metrics.report import generate_markdown_report
 from metrics.run_results import build_run_result, write_csv
 from runner import batch_run
-from runner.batch_run import _execute
-from runner.batch_run import run_batch
+from runner.batch_run import _execute, run_batch
+from runner.single_run import run_single
 from tests.test_aggregate_results import _make_run_result
 from tests.test_engine import FERTILIZER_CONFIG, WATERING_SETTINGS, make_crops, make_upgrades
-from runner.single_run import run_single
-from agents.fast_seller import FastSeller
 
 
 def test_upgrade_reach_counts_and_rates_are_aggregated():
@@ -47,7 +46,7 @@ def test_upgrade_slow_warning_uses_reach_rate():
 def test_omitted_base_seed_is_resolved_to_a_fresh_32_bit_value(monkeypatch):
     class StubSystemRandom:
         def randrange(self, stop):
-            assert stop == 2 ** 32
+            assert stop == 2**32
             return 0x12345678
 
     monkeypatch.setattr(batch_run.random, "SystemRandom", StubSystemRandom)
@@ -105,12 +104,8 @@ def test_serialized_money_reconciles_from_rounded_components(tmp_path):
     write_csv([result], str(csv_path), [crop["id"] for crop in crops])
     with open(csv_path, newline="") as csv_file:
         row = next(csv.DictReader(csv_file))
-    assert float(row["total_revenue"]) == sum(
-        json.loads(row["revenue_by_channel"]).values()
-    )
-    assert float(row["total_expenses"]) == sum(
-        json.loads(row["expenses_by_category"]).values()
-    )
+    assert float(row["total_revenue"]) == sum(json.loads(row["revenue_by_channel"]).values())
+    assert float(row["total_expenses"]) == sum(json.loads(row["expenses_by_category"]).values())
 
 
 def test_batch_snapshot_and_report_include_resolved_seed(tmp_path, monkeypatch, capsys):
@@ -216,19 +211,37 @@ def test_programmatic_batch_rejects_invalid_values_before_iteration():
     with pytest.raises(ValueError, match="num_runs"):
         run_batch(
             {"start_money": 60, "start_slots": 1, "days": 1},
-            [], [], [], {}, {}, num_runs=0, workers=1,
+            [],
+            [],
+            [],
+            {},
+            {},
+            num_runs=0,
+            workers=1,
         )
 
     with pytest.raises(ValueError, match="workers"):
         run_batch(
             {"start_money": 60, "start_slots": 1, "days": 1},
-            [], [], [], {}, {}, num_runs=1, workers=0,
+            [],
+            [],
+            [],
+            {},
+            {},
+            num_runs=1,
+            workers=0,
         )
 
     with pytest.raises(ValueError, match="start_money"):
         run_batch(
             {"start_money": -1, "start_slots": 1, "days": 1},
-            [], [], [], {}, {}, num_runs=1, workers=1,
+            [],
+            [],
+            [],
+            {},
+            {},
+            num_runs=1,
+            workers=1,
         )
 
 
@@ -239,15 +252,27 @@ def test_invalid_batch_values_do_not_create_report_directory(monkeypatch):
         nonlocal created
         created = True
 
-    monkeypatch.setattr(main, "load_config", lambda: (
-        make_crops(), make_upgrades(), {"start_money": 60, "start_slots": 1, "days": 1},
-        {"watering": FERTILIZER_CONFIG, "fertilizer": FERTILIZER_CONFIG},
-    ))
+    monkeypatch.setattr(
+        main,
+        "load_config",
+        lambda: (
+            make_crops(),
+            make_upgrades(),
+            {"start_money": 60, "start_slots": 1, "days": 1},
+            {"watering": FERTILIZER_CONFIG, "fertilizer": FERTILIZER_CONFIG},
+        ),
+    )
     monkeypatch.setattr(main.os, "makedirs", record_makedirs)
 
     with pytest.raises(ValueError, match="num_runs"):
-        main.cmd_batch(SimpleNamespace(
-            runs=0, seed=1, workers=1, days=None, start_money=None,
-        ))
+        main.cmd_batch(
+            SimpleNamespace(
+                runs=0,
+                seed=1,
+                workers=1,
+                days=None,
+                start_money=None,
+            )
+        )
 
     assert not created

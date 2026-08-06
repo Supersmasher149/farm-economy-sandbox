@@ -1,7 +1,6 @@
 import hashlib
 from dataclasses import dataclass, field
 
-
 QUALITY_ORDER = {"rejected": 0, "processing": 1, "standard": 2, "premium": 3}
 
 
@@ -168,7 +167,7 @@ class PlayerState:
         """Return a replayable policy value without consuming event RNG."""
         payload = repr((self.run_seed if self.run_seed is not None else 0, self.day, context))
         digest = hashlib.blake2b(payload.encode("utf-8"), digest_size=8).digest()
-        return int.from_bytes(digest, "big") / 2 ** 64
+        return int.from_bytes(digest, "big") / 2**64
 
     @property
     def open_slots(self) -> int:
@@ -189,9 +188,7 @@ class PlayerState:
         if amount <= 0:
             return
         self.total_expenses += amount
-        self.expenses_by_category[category] = (
-            self.expenses_by_category.get(category, 0.0) + amount
-        )
+        self.expenses_by_category[category] = self.expenses_by_category.get(category, 0.0) + amount
 
     def track_peak_cash(self) -> None:
         """Update the recorded cash peak immediately, not just at day end.
@@ -251,9 +248,11 @@ class PlayerState:
             missing = quantity - represented.get(crop_id, 0)
             if missing > 0:
                 crop = crops_by_id[crop_id]
-                self.inventory_lots.append(InventoryLot(
-                    item_id=crop_id,
-                    quantity=missing,
-                    produced_day=self.day,
-                    shelf_life_days=crop.get("shelf_life_days", 7),
-                ))
+                self.inventory_lots.append(
+                    InventoryLot(
+                        item_id=crop_id,
+                        quantity=missing,
+                        produced_day=self.day,
+                        shelf_life_days=crop.get("shelf_life_days", 7),
+                    )
+                )

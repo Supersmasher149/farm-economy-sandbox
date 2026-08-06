@@ -1,4 +1,5 @@
 """Pure crop stress and harvest calculations."""
+
 from simulation.derived import crop_profile
 
 
@@ -90,7 +91,9 @@ def quality_grade(score: float) -> str:
     return "rejected"
 
 
-def compute_harvest_outcome(planted, crop: dict, watering_settings: dict, fertilizer_config: dict, rng, plot=None):
+def compute_harvest_outcome(
+    planted, crop: dict, watering_settings: dict, fertilizer_config: dict, rng, plot=None
+):
     """Compatibility API returning `(lost, yield)` for one mature plant."""
     loss_bonus = min(
         planted.neglect_days * watering_settings["neglect_loss_chance_penalty_per_day"],

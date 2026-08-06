@@ -2,6 +2,7 @@
 big spends. Purpose: test whether short-growth crops become dominant
 through rapid reinvestment.
 """
+
 from agents.base import Agent
 from simulation import economy_rules
 
@@ -13,11 +14,14 @@ AFFORDABILITY_BUFFER = 1.2
 
 class FastSeller(Agent):
     name = "fast_seller"
-    description = "Always plants the shortest-growth crop; waters reliably; avoids fertilizer spend."
+    description = (
+        "Always plants the shortest-growth crop; waters reliably; avoids fertilizer spend."
+    )
 
     def choose_crop(self, player, crops, crops_by_id, upgrades_by_id):
         candidates = [
-            c for c in crops
+            c
+            for c in crops
             if economy_rules.is_crop_unlocked(c, player) and player.money >= c["seed_cost"]
         ]
         if not candidates:

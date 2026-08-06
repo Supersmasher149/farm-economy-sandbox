@@ -12,16 +12,28 @@ from simulation.state import ContractState, PlayerState
 def make_crop_set():
     return [
         {
-            "id": "quickweed", "role": "fast", "seed_cost": 5,
-            "growth_days": 3, "min_yield": 1, "max_yield": 2,
-            "base_price": 5, "loss_chance": 0.03,
-            "water_interval_days": 2, "unlock_requirement": None,
+            "id": "quickweed",
+            "role": "fast",
+            "seed_cost": 5,
+            "growth_days": 3,
+            "min_yield": 1,
+            "max_yield": 2,
+            "base_price": 5,
+            "loss_chance": 0.03,
+            "water_interval_days": 2,
+            "unlock_requirement": None,
         },
         {
-            "id": "greenleaf", "role": "standard", "seed_cost": 18,
-            "growth_days": 7, "min_yield": 4, "max_yield": 6,
-            "base_price": 7, "loss_chance": 0.05,
-            "water_interval_days": 3, "unlock_requirement": None,
+            "id": "greenleaf",
+            "role": "standard",
+            "seed_cost": 18,
+            "growth_days": 7,
+            "min_yield": 4,
+            "max_yield": 6,
+            "base_price": 7,
+            "loss_chance": 0.05,
+            "water_interval_days": 3,
+            "unlock_requirement": None,
         },
     ]
 
@@ -66,16 +78,19 @@ def test_optimizer_keeps_reserve_after_upgrade_and_fertilizer_spend(fertilizer_c
 def test_contract_filter_uses_market_opportunity_and_capacity():
     player = make_player(money=100, reserve=0)
     player.market_prices = {"greenleaf": 7}
-    player.market_channels = [{
-        "id": "farm_stand", "min_quality": "standard", "price_multiplier": 1.45,
-        "daily_capacity": 8, "flat_fee": 1,
-    }]
+    player.market_channels = [
+        {
+            "id": "farm_stand",
+            "min_quality": "standard",
+            "price_multiplier": 1.45,
+            "daily_capacity": 8,
+            "flat_fee": 1,
+        }
+    ]
     player.crop_catalog = {crop["id"]: crop for crop in make_crop_set()}
     player.upgrades_catalog = {}
 
-    dominated = ContractState(
-        "dominated", "local", "greenleaf", 6, "standard", 8.4, 0, 14, 0.12
-    )
+    dominated = ContractState("dominated", "local", "greenleaf", 6, "standard", 8.4, 0, 14, 0.12)
     attractive = ContractState(
         "attractive", "regional", "greenleaf", 6, "standard", 11.0, 0, 14, 0.1
     )
@@ -168,10 +183,18 @@ def test_long_horizon_disciplined_strategies_are_self_sustaining():
     long_config = dict(config, days=2000)
     for agent_cls in (FastSeller, ProfitOptimizer):
         player, _seed, _history = run_single(
-            long_config, agent_cls(), crops, upgrades,
-            world["watering"], world["fertilizer"], seed=42, world=world,
+            long_config,
+            agent_cls(),
+            crops,
+            upgrades,
+            world["watering"],
+            world["fertilizer"],
+            seed=42,
+            world=world,
         )
-        assert not player.bankrupt, f"{agent_cls.name} unexpectedly went bankrupt over a 2,000-day run"
+        assert not player.bankrupt, (
+            f"{agent_cls.name} unexpectedly went bankrupt over a 2,000-day run"
+        )
         assert player.money > config["start_money"], (
             f"{agent_cls.name} survived but did not grow its starting ${config['start_money']}"
         )

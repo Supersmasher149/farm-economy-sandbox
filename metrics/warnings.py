@@ -7,9 +7,9 @@ DEFAULT_THRESHOLDS = {
     "dead_crop_pct": 5,
     "high_bankruptcy_pct": 20,
     "upgrade_too_fast_day": 5,
-    "upgrade_too_slow_fraction": 0.9,   # fraction of runs with no first upgrade purchase
-    "runaway_money_multiple": 20,       # avg final money > start_money * multiple
-    "high_crop_loss_rate_pct": 30,      # avg % of matured crops lost at harvest
+    "upgrade_too_slow_fraction": 0.9,  # fraction of runs with no first upgrade purchase
+    "runaway_money_multiple": 20,  # avg final money > start_money * multiple
+    "high_crop_loss_rate_pct": 30,  # avg % of matured crops lost at harvest
 }
 
 
@@ -40,8 +40,7 @@ def evaluate_warnings(summary: dict, config: dict, thresholds: dict = None) -> l
         first_day = stats["avg_first_upgrade_day"]
         if first_day is not None and first_day <= thresholds["upgrade_too_fast_day"]:
             warnings.append(
-                f"[{strategy}] First upgrade purchased very early on average "
-                f"(day {first_day})."
+                f"[{strategy}] First upgrade purchased very early on average (day {first_day})."
             )
         first_rate = stats["first_upgrade_rate"]
         max_unreached_rate = thresholds["upgrade_too_slow_fraction"] * 100
