@@ -31,13 +31,27 @@ class ProgressionPlayer(Agent):
             cheapest_cost * RECOVERY_MONEY_MULTIPLE,
         )
         active = next(
-            (contract for contract in player.active_contracts if not contract.resolved),
+            (
+                contract for contract in player.active_contracts
+                # Deadline resolution runs at end of day, after crop
+                # decisions -- a contract past its deadline but not yet
+                # resolved must not still drive today's planting.
+                if not contract.resolved and player.day <= contract.deadline_day
+            ),
             None,
         )
         if active:
             contracted_crop = next((c for c in affordable if c["id"] == active.item_id), None)
             if contracted_crop:
-                return contracted_crop
+                days_to_deadline = active.deadline_day - player.day
+                growth_days = economy_rules.effective_growth_days(contracted_crop, player, upgrades_by_id)
+                matures_in_time = (
+                    growth_days <= days_to_deadline
+                    and (player.total_days is None or growth_days <= player.total_days - player.day)
+                )
+                still_short = contracts.forecast_committed_supply(player, active) < active.remaining
+                if matures_in_time and still_short:
+                    return contracted_crop
 
         if player.money < recovery_threshold:
             return min(affordable, key=lambda c: c["growth_days"])

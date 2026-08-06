@@ -235,6 +235,38 @@ def producible_quantity(player, contract) -> float:
     return current + future
 
 
+def forecast_committed_supply(player, contract) -> float:
+    """Supply already locked in toward a contract without any further
+    planting decision: eligible inventory, processing output already due by
+    the deadline, and the yield already guaranteed by crops already planted
+    (crop_growth.py's harvest, not a hypothetical future one).
+
+    Deliberately excludes the "seeded_cycles" component of
+    `_future_crop_capacity` (fundable planting into open slots, and
+    replanting the same slot again after harvest) -- that component assumes
+    the crop being evaluated will keep winning every future planting
+    decision, which is exactly the choice a caller is trying to make, not a
+    fact already true about the farm. Used by agents deciding whether to
+    plant *more* of a contracted crop: if this already meets
+    `contract.remaining`, an additional planting would just overshoot.
+    """
+    current = _inventory_quantity(player, contract.item_id, contract.min_quality)
+    for job in player.processing_jobs:
+        if (
+            job.output_item_id == contract.item_id
+            and job.completion_day <= contract.deadline_day
+            and QUALITY_ORDER.get(contract.min_quality, 0) <= QUALITY_ORDER["standard"]
+        ):
+            current += job.output_quantity
+    crop = player.crop_catalog.get(contract.item_id)
+    if crop is not None:
+        _future, _funding, free_future = _future_crop_capacity(
+            player, crop, contract.deadline_day, contract.min_quality
+        )
+        current += free_future
+    return current
+
+
 def is_offer_feasible(player, contract) -> bool:
     if is_offer_expired(player, contract):
         return False

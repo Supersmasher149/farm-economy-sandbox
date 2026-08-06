@@ -40,14 +40,28 @@ class ProfitOptimizer(Agent):
             ]
         if not candidates:
             return None
+        # `candidates` above already excludes anything unlocked/affordable/
+        # unable to mature by the final simulated day, so looking the
+        # contracted crop up there (rather than back in crops_by_id) reuses
+        # that same maturity check instead of silently bypassing it.
+        candidates_by_id = {c["id"]: c for c in candidates}
         active = next(
-            (contract for contract in player.active_contracts if not contract.resolved),
+            (
+                contract for contract in player.active_contracts
+                # Deadline resolution runs at end of day, after crop
+                # decisions -- a contract past its deadline but not yet
+                # resolved must not still drive today's planting.
+                if not contract.resolved and player.day <= contract.deadline_day
+            ),
             None,
         )
         if active:
-            contracted_crop = crops_by_id.get(active.item_id)
-            if contracted_crop and economy_rules.is_crop_unlocked(contracted_crop, player):
-                if player.money >= contracted_crop["seed_cost"]:
+            contracted_crop = candidates_by_id.get(active.item_id)
+            if contracted_crop is not None:
+                days_to_deadline = active.deadline_day - player.day
+                growth_days = economy_rules.effective_growth_days(contracted_crop, player, upgrades_by_id)
+                still_short = contracts.forecast_committed_supply(player, active) < active.remaining
+                if growth_days <= days_to_deadline and still_short:
                     return contracted_crop
 
         crop = economy_rules.choose_crop_with_relaxed_reserve(
