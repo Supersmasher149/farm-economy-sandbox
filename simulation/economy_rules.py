@@ -275,7 +275,13 @@ def should_buy_upgrade_within_budget(
         if days_since_last < cooldown_days:
             return False
 
-    peak_money = player.highest_money if player.highest_money is not None else player.money
+    # player.highest_money is kept live by PlayerState.track_peak_cash
+    # (called at every revenue site), so it should already reflect any
+    # same-day sale by the time an upgrade decision runs; max() here is a
+    # defensive floor, not the primary mechanism, so this gate is still
+    # correct even against a caller that mutates player.money directly
+    # (as some direct unit tests do) without going through that bookkeeping.
+    peak_money = max(player.highest_money, player.money) if player.highest_money is not None else player.money
     spent_on_upgrades = player.expenses_by_category.get("upgrades", 0.0)
     if peak_money <= 0 or spent_on_upgrades + upgrade["cost"] > peak_money * max_cumulative_spend_fraction:
         return False

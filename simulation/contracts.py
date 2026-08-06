@@ -298,6 +298,7 @@ def deliver(player, contract_id: str, quantity: int) -> tuple[float, int]:
     revenue = delivered * contract.unit_price
     contract.delivered += delivered
     player.money += revenue
+    player.track_peak_cash()
     player.total_revenue += revenue
     player.total_sold += delivered
     player.revenue_by_channel["contract"] = player.revenue_by_channel.get("contract", 0.0) + revenue

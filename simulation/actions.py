@@ -178,6 +178,7 @@ def sell_all(player, crops_by_id: dict, rng) -> tuple[float, int]:
         sold += consumed
     if sold:
         player.money += revenue
+        player.track_peak_cash()
         player.total_revenue += revenue
         player.total_sold += sold
         player.revenue_by_channel["spot"] = player.revenue_by_channel.get("spot", 0) + revenue
