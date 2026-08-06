@@ -70,6 +70,48 @@ def test_forecast_committed_supply_excludes_unplanted_open_slot_capacity():
     assert contracts.forecast_committed_supply(player, contract) == 0
 
 
+# -- premium-quality contracts -----------------------------------------------
+
+def test_forecast_committed_supply_counts_planted_crop_for_premium_contract():
+    """A crop already in the ground that can still reach premium (no stress
+    has accumulated yet) is committed supply toward a premium contract -- the
+    #30 over-planting fix must apply to premium buyers too, not just standard.
+    """
+    player = _player()
+    contract = ContractState("c", "buyer", "contracted", 1, "premium", 5, 0, 10, 0.1)
+    player.planted.append(PlantedCrop("contracted", day_planted=0, growth_days_required=3))
+
+    assert contracts.forecast_committed_supply(player, contract) > 0
+
+
+def test_forecast_committed_supply_excludes_stressed_crop_from_premium_contract():
+    """A planted crop whose accumulated stress already caps it below premium
+    must not count toward a premium contract -- only grades it can actually
+    still reach are committed.
+    """
+    player = _player()
+    contract = ContractState("c", "buyer", "contracted", 1, "premium", 5, 0, 10, 0.1)
+    stressed = PlantedCrop("contracted", day_planted=0, growth_days_required=3)
+    stressed.water_stress = 50.0
+    stressed.nutrient_stress = 50.0
+    stressed.temperature_stress = 50.0
+    stressed.pest_stress = 50.0
+    stressed.disease_stress = 50.0
+    player.planted.append(stressed)
+
+    assert contracts.forecast_committed_supply(player, contract) == 0
+
+
+def test_forecast_committed_supply_excludes_future_plantings_from_premium_contract():
+    """Open slots are not committed supply toward a premium contract either:
+    the grade of a not-yet-planted crop is unknowable.
+    """
+    player = _player()
+    contract = ContractState("c", "buyer", "contracted", 1, "premium", 5, 0, 10, 0.1)
+    player.seed_inventory["contracted"] = 5
+    assert contracts.forecast_committed_supply(player, contract) == 0
+
+
 # -- profit_optimizer.choose_crop --------------------------------------------
 
 def test_profit_optimizer_stops_planting_once_forecast_covers_remaining():
@@ -96,6 +138,36 @@ def test_profit_optimizer_still_plants_contracted_crop_when_forecast_is_short():
     player = _player()
     player.active_contracts.append(
         ContractState("c", "buyer", "contracted", 1, "standard", 5, 0, 10, 0.1)
+    )
+
+    chosen = ProfitOptimizer().choose_crop(player, crops, crops_by_id, {})
+    assert chosen["id"] == "contracted"
+
+
+def test_profit_optimizer_stops_overplanting_premium_contract():
+    """The #30 scenario for a premium buyer: a planted crop that can still
+    reach premium already guarantees the remaining quantity, so the agent must
+    not keep forcing the contracted crop into every open slot.
+    """
+    crops, crops_by_id = _crops()
+    player = _player()
+    player.planted.append(PlantedCrop("contracted", day_planted=0, growth_days_required=3))
+    player.active_contracts.append(
+        ContractState("c", "buyer", "contracted", 1, "premium", 5, 0, 10, 0.1)
+    )
+
+    chosen = ProfitOptimizer().choose_crop(player, crops, crops_by_id, {})
+    assert chosen["id"] == "other"
+
+
+def test_profit_optimizer_still_plants_contracted_crop_for_short_premium_contract():
+    """Sanity counterpart: a premium contract with nothing committed yet
+    must still steer planting toward the contracted crop.
+    """
+    crops, crops_by_id = _crops()
+    player = _player()
+    player.active_contracts.append(
+        ContractState("c", "buyer", "contracted", 1, "premium", 5, 0, 10, 0.1)
     )
 
     chosen = ProfitOptimizer().choose_crop(player, crops, crops_by_id, {})

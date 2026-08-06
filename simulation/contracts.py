@@ -162,11 +162,14 @@ def _best_possible_grade(planted, crop: dict, plot) -> str:
 def _future_crop_capacity(
     player, crop: dict, deadline: int, min_quality: str = "standard"
 ) -> tuple[float, float, float]:
-    """Return future safe yield and seed cash needed, excluding inventory."""
-    # Future harvest grade is not guaranteed. Standard is the highest grade
-    # this conservative estimate can promise without a quality forecast.
-    if QUALITY_ORDER.get(min_quality, 0) > QUALITY_ORDER["standard"]:
-        return 0.0, 0.0, 0.0
+    """Return future safe yield and seed cash needed, excluding inventory.
+
+    Grades above standard are handled more conservatively: future plantings
+    are only promised at `standard` (their real grade depends on stress that
+    hasn't occurred yet), so a premium-grade target counts only crops already
+    planted whose best achievable grade reaches it -- and funds no new
+    plantings toward it.
+    """
     deadline = _effective_deadline(player, deadline)
     growth_days = max(1, economy_rules.effective_growth_days(crop, player, player.upgrades_catalog))
     days_available = max(0, deadline - player.day)
@@ -178,10 +181,20 @@ def _future_crop_capacity(
         )
     )
     min_quality_rank = QUALITY_ORDER.get(min_quality, 0)
+
+    # A grade above standard cannot be promised of crops not yet planted:
+    # their final quality is set by stress accumulated from soil and weather
+    # between today and harvest, none of which exists yet. So for such
+    # contracts only crops already planted whose best possible grade reaches
+    # the minimum (bounded by stress already accumulated -- that only ever
+    # grows) count as committed future supply, and no seed cash is forecast
+    # to start new plantings whose grade can't be guaranteed.
+    guaranteed_grade = min_quality_rank <= QUALITY_ORDER["standard"]
     free_cycles = 0
     seeded_cycles = 0
-    for _ in range(max(0, player.open_slots)):
-        seeded_cycles += days_available // growth_days
+    if guaranteed_grade:
+        for _ in range(max(0, player.open_slots)):
+            seeded_cycles += days_available // growth_days
     for planted in player.planted:
         days_until_free = max(0, planted.growth_days_required - (player.day - planted.day_planted))
         if planted.crop_id == crop["id"]:
@@ -194,9 +207,10 @@ def _future_crop_capacity(
             )
             if QUALITY_ORDER[_best_possible_grade(planted, crop, plot)] >= min_quality_rank:
                 free_cycles += 1
-            seeded_cycles += max(0, (days_available - days_until_free) // growth_days)
+            if guaranteed_grade:
+                seeded_cycles += max(0, (days_available - days_until_free) // growth_days)
         else:
-            if days_until_free < days_available:
+            if guaranteed_grade and days_until_free < days_available:
                 seeded_cycles += (days_available - days_until_free) // growth_days
 
     seed_inventory = player.seed_inventory.get(crop["id"], 0)
@@ -331,6 +345,12 @@ def forecast_committed_supply(player, contract) -> float:
     fact already true about the farm. Used by agents deciding whether to
     plant *more* of a contracted crop: if this already meets
     `contract.remaining`, an additional planting would just overshoot.
+
+    A premium-grade contract follows the same rule: crops already planted
+    that can still reach the grade (see `_future_crop_capacity`) count as
+    committed, so the agent stops forcing more of the crop into open slots
+    once they cover `contract.remaining` -- the over-planting #30 targeted
+    applied to premium buyers too.
     """
     current = _inventory_quantity(player, contract.item_id, contract.min_quality)
     for job in player.processing_jobs:
