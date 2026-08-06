@@ -37,6 +37,7 @@ def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgra
         fertilizer_config = fertilizer_config or actions.DEFAULT_FERTILIZER
     else:
         raise TypeError("run_day expects rng or watering_settings, fertilizer_config, rng")
+    player.run_seed = rng.seed
     if not world:
         _legacy_run_day(
             player, agent, crops, crops_by_id, upgrades, upgrades_by_id,
@@ -53,32 +54,35 @@ def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgra
     items_by_id = lookups.items_by_id
     watering_config = lookups.watering
     fertilizer = lookups.fertilizer
+    capacity = _processing_capacity(lookups.processing, player, upgrades_by_id, lookups)
     player.crop_catalog = crops_by_id
     player.upgrades_catalog = upgrades_by_id
     player.contract_config = lookups.contracts
+    player.processing_recipes = lookups.recipes
+    player.processing_capacity = capacity
 
     player.current_weather = weather.generate_weather(player.day, lookups.weather, rng)
     weather.apply_weather(
         player, crops_by_id, player.current_weather, crop_growth,
         lookups.crop_profiles, lookups.plot_regen,
     )
-    harvested = actions.harvest_mature(player, crops_by_id, rng, watering_config, fertilizer)
     storage = _effective_storage(lookups.storage_config, player, upgrades_by_id, lookups)
-    spoiled = inventory.age_and_spoil(player, storage)
+    storage_liability = inventory.capture_storage_liability(player, storage)
+    harvested = actions.harvest_mature(player, crops_by_id, rng, watering_config, fertilizer)
+    spoiled = inventory.age_and_spoil(player, storage, charge_storage=False)
     completed = processing.complete_jobs(player)
     markets.update_daily_prices(player, items_by_id, lookups.markets, rng, lookups.market_profiles)
     player.market_channels = lookups.channels
-    new_offers = contracts.generate_offers(player, lookups.contracts, lookups.buyers, items_by_id, rng)
+    contracts.generate_offers(player, lookups.contracts, lookups.buyers, items_by_id, rng)
 
     acted = bool(harvested or spoiled or completed)
-    for contract_id in agent.choose_contracts(player, list(new_offers)):
+    for contract_id in agent.choose_contracts(player, contracts.visible_offers(player)):
         acted = contracts.accept(player, contract_id) or acted
     for decision in agent.choose_contract_deliveries(player):
         _revenue, delivered = contracts.deliver(player, decision["contract_id"], decision["quantity"])
         acted = delivered > 0 or acted
 
     recipes_by_id = lookups.recipes_by_id
-    capacity = _processing_capacity(lookups.processing, player, upgrades_by_id, lookups)
     for decision in agent.choose_processing(player, lookups.recipes, items_by_id):
         recipe = recipes_by_id.get(decision["recipe_id"])
         if recipe:
@@ -109,6 +113,7 @@ def run_day(player, agent, crops: list, crops_by_id: dict, upgrades: list, upgra
         player, agent, crops, crops_by_id, upgrades_by_id, fertilizer
     ) or acted
     contracts.resolve_expired(player)
+    inventory.collect_storage_liability(player, storage_liability)
     _finish_day(player, crops, acted)
 
 

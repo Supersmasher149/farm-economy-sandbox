@@ -54,19 +54,22 @@ def update_crop_stress(planted, plot, crop: dict, weather: dict, profile=None) -
 
 def harvest_multipliers(planted, crop: dict, plot=None) -> tuple[float, float]:
     """Return yield and quality multipliers from accumulated crop conditions."""
-    stress = (
+    environmental_stress = (
         planted.water_stress * 0.16
         + planted.nutrient_stress * 0.18
         + planted.temperature_stress * 0.12
         + planted.pest_stress * 0.10
         + planted.disease_stress * 0.12
-        + planted.neglect_days * 0.08
     )
-    yield_multiplier = _clamp(1.0 - stress, 0.15, 1.35)
-    quality_multiplier = _clamp(1.0 - stress * 1.25, 0.0, 1.2)
+    # Neglect has historically affected quality through stress, while its
+    # yield loss is configured in watering_settings and applied by
+    # compute_harvest_outcome. Keep those effects separate so the configured
+    # yield penalty is not compounded with this quality signal.
+    quality_stress = environmental_stress + planted.neglect_days * 0.08
+    yield_multiplier = _clamp(1.0 - environmental_stress, 0.15, 1.35)
+    quality_multiplier = _clamp(1.0 - quality_stress * 1.25, 0.0, 1.2)
 
     if planted.fertilized:
-        yield_multiplier += 0.15
         quality_multiplier += 0.05
     if plot is not None:
         family = crop.get("family")
@@ -103,7 +106,7 @@ def compute_harvest_outcome(planted, crop: dict, watering_settings: dict, fertil
     yield_multiplier, _quality = harvest_multipliers(planted, crop, plot)
     if planted.fertilized:
         configured_bonus = fertilizer_config.get("yield_bonus_pct", 0.25)
-        yield_multiplier += max(0.0, configured_bonus - 0.15)
+        yield_multiplier += configured_bonus
     neglect_penalty = min(
         planted.neglect_days * watering_settings["neglect_yield_penalty_per_day"],
         watering_settings["max_neglect_yield_penalty"],

@@ -4,14 +4,9 @@ Statistics are accumulated incrementally, one RunResult at a time, rather
 than by materializing every run into per-strategy lists -- so aggregating a
 multi-million-run batch doesn't require holding the whole batch in memory.
 Almost every stat here is a running sum/count, running min/max, or running
-dict-sum, all of which are O(1) per run. The exception is the four
-`median_*` stats, which need the full set of values for that field
-(statistics.median has to see everything to find the middle). Rather than an
-approximate/streaming median algorithm, we retain the minimum data that
-makes exact medians possible: a plain list of floats/ints per strategy for
-just the fields that need it (final_money split by survivor/bankrupt cohort,
-bankruptcy_day) -- a few bytes per run, instead of the ~5KB per run a full
-RunResult (with several nested dicts) costs.
+dict-sum, all of which are O(1) per run. Median fields use deterministic,
+fixed-capacity reservoirs, so they are exact up to the capacity and
+approximate for larger cohorts while memory remains bounded.
 
 Running means use Neumaier (improved Kahan-Babuska) compensated summation
 instead of naive `total += value`, so they stay numerically close to
@@ -24,7 +19,41 @@ single pass). Batch callers that want to interleave aggregation with other
 per-result work (e.g. streaming a CSV row per result) should drive
 `BatchAggregator` directly instead.
 """
+import hashlib
+import random
 import statistics
+
+
+MEDIAN_RESERVOIR_CAPACITY = 1024
+
+
+class _DeterministicReservoir:
+    """Bounded reservoir sampling with a stable per-field random stream."""
+
+    __slots__ = ("capacity", "values", "seen", "_rng")
+
+    def __init__(self, key: str, capacity: int = MEDIAN_RESERVOIR_CAPACITY):
+        self.capacity = capacity
+        self.values = []
+        self.seen = 0
+        seed = int.from_bytes(hashlib.blake2b(key.encode(), digest_size=8).digest(), "big")
+        self._rng = random.Random(seed)
+
+    def add(self, value) -> None:
+        self.seen += 1
+        if len(self.values) < self.capacity:
+            self.values.append(value)
+            return
+        replacement = self._rng.randrange(self.seen)
+        if replacement < self.capacity:
+            self.values[replacement] = value
+
+    def median(self):
+        return round(statistics.median(self.values), 2) if self.values else None
+
+    @property
+    def is_approximate(self) -> bool:
+        return self.seen > self.capacity
 
 
 class _MeanAccumulator:
@@ -79,7 +108,7 @@ _CONDITIONAL_MEAN_FIELDS = (
 
 
 class _StrategyAccumulator:
-    def __init__(self):
+    def __init__(self, strategy: str):
         self.count = 0
         self.means = {
             name: _MeanAccumulator()
@@ -91,10 +120,15 @@ class _StrategyAccumulator:
         self.bankruptcy_day_min = None
         self.bankruptcy_day_max = None
 
-        # Only the scalar lists exact medians need -- see module docstring.
-        self.survivor_money_values = []
-        self.bankrupt_money_values = []
-        self.bankruptcy_day_values = []
+        self.all_money_values = _DeterministicReservoir(f"{strategy}:all_money")
+        self.survivor_money_values = _DeterministicReservoir(f"{strategy}:survivors")
+        self.bankrupt_money_values = _DeterministicReservoir(f"{strategy}:bankrupt")
+        self.bankruptcy_day_values = _DeterministicReservoir(f"{strategy}:bankruptcy_day")
+
+        self.survivor_count = 0
+        self.bankrupt_count = 0
+        self.first_upgrade_count = 0
+        self.second_upgrade_count = 0
 
         self.crop_totals = {}
         self.planted_total = 0
@@ -108,6 +142,7 @@ class _StrategyAccumulator:
         self.count += 1
         means = self.means
 
+        self.all_money_values.add(r.final_money)
         means["final_money"].add(r.final_money)
         if self.final_money_min is None or r.final_money < self.final_money_min:
             self.final_money_min = r.final_money
@@ -115,11 +150,12 @@ class _StrategyAccumulator:
             self.final_money_max = r.final_money
 
         if r.bankrupt:
-            self.bankrupt_money_values.append(r.final_money)
+            self.bankrupt_count += 1
+            self.bankrupt_money_values.add(r.final_money)
             means["final_money_bankrupt"].add(r.final_money)
             means["minimum_cash_balance_bankrupt"].add(r.minimum_cash_balance)
             if r.bankruptcy_day is not None:
-                self.bankruptcy_day_values.append(r.bankruptcy_day)
+                self.bankruptcy_day_values.add(r.bankruptcy_day)
                 means["bankruptcy_day"].add(r.bankruptcy_day)
                 if self.bankruptcy_day_min is None or r.bankruptcy_day < self.bankruptcy_day_min:
                     self.bankruptcy_day_min = r.bankruptcy_day
@@ -128,14 +164,17 @@ class _StrategyAccumulator:
             reason = r.bankruptcy_reason or "unknown"
             self.bankruptcy_reasons[reason] = self.bankruptcy_reasons.get(reason, 0) + 1
         else:
-            self.survivor_money_values.append(r.final_money)
+            self.survivor_count += 1
+            self.survivor_money_values.add(r.final_money)
             means["final_money_survivors"].add(r.final_money)
 
         means["minimum_cash_balance"].add(r.minimum_cash_balance)
 
         if r.first_upgrade_day is not None:
+            self.first_upgrade_count += 1
             means["first_upgrade_day"].add(r.first_upgrade_day)
         if r.second_upgrade_day is not None:
+            self.second_upgrade_count += 1
             means["second_upgrade_day"].add(r.second_upgrade_day)
 
         for name, attr in _SIMPLE_MEAN_FIELDS:
@@ -157,32 +196,31 @@ class _StrategyAccumulator:
 
     def finalize(self) -> dict:
         means = self.means
-        all_money_values = self.survivor_money_values + self.bankrupt_money_values
+        median_approximate = any(
+            reservoir.is_approximate
+            for reservoir in (
+                self.all_money_values,
+                self.survivor_money_values,
+                self.bankrupt_money_values,
+                self.bankruptcy_day_values,
+            )
+        )
 
         return {
             "num_runs": self.count,
             "avg_final_money": means["final_money"].mean(),
-            "median_final_money": round(statistics.median(all_money_values), 2),
+            "median_final_money": self.all_money_values.median(),
             "min_final_money": round(self.final_money_min, 2),
             "max_final_money": round(self.final_money_max, 2),
-            "surviving_runs": len(self.survivor_money_values),
-            "bankrupt_runs": len(self.bankrupt_money_values),
+            "surviving_runs": self.survivor_count,
+            "bankrupt_runs": self.bankrupt_count,
             "avg_final_money_survivors": means["final_money_survivors"].mean(),
-            "median_final_money_survivors": (
-                round(statistics.median(self.survivor_money_values), 2)
-                if self.survivor_money_values else None
-            ),
+            "median_final_money_survivors": self.survivor_money_values.median(),
             "avg_final_money_bankrupt": means["final_money_bankrupt"].mean(),
-            "median_final_money_bankrupt": (
-                round(statistics.median(self.bankrupt_money_values), 2)
-                if self.bankrupt_money_values else None
-            ),
-            "bankruptcy_rate": round(100 * len(self.bankrupt_money_values) / self.count, 2),
+            "median_final_money_bankrupt": self.bankrupt_money_values.median(),
+            "bankruptcy_rate": round(100 * self.bankrupt_count / self.count, 2),
             "avg_bankruptcy_day": means["bankruptcy_day"].mean(),
-            "median_bankruptcy_day": (
-                round(statistics.median(self.bankruptcy_day_values), 2)
-                if self.bankruptcy_day_values else None
-            ),
+            "median_bankruptcy_day": self.bankruptcy_day_values.median(),
             "min_bankruptcy_day": self.bankruptcy_day_min,
             "max_bankruptcy_day": self.bankruptcy_day_max,
             "avg_minimum_cash_balance": means["minimum_cash_balance"].mean(),
@@ -190,6 +228,12 @@ class _StrategyAccumulator:
             "bankruptcy_reasons": self.bankruptcy_reasons,
             "avg_first_upgrade_day": means["first_upgrade_day"].mean(),
             "avg_second_upgrade_day": means["second_upgrade_day"].mean(),
+            "first_upgrade_count": self.first_upgrade_count,
+            "second_upgrade_count": self.second_upgrade_count,
+            "first_upgrade_rate": round(100 * self.first_upgrade_count / self.count, 2),
+            "second_upgrade_rate": round(100 * self.second_upgrade_count / self.count, 2),
+            "median_reservoir_capacity": MEDIAN_RESERVOIR_CAPACITY,
+            "median_approximate": median_approximate,
             "crop_usage_pct": {
                 cid: round(100 * count / self.planted_total, 2) if self.planted_total else 0.0
                 for cid, count in self.crop_totals.items()
@@ -228,7 +272,10 @@ class BatchAggregator:
         self._by_strategy = {}
 
     def add(self, result) -> None:
-        acc = self._by_strategy.setdefault(result.strategy, _StrategyAccumulator())
+        acc = self._by_strategy.get(result.strategy)
+        if acc is None:
+            acc = _StrategyAccumulator(result.strategy)
+            self._by_strategy[result.strategy] = acc
         acc.add(result)
 
     def finalize(self) -> dict:

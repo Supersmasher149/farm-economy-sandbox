@@ -36,14 +36,17 @@ def update_daily_prices(player, items_by_id: dict, market_config: dict, rng, pro
     return prices
 
 
-def quote(player, item_id: str, quality: str, channel: dict, quantity: int) -> dict | None:
+def quote(
+    player, item_id: str, quality: str, channel: dict, quantity: int,
+    capacity_used: dict | None = None,
+) -> dict | None:
     if item_id not in player.market_prices or quantity <= 0:
         return None
     if QUALITY_ORDER[quality] < QUALITY_ORDER[channel.get("min_quality", "rejected")]:
         return None
     if player.reputation < channel.get("min_reputation", 0):
         return None
-    used = player.channel_capacity_used.get(channel["id"], 0)
+    used = (capacity_used if capacity_used is not None else player.channel_capacity_used).get(channel["id"], 0)
     capacity = channel.get("daily_capacity", quantity)
     accepted = min(quantity, max(0, capacity - used))
     if accepted <= 0:
@@ -61,19 +64,30 @@ def quote(player, item_id: str, quality: str, channel: dict, quantity: int) -> d
     return {"quantity": accepted, "unit_price": unit_price, "gross": gross, "fee": fee, "net": gross - fee}
 
 
-def sell(player, item_id: str, quantity: int, channel: dict) -> tuple[float, int]:
-    minimum = channel.get("min_quality", "rejected")
+def sell(
+    player, item_id: str, quantity: int, channel: dict,
+    quality: str | None = None, min_quality: str | None = None,
+) -> tuple[float, int]:
+    minimum = min_quality or channel.get("min_quality", "rejected")
     if (
         quantity <= 0
         or item_id not in player.market_prices
         or player.reputation < channel.get("min_reputation", 0)
+        or (
+            quality is not None
+            and QUALITY_ORDER[quality] < QUALITY_ORDER[channel.get("min_quality", "rejected")]
+        )
     ):
         return 0.0, 0
     used = player.channel_capacity_used.get(channel["id"], 0)
     quantity = min(quantity, max(0, channel.get("daily_capacity", quantity) - used))
     lots = sorted(
         (lot for lot in player.inventory_lots
-         if lot.item_id == item_id and QUALITY_ORDER[lot.quality] >= QUALITY_ORDER[minimum]),
+         if lot.item_id == item_id
+         and (
+             quality is not None and lot.quality == quality
+             or quality is None and QUALITY_ORDER[lot.quality] >= QUALITY_ORDER[minimum]
+         )),
         key=lambda lot: (lot.remaining_shelf_life, -QUALITY_ORDER[lot.quality]),
     )
     planned = []

@@ -1,5 +1,6 @@
-from simulation import actions
+from simulation import actions, crop_growth
 from simulation.random_events import RandomEvents
+from simulation.state import PlantedCrop
 
 
 def test_buy_seeds_deducts_money_and_adds_inventory(player, fast_crop):
@@ -92,6 +93,75 @@ def test_fertilized_crop_never_receives_neglect_penalty_when_never_neglected(pla
     if player.total_crops_lost == 0:
         # fertilizer's yield bonus means a fertilized crop can exceed the crop's raw max_yield
         assert player.crop_inventory.get("standard", 0) <= round(standard_crop["max_yield"] * 1.25)
+
+
+def test_configured_yield_effects_are_applied_once_and_allow_zero(player, fast_crop):
+    class FixedYieldRng:
+        def roll_loss(self, _chance):
+            return False
+
+        def roll_yield(self, _minimum, _maximum):
+            return 100
+
+    planted = PlantedCrop(crop_id="fast", day_planted=0, growth_days_required=1, fertilized=True)
+    watering = {
+        "neglect_loss_chance_penalty_per_day": 0,
+        "neglect_yield_penalty_per_day": 0,
+        "max_neglect_loss_chance_bonus": 0,
+        "max_neglect_yield_penalty": 0,
+    }
+    fertilizer = {"yield_bonus_pct": 0, "loss_chance_reduction": 0}
+
+    lost, amount = crop_growth.compute_harvest_outcome(
+        planted, fast_crop, watering, fertilizer, FixedYieldRng()
+    )
+
+    assert not lost
+    assert amount == 100
+
+    fertilizer["yield_bonus_pct"] = 0.10
+    _lost, amount = crop_growth.compute_harvest_outcome(
+        planted, fast_crop, watering, fertilizer, FixedYieldRng()
+    )
+    assert amount == 110
+
+
+def test_fertilizer_quality_bonus_is_independent_of_yield_bonus(fast_crop):
+    plain = PlantedCrop(crop_id="fast", day_planted=0, growth_days_required=1)
+    fertilized = PlantedCrop(
+        crop_id="fast", day_planted=0, growth_days_required=1, fertilized=True
+    )
+
+    plain_yield, plain_quality = crop_growth.harvest_multipliers(plain, fast_crop)
+    fertilized_yield, fertilized_quality = crop_growth.harvest_multipliers(fertilized, fast_crop)
+
+    assert fertilized_yield == plain_yield
+    assert fertilized_quality == plain_quality + 0.05
+
+
+def test_configured_neglect_yield_penalty_is_applied_once(player, fast_crop):
+    class FixedYieldRng:
+        def roll_loss(self, _chance):
+            return False
+
+        def roll_yield(self, _minimum, _maximum):
+            return 100
+
+    planted = PlantedCrop(crop_id="fast", day_planted=0, growth_days_required=1)
+    planted.neglect_days = 2
+    watering = {
+        "neglect_loss_chance_penalty_per_day": 0,
+        "neglect_yield_penalty_per_day": 0.10,
+        "max_neglect_loss_chance_bonus": 0,
+        "max_neglect_yield_penalty": 0.80,
+    }
+    fertilizer = {"yield_bonus_pct": 0, "loss_chance_reduction": 0}
+
+    _lost, amount = crop_growth.compute_harvest_outcome(
+        planted, fast_crop, watering, fertilizer, FixedYieldRng()
+    )
+
+    assert amount == 80
 
 
 def test_water_farm_resets_neglect_when_watered(player, fast_crop):

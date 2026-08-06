@@ -5,15 +5,27 @@ strategy, warnings called out at the top.
 
 
 def generate_markdown_report(config: dict, num_runs: int, summary: dict, warning_list: list, crop_names: dict,
-                              agent_descriptions: dict = None, economics_audit: dict = None) -> str:
+                              agent_descriptions: dict = None, economics_audit: dict = None,
+                              base_seed: int = None) -> str:
     agent_descriptions = agent_descriptions or {}
     lines = []
     lines.append("# Farm Economy Batch Report")
     lines.append("")
     lines.append(f"- Simulated days per run: **{config['days']}**")
     lines.append(f"- Runs per strategy: **{num_runs}**")
+    lines.append(f"- Base seed: **{base_seed}**")
     lines.append(f"- Starting money: **{config['start_money']}**")
     lines.append(f"- Starting growing slots: **{config['start_slots']}**")
+    lines.append("")
+    reservoir_capacity = next(
+        (stats.get("median_reservoir_capacity") for stats in summary.values()),
+        "the configured",
+    )
+    lines.append(
+        "Median values are exact while each cohort has at most "
+        f"{reservoir_capacity} observations in the deterministic reservoir; "
+        "larger cohorts use approximate medians."
+    )
     lines.append("")
 
     if economics_audit:
@@ -88,8 +100,20 @@ def generate_markdown_report(config: dict, num_runs: int, summary: dict, warning
             f"{stats['avg_minimum_cash_balance']} / {stats['avg_minimum_cash_balance_bankrupt']}"
         )
         lines.append(f"- Bankruptcy reasons: {stats['bankruptcy_reasons'] or 'None'}")
-        lines.append(f"- Average day of first upgrade: {stats['avg_first_upgrade_day']}")
-        lines.append(f"- Average day of second upgrade: {stats['avg_second_upgrade_day']}")
+        lines.append(
+            f"- First upgrade reach: {stats['first_upgrade_count']} / {stats['num_runs']} runs "
+            f"({stats['first_upgrade_rate']}%)"
+        )
+        lines.append(
+            f"- Second upgrade reach: {stats['second_upgrade_count']} / {stats['num_runs']} runs "
+            f"({stats['second_upgrade_rate']}%)"
+        )
+        lines.append(
+            f"- Average day of first upgrade (purchasing runs): {stats['avg_first_upgrade_day']}"
+        )
+        lines.append(
+            f"- Average day of second upgrade (purchasing runs): {stats['avg_second_upgrade_day']}"
+        )
         lines.append(f"- Watering coverage: {stats['avg_watering_rate']}% of plot-days")
         lines.append(f"- Watering coverage of occupied plot-days: {stats['avg_occupied_watering_rate']}%")
         lines.append(f"- Crop loss rate: {stats['avg_crop_loss_rate']}% of matured crops")

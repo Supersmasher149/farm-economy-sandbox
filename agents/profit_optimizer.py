@@ -99,17 +99,48 @@ class ProfitOptimizer(Agent):
         return decisions
 
     def choose_sales(self, player, channels, items_by_id):
-        decisions = []
+        planned_capacity = dict(player.channel_capacity_used)
         quantities = {}
-        quality = {}
         for lot in player.inventory_lots:
-            quantities[lot.item_id] = quantities.get(lot.item_id, 0) + lot.quantity
-            quality.setdefault(lot.item_id, lot.quality)
-        for item_id, quantity in quantities.items():
-            channel = markets.best_channel(player, item_id, quality[item_id], channels, quantity)
-            if channel:
-                decisions.append({"item_id": item_id, "quantity": quantity, "channel_id": channel["id"]})
-        return decisions
+            by_quality = quantities.setdefault(lot.item_id, {})
+            by_quality[lot.quality] = by_quality.get(lot.quality, 0) + lot.quantity
+
+        routes = {}
+        for item_id, by_quality in quantities.items():
+            for quality in sorted(by_quality, key=lambda value: -markets.QUALITY_MULTIPLIERS[value]):
+                remaining = by_quality[quality]
+                while remaining > 0:
+                    candidates = [
+                        (
+                            markets.quote(
+                                player, item_id, quality, channel, remaining,
+                                capacity_used=planned_capacity,
+                            ),
+                            channel,
+                        )
+                        for channel in channels
+                    ]
+                    candidates = [pair for pair in candidates if pair[0]]
+                    if not candidates:
+                        break
+                    offer, channel = max(
+                        candidates, key=lambda pair: pair[0]["net"] / pair[0]["quantity"]
+                    )
+                    sold = offer["quantity"]
+                    route = (item_id, quality, channel["id"])
+                    routes[route] = routes.get(route, 0) + sold
+                    planned_capacity[channel["id"]] = planned_capacity.get(channel["id"], 0) + sold
+                    remaining -= sold
+
+        return [
+            {
+                "item_id": item_id,
+                "quantity": quantity,
+                "channel_id": channel_id,
+                "quality": quality,
+            }
+            for (item_id, quality, channel_id), quantity in routes.items()
+        ]
 
     def should_use_fertilizer(self, player, crop, fertilizer_config):
         marginal_profit = economy_rules.fertilizer_expected_marginal_profit(crop, fertilizer_config)

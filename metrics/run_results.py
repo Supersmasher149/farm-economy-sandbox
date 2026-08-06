@@ -2,6 +2,21 @@
 import csv
 import json
 from dataclasses import asdict, dataclass
+from decimal import Decimal, ROUND_HALF_UP
+
+
+_CENT = Decimal("0.01")
+
+
+def _money(value) -> float:
+    """Return one canonical, cent-rounded monetary value."""
+    return float(Decimal(str(value)).quantize(_CENT, rounding=ROUND_HALF_UP))
+
+
+def _money_sum(values) -> float:
+    """Sum already-independent monetary components without float drift."""
+    total = sum((Decimal(str(value)) for value in values), Decimal("0"))
+    return float(total.quantize(_CENT, rounding=ROUND_HALF_UP))
 
 
 @dataclass
@@ -51,11 +66,19 @@ class RunResult:
 
 
 def build_run_result(player, strategy_name: str, seed: int, days_simulated: int, crops: list, upgrades: list) -> RunResult:
-    net_profit = player.total_revenue - player.total_expenses
-    expenses = dict(player.expenses_by_category)
-    production_costs = sum(expenses.get(category, 0.0) for category in ("seeds", "watering", "fertilizer"))
-    gross_profit = player.total_revenue - production_costs
-    operating_profit = gross_profit - expenses.get("contract_penalties", 0.0)
+    expenses = {key: _money(value) for key, value in player.expenses_by_category.items()}
+    revenue_by_channel = {
+        key: _money(value) for key, value in player.revenue_by_channel.items()
+    }
+    total_revenue = _money_sum(revenue_by_channel.values())
+    total_expenses = _money_sum(expenses.values())
+    production_costs = _money_sum(
+        expenses.get(category, 0.0)
+        for category in ("seeds", "watering", "fertilizer")
+    )
+    net_profit = _money(total_revenue - total_expenses)
+    gross_profit = _money(total_revenue - production_costs)
+    operating_profit = _money(gross_profit - expenses.get("contract_penalties", 0.0))
 
     crop_counts = {crop["id"]: player.crop_plant_counts.get(crop["id"], 0) for crop in crops}
     crop_percentages = {
@@ -76,7 +99,6 @@ def build_run_result(player, strategy_name: str, seed: int, days_simulated: int,
         if player.occupied_slot_days else 0.0
     )
 
-    rounded_expenses = {key: round(value, 2) for key, value in expenses.items()}
     rounded_observations = {
         crop_id: dict(observation)
         for crop_id, observation in player.crop_decision_observations.items()
@@ -86,15 +108,15 @@ def build_run_result(player, strategy_name: str, seed: int, days_simulated: int,
         strategy=strategy_name,
         seed=seed,
         days_simulated=days_simulated,
-        final_money=round(player.money, 2),
-        total_revenue=round(player.total_revenue, 2),
-        total_expenses=round(player.total_expenses, 2),
-        total_costs=round(player.total_expenses, 2),
-        net_profit=round(net_profit, 2),
-        gross_profit=round(gross_profit, 2),
-        operating_profit=round(operating_profit, 2),
-        net_cash_change=round(net_profit, 2),
-        expenses_by_category=rounded_expenses,
+        final_money=_money(player.money),
+        total_revenue=total_revenue,
+        total_expenses=total_expenses,
+        total_costs=total_expenses,
+        net_profit=net_profit,
+        gross_profit=gross_profit,
+        operating_profit=operating_profit,
+        net_cash_change=net_profit,
+        expenses_by_category=expenses,
         crops_planted=player.total_planted,
         crops_harvested=player.total_harvested,
         crops_sold=player.total_sold,
@@ -108,9 +130,9 @@ def build_run_result(player, strategy_name: str, seed: int, days_simulated: int,
         bankrupt=player.bankrupt,
         bankruptcy_day=player.bankruptcy_day,
         bankruptcy_reason=player.bankruptcy_reason,
-        lowest_money=round(player.lowest_money, 2),
-        minimum_cash_balance=round(player.lowest_money, 2),
-        highest_money=round(player.highest_money, 2),
+        lowest_money=_money(player.lowest_money),
+        minimum_cash_balance=_money(player.lowest_money),
+        highest_money=_money(player.highest_money),
         crops_lost=player.total_crops_lost,
         crop_loss_rate=round(crop_loss_rate, 2),
         watering_rate=round(watering_rate, 2),
@@ -122,7 +144,7 @@ def build_run_result(player, strategy_name: str, seed: int, days_simulated: int,
         contracts_completed=player.contracts_completed,
         contracts_failed=player.contracts_failed,
         final_reputation=round(player.reputation, 2),
-        revenue_by_channel={key: round(value, 2) for key, value in player.revenue_by_channel.items()},
+        revenue_by_channel=revenue_by_channel,
         quality_harvested=dict(player.quality_harvested),
         crop_decision_observations=rounded_observations,
     )

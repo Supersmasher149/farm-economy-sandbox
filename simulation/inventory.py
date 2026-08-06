@@ -33,7 +33,24 @@ def consume(player, item_id: str, quantity: int, min_quality: str = "rejected") 
     return consumed, cost
 
 
-def age_and_spoil(player, storage_config: dict) -> int:
+def capture_storage_liability(player, storage_config: dict) -> float:
+    """Capture the day's storage charge from inventory held at day start."""
+    daily_cost = storage_config.get("daily_cost", 0.0)
+    has_inventory = any(lot.quantity > 0 for lot in player.inventory_lots)
+    return daily_cost if has_inventory and daily_cost > 0 else 0.0
+
+
+def collect_storage_liability(player, liability: float) -> float:
+    """Charge captured storage liability without allowing cash to go negative."""
+    charged = min(max(0.0, player.money), max(0.0, liability))
+    if charged:
+        player.money -= charged
+        player.record_expense("storage", charged)
+    return charged
+
+
+def age_and_spoil(player, storage_config: dict, charge_storage: bool = True) -> int:
+    liability = capture_storage_liability(player, storage_config) if charge_storage else 0.0
     multiplier = storage_config.get("shelf_life_multiplier", 1.0)
     spoiled = 0
     capacity = storage_config.get("capacity", 100)
@@ -72,10 +89,7 @@ def age_and_spoil(player, storage_config: dict) -> int:
     player.total_spoiled += spoiled
     if spoiled:
         player.losses_by_cause["spoilage"] = player.losses_by_cause.get("spoilage", 0) + spoiled
-    daily_cost = storage_config.get("daily_cost", 0.0)
-    if player.inventory_lots and daily_cost > 0:
-        charged = min(player.money, daily_cost)
-        player.money -= charged
-        player.record_expense("storage", charged)
+    if charge_storage:
+        collect_storage_liability(player, liability)
     player.rebuild_crop_inventory()
     return spoiled

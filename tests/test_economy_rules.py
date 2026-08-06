@@ -34,6 +34,18 @@ def test_effective_growth_days_never_below_one(player, fast_crop):
     assert economy_rules.effective_growth_days(tiny_crop, player, upgrades_by_id) >= 1
 
 
+def test_effective_growth_days_uses_upgrade_configuration_order(player, fast_crop):
+    first = {"id": "first", "effect": {"type": "growth_time_reduction", "amount": 0.15}}
+    second = {"id": "second", "effect": {"type": "growth_time_reduction", "amount": 0.20}}
+    player.upgrades_owned.update(("first", "second"))
+
+    assert economy_rules.effective_growth_days(
+        dict(fast_crop, growth_days=10),
+        player,
+        {"first": first, "second": second},
+    ) == 6
+
+
 def test_expected_profit_per_day_is_positive_for_profitable_crop(player, standard_crop):
     profit = economy_rules.expected_profit_per_day(standard_crop, player, {})
     assert profit > 0

@@ -1,4 +1,4 @@
-"""Mutable state for one deterministic farm simulation run."""
+import hashlib
 from dataclasses import dataclass, field
 
 
@@ -154,10 +154,21 @@ class PlayerState:
     lowest_money: float | None = None
     highest_money: float | None = None
     crop_decision_observations: dict = field(default_factory=dict)
+    # Run context and processing config are appended to preserve positional
+    # construction compatibility for older callers.
+    run_seed: int | None = None
+    processing_recipes: list[dict] = field(default_factory=list)
+    processing_capacity: int | None = None
 
     def __post_init__(self):
         if not self.plots:
             self.plots = [PlotState() for _ in range(self.slots_total)]
+
+    def decision_random(self, *context) -> float:
+        """Return a replayable policy value without consuming event RNG."""
+        payload = repr((self.run_seed if self.run_seed is not None else 0, self.day, context))
+        digest = hashlib.blake2b(payload.encode("utf-8"), digest_size=8).digest()
+        return int.from_bytes(digest, "big") / 2 ** 64
 
     @property
     def open_slots(self) -> int:

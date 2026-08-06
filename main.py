@@ -8,7 +8,10 @@ Examples:
 """
 import argparse
 import json
+import math
 import os
+import shutil
+import tempfile
 
 from agents.diversifier import Diversifier
 from agents.fast_seller import FastSeller
@@ -26,9 +29,9 @@ from metrics.economics_audit import build_economics_audit
 from metrics.report import generate_markdown_report
 from metrics.run_results import write_csv
 from metrics.warnings import evaluate_warnings
-from runner.batch_run import run_batch
+from runner.batch_run import resolve_base_seed, run_batch
 from runner.single_run import run_single
-from simulation.configuration import validate
+from simulation.configuration import validate, validate_simulation_config
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_DIR = os.path.join(BASE_DIR, "config")
@@ -70,6 +73,7 @@ def load_config():
         "processing": load_json("processing.json"),
     }
     validate(crops, upgrades, world)
+    validate_simulation_config(config)
     return crops, upgrades, config, world
 
 
@@ -145,13 +149,15 @@ def cmd_batch(args):
         config["days"] = args.days
     if args.start_money is not None:
         config["start_money"] = args.start_money
+    validate_simulation_config(config)
+    base_seed = resolve_base_seed(args.seed)
     watering_settings, fertilizer_config = world["watering"], world["fertilizer"]
     agents = [cls() for cls in AGENT_REGISTRY.values()]
     total_runs = args.runs * len(agents)
 
     results = run_batch(
         config, agents, crops, upgrades, watering_settings, fertilizer_config,
-        num_runs=args.runs, base_seed=args.seed, world=world, workers=args.workers,
+        num_runs=args.runs, base_seed=base_seed, world=world, workers=args.workers,
     )
 
     os.makedirs(REPORTS_DIR, exist_ok=True)
@@ -160,29 +166,24 @@ def cmd_batch(args):
     agent_descriptions = {agent.name: agent.description for agent in agents}
     economics_audit = build_economics_audit(crops, fertilizer_config, world["markets"])
 
-    # run_batch streams one RunResult at a time rather than returning a
-    # materialized list (so memory stays bounded for very large batches), so
-    # results can only be consumed once. write_csv drives the single pass
-    # over it -- pulling one result, writing one CSV row, discarding it --
-    # while this tee feeds the same result into the aggregator as a side
-    # effect, keeping CSV writing and summary aggregation in lockstep instead
-    # of requiring two separate passes over a held-in-memory list.
-    aggregator = BatchAggregator()
+    with tempfile.TemporaryDirectory(prefix=".batch-", dir=REPORTS_DIR) as staging_dir:
+        # run_batch streams one RunResult at a time rather than returning a
+        # materialized list, so CSV output and aggregation stay in one pass.
+        aggregator = BatchAggregator()
 
-    def _tee(stream):
-        for r in stream:
-            aggregator.add(r)
-            yield r
+        def _tee(stream):
+            for r in stream:
+                aggregator.add(r)
+                yield r
 
-    csv_path = os.path.join(REPORTS_DIR, "run_results.csv")
-    write_csv(_tee(results), csv_path, crop_ids)
+        staged_csv_path = os.path.join(staging_dir, "run_results.csv")
+        write_csv(_tee(results), staged_csv_path, crop_ids)
 
-    summary = aggregator.finalize()
-    warning_list = evaluate_warnings(summary, config)
+        summary = aggregator.finalize()
+        warning_list = evaluate_warnings(summary, config)
 
-    config_snapshot_path = os.path.join(REPORTS_DIR, "config_snapshot.json")
-    with open(config_snapshot_path, "w") as f:
-        json.dump({
+        snapshot = {
+            "base_seed": base_seed,
             "crops": crops,
             "upgrades": upgrades,
             "simulation_settings": config,
@@ -190,14 +191,24 @@ def cmd_batch(args):
             "fertilizer": fertilizer_config,
             "world": world,
             "num_runs": args.runs,
-        }, f, indent=2)
+        }
+        staged_snapshot_path = os.path.join(staging_dir, "config_snapshot.json")
+        with open(staged_snapshot_path, "w") as f:
+            json.dump(snapshot, f, indent=2)
 
+        report_text = generate_markdown_report(
+            config, args.runs, summary, warning_list, crop_names, agent_descriptions,
+            economics_audit, base_seed=base_seed,
+        )
+        staged_report_path = os.path.join(staging_dir, "summary_report.md")
+        with open(staged_report_path, "w") as f:
+            f.write(report_text)
+
+        _publish_report_artifacts(staging_dir, REPORTS_DIR)
+
+    csv_path = os.path.join(REPORTS_DIR, "run_results.csv")
+    config_snapshot_path = os.path.join(REPORTS_DIR, "config_snapshot.json")
     report_path = os.path.join(REPORTS_DIR, "summary_report.md")
-    report_text = generate_markdown_report(
-        config, args.runs, summary, warning_list, crop_names, agent_descriptions, economics_audit
-    )
-    with open(report_path, "w") as f:
-        f.write(report_text)
 
     print(f"Ran {args.runs} simulations x {len(agents)} strategies = {total_runs} total runs.")
     print(f"CSV:    {csv_path}")
@@ -205,6 +216,36 @@ def cmd_batch(args):
     print(f"Report: {report_path}")
     print()
     print(report_text)
+
+
+def _publish_report_artifacts(staging_dir: str, reports_dir: str) -> None:
+    """Replace all report artifacts together, restoring old files on failure."""
+    artifact_names = ("run_results.csv", "config_snapshot.json", "summary_report.md")
+    backups = {}
+    published = []
+    try:
+        for name in artifact_names:
+            final_path = os.path.join(reports_dir, name)
+            if os.path.exists(final_path):
+                backup_path = os.path.join(staging_dir, f".{name}.bak")
+                shutil.copy2(final_path, backup_path)
+                backups[name] = backup_path
+
+        for name in artifact_names:
+            os.replace(
+                os.path.join(staging_dir, name),
+                os.path.join(reports_dir, name),
+            )
+            published.append(name)
+    except Exception:
+        for name in published:
+            final_path = os.path.join(reports_dir, name)
+            backup_path = backups.get(name)
+            if backup_path is not None:
+                os.replace(backup_path, final_path)
+            elif os.path.exists(final_path):
+                os.unlink(final_path)
+        raise
 
 
 def build_parser():
@@ -223,17 +264,31 @@ def build_parser():
     replay.set_defaults(func=cmd_replay)
 
     batch = subparsers.add_parser("batch", help="Run a batch across all strategies and generate a report.")
-    batch.add_argument("--runs", type=int, default=1000)
+    batch.add_argument("--runs", type=_positive_int, default=1000)
     batch.add_argument("--seed", type=int, default=None, help="Base seed for generating per-run seeds.")
-    batch.add_argument("--workers", type=int, default=None,
+    batch.add_argument("--workers", type=_positive_int, default=None,
                         help="Parallel worker processes (default: all CPU cores; 1 for sequential).")
-    batch.add_argument("--days", type=int, default=None,
+    batch.add_argument("--days", type=_positive_int, default=None,
                        help="Override simulated days for this batch without changing config files.")
-    batch.add_argument("--start-money", type=float, default=None,
+    batch.add_argument("--start-money", type=_nonnegative_float, default=None,
                        help="Override starting money for this batch without changing config files.")
     batch.set_defaults(func=cmd_batch)
 
     return parser
+
+
+def _positive_int(value):
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def _nonnegative_float(value):
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 0:
+        raise argparse.ArgumentTypeError("must be nonnegative")
+    return parsed
 
 
 if __name__ == "__main__":

@@ -19,8 +19,13 @@ def is_crop_unlocked(crop: dict, player) -> bool:
 def effective_growth_days(crop: dict, player, upgrades_by_id: dict) -> int:
     """Growth duration if planted right now, given currently owned upgrades."""
     days = crop["growth_days"]
-    for upgrade_id in player.upgrades_owned:
-        effect = upgrades_by_id[upgrade_id]["effect"]
+    # The owned-upgrade set has no stable iteration order. Fold in the order
+    # supplied by the configuration list so each rounded intermediate result
+    # is reproducible across processes and Python runs.
+    for upgrade_id, upgrade in upgrades_by_id.items():
+        if upgrade_id not in player.upgrades_owned:
+            continue
+        effect = upgrade["effect"]
         if effect["type"] == "growth_time_reduction":
             days = max(1, round(days * (1 - effect["amount"])))
     return days

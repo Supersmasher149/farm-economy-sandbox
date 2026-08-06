@@ -4,7 +4,24 @@ from simulation.state import InventoryLot, ProcessingJob
 
 
 def start_job(player, recipe: dict, quantity_batches: int, capacity: int) -> bool:
-    if quantity_batches <= 0 or len(player.processing_jobs) + quantity_batches > capacity:
+    if (
+        not isinstance(quantity_batches, int)
+        or isinstance(quantity_batches, bool)
+        or quantity_batches <= 0
+        or not isinstance(capacity, int)
+        or isinstance(capacity, bool)
+        or capacity < 0
+        or len(player.processing_jobs) + quantity_batches > capacity
+    ):
+        return False
+    if (
+        not isinstance(recipe.get("input_quantity"), int)
+        or isinstance(recipe["input_quantity"], bool)
+        or recipe["input_quantity"] <= 0
+        or not isinstance(recipe.get("output_quantity"), int)
+        or isinstance(recipe["output_quantity"], bool)
+        or recipe["output_quantity"] <= 0
+    ):
         return False
     total_input = recipe["input_quantity"] * quantity_batches
     total_cost = recipe.get("cost", 0.0) * quantity_batches

@@ -7,7 +7,7 @@ DEFAULT_THRESHOLDS = {
     "dead_crop_pct": 5,
     "high_bankruptcy_pct": 20,
     "upgrade_too_fast_day": 5,
-    "upgrade_too_slow_fraction": 0.9,   # fraction of sim days with no first upgrade purchase
+    "upgrade_too_slow_fraction": 0.9,   # fraction of runs with no first upgrade purchase
     "runaway_money_multiple": 20,       # avg final money > start_money * multiple
     "high_crop_loss_rate_pct": 30,      # avg % of matured crops lost at harvest
 }
@@ -15,7 +15,6 @@ DEFAULT_THRESHOLDS = {
 
 def evaluate_warnings(summary: dict, config: dict, thresholds: dict = None) -> list:
     thresholds = thresholds or DEFAULT_THRESHOLDS
-    sim_days = config["days"]
     start_money = config["start_money"]
     warnings = []
 
@@ -44,9 +43,12 @@ def evaluate_warnings(summary: dict, config: dict, thresholds: dict = None) -> l
                 f"[{strategy}] First upgrade purchased very early on average "
                 f"(day {first_day})."
             )
-        if first_day is None or first_day >= sim_days * thresholds["upgrade_too_slow_fraction"]:
+        first_rate = stats["first_upgrade_rate"]
+        max_unreached_rate = thresholds["upgrade_too_slow_fraction"] * 100
+        if first_rate <= 100 - max_unreached_rate:
             warnings.append(
-                f"[{strategy}] First upgrade is rarely reached before the simulation ends."
+                f"[{strategy}] First upgrade is rarely reached: "
+                f"{first_rate}% of runs purchased one."
             )
 
         if stats["avg_final_money"] > start_money * thresholds["runaway_money_multiple"]:

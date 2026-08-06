@@ -4,6 +4,7 @@ from main import load_config
 from agents.profit_optimizer import ProfitOptimizer
 from runner.single_run import run_single
 from simulation import contracts, inventory, markets, processing
+from simulation import engine
 from simulation.random_events import RandomEvents
 from simulation.state import ContractState, InventoryLot, PlayerState
 
@@ -23,6 +24,70 @@ def test_inventory_downgrades_then_spoils():
     assert player.inventory_lots[0].quality == "standard"
     assert inventory.age_and_spoil(player, {"capacity": 10, "shelf_life_multiplier": 1}) == 4
     assert player.total_spoiled == 4
+
+
+def test_storage_liability_is_captured_before_inventory_is_sold():
+    player = make_player(money=0)
+    player.inventory_lots.append(InventoryLot("crop", 1, "standard"))
+    liability = inventory.capture_storage_liability(player, {"daily_cost": 0.25})
+    player.inventory_lots.clear()
+    player.money = 10
+
+    assert liability == 0.25
+    assert inventory.collect_storage_liability(player, liability) == 0.25
+    assert player.money == 9.75
+    assert player.expenses_by_category["storage"] == 0.25
+
+
+def test_engine_collects_storage_after_same_day_market_revenue():
+    crops, upgrades, _config, world = load_config()
+    player = make_player(money=0)
+    player.slots_total = 0
+    player.plots = []
+    player.inventory_lots.append(InventoryLot("quickweed", 1, "standard"))
+
+    class SellsOnly:
+        watering_diligence = 0.0
+
+        def choose_contracts(self, _player, _offers):
+            return []
+
+        def choose_contract_deliveries(self, _player):
+            return []
+
+        def choose_processing(self, _player, _recipes, _items):
+            return []
+
+        def choose_sales(self, _player, _channels, _items):
+            return [{"item_id": "quickweed", "quantity": 1, "channel_id": "spot"}]
+
+        def should_buy_upgrade(self, _player, _upgrade):
+            return False
+
+        def should_water(self, _player, _planted, _crop):
+            return False
+
+        def should_fertilize(self, _player, _planted, _crop, _fertilizer):
+            return False
+
+        def choose_crop(self, _player, _crops, _crops_by_id, _upgrades_by_id):
+            return None
+
+    engine.run_day(
+        player,
+        SellsOnly(),
+        crops,
+        {crop["id"]: crop for crop in crops},
+        upgrades,
+        {upgrade["id"]: upgrade for upgrade in upgrades},
+        world["watering"],
+        world["fertilizer"],
+        RandomEvents(1),
+        world=world,
+    )
+
+    assert player.total_revenue > 0
+    assert player.expenses_by_category["storage"] == 0.25
 
 
 def test_storage_overflow_is_recomputed_after_expiration():
