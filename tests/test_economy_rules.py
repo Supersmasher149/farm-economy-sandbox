@@ -170,3 +170,30 @@ def test_best_crop_by_expected_profit_triages_to_lowest_demand_when_soil_critica
     # that and pick the gentlest crop instead.
     chosen = economy_rules.best_crop_by_expected_profit([low_demand, high_demand], player, {})
     assert chosen["id"] == "low"
+
+
+def test_best_crop_by_expected_profit_normalizes_omitted_demand_when_critical(player):
+    """Regression for issue #25: a crop that omits `nutrient_demand` must not
+    be treated as demand-0 (and so automatically "gentlest") -- it should be
+    normalized to the same runtime default CropProfile uses (total 0.04:
+    nitrogen 0.02 + phosphorus 0.01 + potassium 0.01), same as
+    simulation.crop_growth's actual nutrient consumption.
+    """
+    for plot in player.plots:
+        plot.nitrogen = plot.phosphorus = plot.potassium = 0.0
+    omitted_demand = {
+        "id": "omitted", "seed_cost": 5, "growth_days": 3, "min_yield": 1, "max_yield": 2,
+        "base_price": 5, "loss_chance": 0.0,
+        # No "nutrient_demand" key at all -- effective total demand is 0.04.
+    }
+    explicit_low_demand = {
+        "id": "explicit_low", "seed_cost": 5, "growth_days": 3, "min_yield": 1, "max_yield": 2,
+        "base_price": 5, "loss_chance": 0.0,
+        # Explicit total demand 0.015 -- genuinely gentler than the 0.04
+        # default, even though it's the one with a JSON-present field.
+        "nutrient_demand": {"nitrogen": 0.005, "phosphorus": 0.005, "potassium": 0.005},
+    }
+    chosen = economy_rules.best_crop_by_expected_profit(
+        [omitted_demand, explicit_low_demand], player, {}
+    )
+    assert chosen["id"] == "explicit_low"

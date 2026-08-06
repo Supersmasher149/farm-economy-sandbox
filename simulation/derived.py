@@ -35,6 +35,15 @@ _MAX_ENTRIES = 512
 # anyway.
 
 
+# Per-nutrient demand assumed for a crop whose config omits `nutrient_demand`
+# entirely -- the single authoritative definition. Every consumer that needs
+# a crop's effective demand (CropProfile below, and simulation.economy_rules'
+# soil-risk pricing and critical-soil triage via nutrient_demand_total) reads
+# it from here, so an omitted field and this exact explicit value are always
+# treated identically regardless of which code path looks at the crop.
+DEFAULT_NUTRIENT_DEMAND = {"nitrogen": 0.02, "phosphorus": 0.01, "potassium": 0.01}
+
+
 class CropProfile:
     """Static growth inputs for one crop, read straight off the config dict.
 
@@ -51,7 +60,7 @@ class CropProfile:
 
     def __init__(self, crop: dict):
         self.min_moisture = crop.get("min_moisture", 0.35)
-        needs = crop.get("nutrient_demand", {"nitrogen": 0.02, "phosphorus": 0.01, "potassium": 0.01})
+        needs = crop.get("nutrient_demand", DEFAULT_NUTRIENT_DEMAND)
         # Tuple, not dict: iterated twice per plot per day, and the order must
         # stay exactly as configured because the shortfall sum is float
         # addition (reordering it would perturb the last bits and break
@@ -234,6 +243,17 @@ def crop_profile(crop: dict) -> CropProfile:
         entry = (crop, CropProfile(crop))
         _crop_profiles[id(crop)] = entry
     return entry[1]
+
+
+def nutrient_demand_total(crop: dict) -> float:
+    """Sum of a crop's normalized per-nutrient demand (nitrogen + phosphorus +
+    potassium), via the same CropProfile normalization runtime nutrient
+    consumption uses (crop_growth.py reads profile.nutrient_demand directly).
+    A crop that omits `nutrient_demand` gets DEFAULT_NUTRIENT_DEMAND here --
+    never zero -- so ranking by this always reflects effective runtime
+    demand, not whether the config happened to spell the field out.
+    """
+    return sum(value for _, value in crop_profile(crop).nutrient_demand)
 
 
 _market_profiles: dict = {}
