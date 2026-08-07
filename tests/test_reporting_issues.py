@@ -135,7 +135,9 @@ def test_batch_snapshot_and_report_include_resolved_seed(tmp_path, monkeypatch, 
         lambda *args, **kwargs: iter([_make_run_result(strategy="test")]),
     )
 
-    main.cmd_batch(SimpleNamespace(runs=1, seed=None, workers=1, days=None, start_money=None))
+    main.cmd_batch(
+        SimpleNamespace(runs=1, seed=None, workers=1, days=None, start_money=None, progress=False)
+    )
     capsys.readouterr()
 
     with open(tmp_path / "config_snapshot.json") as snapshot_file:

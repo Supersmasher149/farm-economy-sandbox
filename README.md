@@ -23,6 +23,23 @@ the exact same day-by-day outcome.
 
 No third-party dependencies are required to run the simulator itself.
 
+### Optional: the C accelerator
+
+A compiled kernel for the per-plot daily physics is available and makes
+batches roughly 1.15x faster. It is **off by default and entirely optional** —
+building it needs only a C compiler and the CPython headers, no third-party
+packages:
+
+```bash
+python3 tools/build_fastplot.py         # build in place
+python3 tools/build_fastplot.py --clean # remove it again
+```
+
+Without it, `simulation/weather.py` uses the pure-Python plot loop, which
+remains the reference implementation. The two are held to **bit-identical**
+output by `tests/test_fastplot_equivalence.py`, so enabling the accelerator
+never changes what a seed replays to.
+
 ## Quick start
 
 ```bash
@@ -54,6 +71,20 @@ code change against the exact same simulated conditions.
 since each simulated run is independent. Results are byte-for-byte
 identical to a sequential run for the same `--seed`. Pass `--workers 1` to
 force sequential execution, or `--workers N` to cap the pool size.
+
+While a batch runs, a live progress line is drawn on **stderr**:
+
+```
+[████████████░░░░░░░░░░░░░░░░]  42.7% |  4,270/10,000 | 1,523 sim/s | 00:02 elapsed | 00:03 left
+```
+
+It shows a status bar, percent complete, simulations finished versus the
+total, throughput, elapsed time, and estimated time remaining, and the same
+elapsed/rate figures are printed with the report paths at the end. It appears
+automatically when stderr is a terminal; `--progress` forces it on (useful
+when piping the report on stdout to a file) and `--no-progress` turns it off.
+The reporter only counts results as they stream past, so it never changes
+what a given `--seed` produces.
 
 Optional `--days N` and `--start-money N` batch arguments override those two
 simulation settings for the diagnostic run only; the effective values are

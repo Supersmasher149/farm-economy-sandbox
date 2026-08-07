@@ -20,17 +20,7 @@ def is_crop_unlocked(crop: dict, player) -> bool:
 
 def effective_growth_days(crop: dict, player, upgrades_by_id: dict) -> int:
     """Growth duration if planted right now, given currently owned upgrades."""
-    days = crop["growth_days"]
-    # The owned-upgrade set has no stable iteration order. Fold in the order
-    # supplied by the configuration list so each rounded intermediate result
-    # is reproducible across processes and Python runs.
-    for upgrade_id, upgrade in upgrades_by_id.items():
-        if upgrade_id not in player.upgrades_owned:
-            continue
-        effect = upgrade["effect"]
-        if effect["type"] == "growth_time_reduction":
-            days = max(1, round(days * (1 - effect["amount"])))
-    return days
+    return derived.effective_growth_days(crop, player.upgrades_owned, upgrades_by_id)
 
 
 def expected_profit_per_day(crop: dict, player, upgrades_by_id: dict) -> float:
@@ -49,7 +39,11 @@ def expected_profit_per_day(crop: dict, player, upgrades_by_id: dict) -> float:
 
 
 def operating_reserve(player) -> float:
-    return max(0.0, getattr(player, "operating_reserve", 0.0))
+    # Direct attribute read, not getattr-with-default: `operating_reserve` is
+    # a declared field on the (slotted) PlayerState dataclass with a 0.0
+    # default, so it is always present, and this is called often enough for
+    # getattr's overhead to show up in a profile.
+    return max(0.0, player.operating_reserve)
 
 
 def can_spend_with_reserve(player, amount: float) -> bool:

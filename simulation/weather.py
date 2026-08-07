@@ -1,8 +1,22 @@
 """Seasonal deterministic weather generation and plot updates."""
 
-from simulation import derived
+from simulation import crop_growth, derived
 
 SEASONS = ("spring", "summer", "autumn", "winter")
+
+# Optional compiled accelerator for the per-plot loop below (~20% of batch
+# runtime). Absent unless `python3 setup.py build_ext --inplace` has been
+# run, in which case the pure-Python loop -- which stays the reference
+# implementation -- is used instead. The layout check makes a stale .so
+# built against a different CropProfile.flat fall back rather than misread
+# it. tests/test_fastplot_equivalence.py asserts the two agree bit-for-bit.
+try:
+    from simulation import _fastplot
+except ImportError:
+    _fastplot = None
+else:
+    if getattr(_fastplot, "PROFILE_LAYOUT", None) != derived.PROFILE_LAYOUT:
+        _fastplot = None
 
 
 def season_for_day(day: int, season_length: int = 15) -> str:
@@ -38,6 +52,7 @@ def apply_weather(
     crop_profiles=None,
     plot_regen=None,
     dynamics=None,
+    crop_profiles_flat=None,
 ) -> None:
     # Weather values are the same for every plot, so they are read once here
     # rather than per plot. `crop_profiles` maps crop_id to its cached static
@@ -74,6 +89,40 @@ def apply_weather(
     regen_pest = plot_regen.get("pest_pressure", 0.0) if plot_regen else 0.0
     regen_disease = plot_regen.get("disease_pressure", 0.0) if plot_regen else 0.0
     regenerates_nutrients = regen_n or regen_p or regen_k
+
+    # Compiled fast path, taken only when it is a like-for-like substitution:
+    # the caller must be using the real crop_growth module (a few tests pass
+    # their own) and must already hold the flattened per-crop profiles the
+    # kernel indexes. Anything else falls through to the loop below.
+    if _fastplot is not None and growth_module is crop_growth and crop_profiles_flat is not None:
+        _fastplot.apply_day(
+            player.plots,
+            day,
+            rainfall,
+            evaporation,
+            weather.get("temperature", 20),
+            (
+                regen_moisture,
+                regen_n,
+                regen_p,
+                regen_k,
+                regen_soil_health,
+                regen_pest,
+                regen_disease,
+            ),
+            (
+                dynamics.fallow_pest_decay,
+                dynamics.fallow_disease_decay,
+                dynamics.fallow_soil_health_regen,
+                dynamics.max_disease_pressure,
+                dynamics.disease_growth_per_rainfall,
+                dynamics.max_pest_pressure,
+                dynamics.pest_growth_per_day,
+            ),
+            crop_profiles_flat,
+        )
+        return
+
     for plot in player.plots:
         # Config-accepted (soil.regen_per_day.moisture) alongside the other
         # SOIL_LEVELS regen fields, folded into the same rainfall addition

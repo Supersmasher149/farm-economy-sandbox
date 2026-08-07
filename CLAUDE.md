@@ -31,6 +31,11 @@ python3 main.py batch --runs 100 --days 30 --start-money 300
 # batch defaults to a process pool (one worker per core); force sequential
 python3 main.py batch --runs 1000 --workers 1
 
+# batch draws a progress line (bar, %, done/total, sim/s, elapsed, ETA) on
+# stderr when stderr is a terminal; force it on or off
+python3 main.py batch --runs 1000 --progress
+python3 main.py batch --runs 1000 --no-progress
+
 # Full test suite
 python3 -m pytest
 
@@ -41,6 +46,13 @@ python3 -m pytest tests/test_engine.py::test_same_seed_produces_identical_result
 # Lint (ruff) -- config lives in pyproject.toml
 ruff check
 ruff format --check
+
+# Optional C accelerator (~1.15x); the simulator runs fine without it
+python3 tools/build_fastplot.py
+python3 tools/build_fastplot.py --clean
+
+# Where time actually goes (statistical sampler, not cProfile -- see below)
+python3 tools/sample_profile.py --runs 200
 ```
 
 `batch` writes `reports/run_results.csv`, `reports/config_snapshot.json`, and
@@ -51,6 +63,44 @@ A/B-testing a config or code change under identical simulated conditions.
 Report artifacts are published atomically (staged in a temp dir, then
 swapped in together, restoring the previous files if anything fails
 partway — see `_publish_report_artifacts` in `main.py`).
+
+`runner/progress.py` renders the batch progress line. It wraps the
+`run_batch` result stream as a lazy pass-through (counting only, stderr
+only), which is what keeps progress reporting outside the determinism and
+bounded-memory guarantees the batch runner makes — keep it that way.
+
+## Performance
+
+**The profile is flat — there is no hotspot to fix.** Measured with
+`tools/sample_profile.py`: the hottest single function is ~9% of self time,
+and the runtime splits roughly 45% numeric kernel / 44% engine glue / 6%
+agent decision logic. Report generation is irrelevant (~0.05% of a batch).
+`batch` already uses every core.
+
+Two measurement traps, both hit before:
+
+- **`cProfile` inflates this codebase ~4x and unevenly**, because a batch
+  makes ~85M calls; functions with many cheap calls look far hotter than
+  they are. Use `tools/sample_profile.py` (statistical, semantics-preserving).
+- **Self time in a leaf function is mostly its own arithmetic, not call
+  overhead.** Inlining it *relocates* the cost rather than removing it —
+  inlining `crop_growth._clamp` moved ~3.8% of self time straight into
+  `harvest_multipliers` for no net gain. Only changes that *eliminate work*
+  pay. Quote before/after wall clock against a pristine `git worktree`, never
+  a profiler self-time delta.
+
+`simulation/_fastplotmodule.c` is an **optional** compiled kernel for the
+per-plot daily physics (`weather.apply_weather`'s loop fused with
+`crop_growth.update_crop_stress`), worth ~1.15x. It is not built by default
+and is not required: `simulation/weather.py` falls back to the pure-Python
+loop, which stays the reference implementation. That loop is what
+`tests/test_fastplot_equivalence.py` compares the C against with **exact**
+float equality — if the two disagree, the C is wrong. Anything touching
+either implementation must keep them in lockstep, must preserve the hand-
+rolled Neumaier summation and literal `max`/`min` forms the header comment
+explains, and must be compiled with `-ffp-contract=off`. Rebuild and re-run
+the replay guard after editing it; a stale `.so` is rejected automatically
+via the `PROFILE_LAYOUT` constant rather than silently misreading fields.
 
 ## Architecture
 

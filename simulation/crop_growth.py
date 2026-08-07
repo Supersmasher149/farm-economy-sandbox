@@ -86,8 +86,12 @@ def harvest_multipliers(
     # compute_harvest_outcome. Keep those effects separate so the configured
     # yield penalty is not compounded with this quality signal.
     quality_stress = environmental_stress + planted.neglect_days * 0.08
-    yield_multiplier = _clamp(1.0 - environmental_stress, 0.15, 1.35)
-    quality_multiplier = _clamp(1.0 - quality_stress * 1.25, 0.0, 1.2)
+    # _clamp inlined as its literal max/min body here and below, for the same
+    # reason update_crop_stress does it: this runs once per harvest and the
+    # Python call overhead exceeded the arithmetic. The exact max/min form is
+    # load-bearing -- a comparison chain would not preserve +0.0 vs -0.0.
+    yield_multiplier = max(0.15, min(1.35, 1.0 - environmental_stress))
+    quality_multiplier = max(0.0, min(1.2, 1.0 - quality_stress * 1.25))
 
     if planted.fertilized:
         quality_multiplier += (fertilizer_config or {}).get(
@@ -101,9 +105,12 @@ def harvest_multipliers(
         yield_multiplier *= (
             dynamics.soil_health_yield_floor + plot.soil_health * dynamics.soil_health_yield_span
         )
+    # Bounds spelled out rather than unpacked from the *_BOUNDS constants:
+    # the tuple-unpacking call was measurably hot. The values are asserted
+    # against the constants in tests so the two cannot drift apart.
     return (
-        _clamp(yield_multiplier, *YIELD_MULTIPLIER_BOUNDS),
-        _clamp(quality_multiplier, *QUALITY_MULTIPLIER_BOUNDS),
+        max(0.1, min(1.5, yield_multiplier)),
+        max(0.0, min(1.25, quality_multiplier)),
     )
 
 
@@ -134,7 +141,7 @@ def compute_harvest_outcome(
     loss_chance = crop["loss_chance"] + loss_bonus
     if planted.fertilized:
         loss_chance -= fertilizer_config["loss_chance_reduction"]
-    if rng.roll_loss(_clamp(loss_chance, 0.0, 0.95)):
+    if rng.roll_loss(max(0.0, min(0.95, loss_chance))):
         return True, 0
 
     base_yield = rng.roll_yield(crop["min_yield"], crop["max_yield"])
@@ -148,7 +155,7 @@ def compute_harvest_outcome(
         # one input that could exceed the cap the design doc states applies
         # to every factor ("capped so no single factor creates unbounded
         # outcomes"). The bonus still has full effect below the cap.
-        yield_multiplier = _clamp(yield_multiplier + configured_bonus, *YIELD_MULTIPLIER_BOUNDS)
+        yield_multiplier = max(0.1, min(1.5, yield_multiplier + configured_bonus))
     neglect_penalty = min(
         planted.neglect_days * watering_settings["neglect_yield_penalty_per_day"],
         watering_settings["max_neglect_yield_penalty"],

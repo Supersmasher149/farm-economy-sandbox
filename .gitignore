@@ -1,5 +1,10 @@
 __pycache__/
 *.pyc
+
+# Built C accelerator (simulation/_fastplot). Optional and machine-specific:
+# build it with `python3 tools/build_fastplot.py`, never commit the binary.
+*.so
+build/
 .pytest_cache/
 .ruff_cache/
 .DS_Store

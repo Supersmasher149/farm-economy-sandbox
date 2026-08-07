@@ -32,6 +32,7 @@ from metrics.report import generate_markdown_report
 from metrics.run_results import write_csv
 from metrics.warnings import evaluate_warnings
 from runner.batch_run import resolve_base_seed, run_batch
+from runner.progress import ProgressReporter, format_duration, format_rate
 from runner.single_run import run_single
 from simulation.configuration import validate, validate_simulation_config
 
@@ -202,6 +203,11 @@ def cmd_batch(args):
         workers=args.workers,
     )
 
+    # Progress is a pass-through over the result stream (stderr only), so it
+    # cannot affect what a given seed produces.
+    progress = ProgressReporter(total_runs, enabled=args.progress)
+    results = progress.track(results)
+
     os.makedirs(REPORTS_DIR, exist_ok=True)
     crop_ids = [c["id"] for c in crops]
     crop_names = {c["id"]: c["name"] for c in crops}
@@ -259,6 +265,9 @@ def cmd_batch(args):
     report_path = os.path.join(REPORTS_DIR, "summary_report.md")
 
     print(f"Ran {args.runs} simulations x {len(agents)} strategies = {total_runs} total runs.")
+    print(
+        f"Time:   {format_duration(progress.elapsed)} elapsed ({format_rate(progress.rate)} sim/s)"
+    )
     print(f"CSV:    {csv_path}")
     print(f"Config: {config_snapshot_path}")
     print(f"Report: {report_path}")
@@ -332,6 +341,12 @@ parallelism:
   --seed at any worker count, because per-run seeds are minted single-
   threaded before any work is dispatched. `single` and `replay` are always
   one process.
+
+progress:
+  A long `batch` prints a live status line to stderr -- bar, percent, runs
+  done vs total, sim/s, elapsed, and ETA -- whenever stderr is a terminal.
+  Force it with --progress or suppress it with --no-progress; stdout (the
+  report) is identical either way.
 
 examples:
   # Play one strategy once and print a full day-by-day history
@@ -481,6 +496,8 @@ def build_parser():
             "  python3 main.py batch --runs 100 --days 30 --start-money 300\n\n"
             "  # Force sequential execution (identical results, easier to profile)\n"
             "  python3 main.py batch --runs 1000 --workers 1\n\n"
+            "  # Force the progress line on when stderr is not a terminal\n"
+            "  python3 main.py batch --runs 100000 --progress\n\n"
             f"Runs all {len(AGENT_REGISTRY)} registered strategies. See "
             "`python3 main.py single --help`\nfor what each one probes.\n"
         ),
@@ -516,6 +533,18 @@ def build_parser():
             "Worker processes (default: one per CPU core). Use 1 to force "
             "sequential. Results are identical for a given seed at any worker "
             "count -- per-run seeds are minted before dispatch."
+        ),
+    )
+    batch.add_argument(
+        "--progress",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Live progress line on stderr: bar, percent, runs completed vs "
+            "total, simulations/second, elapsed, and estimated time left. "
+            "Shown automatically when stderr is a terminal; --progress forces "
+            "it on (e.g. into a log), --no-progress off. Report output on "
+            "stdout is unaffected either way."
         ),
     )
     batch.add_argument(

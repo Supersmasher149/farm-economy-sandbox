@@ -114,6 +114,7 @@ def run_day(
         lookups.crop_profiles,
         lookups.plot_regen,
         lookups.soil_dynamics,
+        lookups.crop_profiles_flat,
     )
     storage = _effective_storage(lookups.storage_config, player, upgrades_by_id, lookups)
     storage_liability = inventory.capture_storage_liability(player, storage)
