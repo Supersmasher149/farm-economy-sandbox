@@ -10,17 +10,10 @@ whenever the module is missing, so the README's "no third-party dependencies
 to run the simulator" promise still holds. Building it only replaces the
 per-plot daily physics with a compiled equivalent.
 
-This invokes the C compiler directly via `sysconfig` rather than going
-through setuptools, because setuptools is not a dependency of this project
-and adding one just to build an *optional* accelerator would defeat the
-point. Only the C compiler and the CPython headers are required, both of
-which ship with any normal CPython install.
-
-The flags are load-bearing, not incidental: `-ffp-contract=off` stops the
-compiler contracting `a * b + c` into an FMA and `-fno-fast-math` stops it
-reassociating floating point. Either changes results in the last bits, which
-breaks bit-exact seed replay. See the header of
-simulation/_fastplotmodule.c and run the replay-guard skill after building.
+The compiler invocation and the load-bearing float flags live in
+`tools/_ccompile.py`, shared with `tools/build_cython.py` so the two optional
+accelerators cannot drift apart on float semantics. Run the replay-guard skill
+after building.
 """
 
 from __future__ import annotations
@@ -29,18 +22,16 @@ import argparse
 import os
 import subprocess
 import sys
-import sysconfig
+
+import _ccompile
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = os.path.join(REPO_ROOT, "simulation", "_fastplotmodule.c")
 MODULE_NAME = "_fastplot"
 
-REQUIRED_FLAGS = ["-ffp-contract=off", "-fno-fast-math"]
-
 
 def output_path() -> str:
-    suffix = sysconfig.get_config_var("EXT_SUFFIX") or ".so"
-    return os.path.join(REPO_ROOT, "simulation", MODULE_NAME + suffix)
+    return os.path.join(REPO_ROOT, "simulation", MODULE_NAME + _ccompile.ext_suffix())
 
 
 def clean() -> int:
@@ -54,16 +45,11 @@ def clean() -> int:
 
 
 def build() -> int:
-    include = sysconfig.get_paths()["include"]
     target = output_path()
-    compiler = os.environ.get("CC") or sysconfig.get_config_var("CC") or "cc"
-
-    command = [*compiler.split(), "-O2", *REQUIRED_FLAGS, "-Wall", "-shared"]
-    if sys.platform == "darwin":
-        # Extension modules resolve CPython symbols from the interpreter that
-        # loads them rather than linking against libpython.
-        command += ["-undefined", "dynamic_lookup"]
-    command += ["-fPIC", f"-I{include}", SOURCE, "-o", target]
+    # -Wall stays for this one: it is hand-written C, so warnings are
+    # actionable. tools/build_cython.py deliberately omits it.
+    command = _ccompile.compile_command(SOURCE, target, extra_flags=["-Wall"])
+    _ccompile.assert_required_flags(command)
 
     print(" ".join(command))
     result = subprocess.run(command, cwd=REPO_ROOT)
