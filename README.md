@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Supersmasher149/farm-economy-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/Supersmasher149/farm-economy-sandbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
 
 A headless, deterministic farm-economy simulator built for balance testing.
 Instead of a playable game, it ships a roster of scripted agents that each
@@ -17,7 +17,9 @@ the exact same day-by-day outcome.
 
 ## Requirements
 
-- Python 3.11+ (uses `match`-free but relies on `dict | None` type hints)
+- Python 3.12+ — not 3.11. The simulation depends on `sum()` applying Neumaier
+  compensated summation to floats, which CPython only does from 3.12; on 3.11
+  the same seed produces a measurably different run.
 - `pytest` and `ruff` for the test suite and lint checks:
   `pip install -r requirements-dev.txt`
 
@@ -39,6 +41,30 @@ Without it, `simulation/weather.py` uses the pure-Python plot loop, which
 remains the reference implementation. The two are held to **bit-identical**
 output by `tests/test_fastplot_equivalence.py`, so enabling the accelerator
 never changes what a seed replays to.
+
+### Optional: the Cython build
+
+A second, independent accelerator compiles `simulation/` and `agents/`
+themselves, worth a further **~1.17x** on a 1000-run batch. Unlike the C
+kernel this one needs a build-time package (`pip install cython`); nothing
+imports it at runtime, so the no-dependencies promise above still holds.
+
+```bash
+python3 tools/build_cython.py                          # build
+FARM_COMPILED=1 python3 main.py batch --runs 1000      # opt in per command
+python3 tools/build_cython.py --clean                  # remove it again
+```
+
+It is **opt-in**: without `FARM_COMPILED` set, nothing loads it and you get
+the pure-Python modules. Artifacts live under `build/compiled/<tag>/`, never
+beside the sources, and the build records a SHA-256 of every source file — so
+editing a `.py` without rebuilding falls back with a warning naming the module
+rather than silently running stale code. `FARM_COMPILED=strict` turns that
+fallback into an error, which is what CI uses.
+
+The source files remain the reference implementation, and the same golden
+replay baseline is asserted against both builds, so no combination of
+accelerators changes what a seed replays to.
 
 ## Quick start
 

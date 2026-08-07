@@ -10,7 +10,8 @@ runner plays every strategy thousands of times to surface how the economy
 behaves in aggregate (dominant crops, exploitable upgrades, bankruptcy traps).
 Every run is seeded and exactly reproducible from that seed.
 
-Python 3.11+, no third-party dependencies to run the simulator. `pytest` for
+Python 3.12+ (3.11 changes simulation results — see Performance), no
+third-party dependencies to run the simulator. `pytest` for
 tests.
 
 ## Commands
@@ -31,6 +32,10 @@ python3 main.py batch --runs 100 --days 30 --start-money 300
 # batch defaults to a process pool (one worker per core); force sequential
 python3 main.py batch --runs 1000 --workers 1
 
+# tune worker count (default is os.cpu_count(); oversubscribing does not
+# pay on large batches -- see Performance below)
+python3 main.py batch --runs 1000 --workers 14
+
 # batch draws a progress line (bar, %, done/total, sim/s, elapsed, ETA) on
 # stderr when stderr is a terminal; force it on or off
 python3 main.py batch --runs 1000 --progress
@@ -50,6 +55,13 @@ ruff format --check
 # Optional C accelerator (~1.15x); the simulator runs fine without it
 python3 tools/build_fastplot.py
 python3 tools/build_fastplot.py --clean
+
+# Optional Cython build of simulation/ + agents/ (~1.17x on top of the above).
+# Needs `pip install cython`; ignored entirely unless FARM_COMPILED is set.
+python3 tools/build_cython.py
+FARM_COMPILED=1 python3 main.py batch --runs 1000
+FARM_COMPILED=strict python3 -m pytest   # stale/missing artifact = error, not fallback
+python3 tools/build_cython.py --clean
 
 # Where time actually goes (statistical sampler, not cProfile -- see below)
 python3 tools/sample_profile.py --runs 200
@@ -72,10 +84,46 @@ bounded-memory guarantees the batch runner makes — keep it that way.
 ## Performance
 
 **The profile is flat — there is no hotspot to fix.** Measured with
-`tools/sample_profile.py`: the hottest single function is ~9% of self time,
-and the runtime splits roughly 45% numeric kernel / 44% engine glue / 6%
-agent decision logic. Report generation is irrelevant (~0.05% of a batch).
-`batch` already uses every core.
+`tools/sample_profile.py`: the hottest single function is ~10% of self time.
+Without the C accelerator the runtime splits roughly 45% numeric kernel / 44%
+engine glue / 6% agent decision logic; *with* it built the split is 55% engine
+glue / 32% numeric kernel / 8% agents, and the whole fused kernel is down to
+10.1% of runtime. Report generation is irrelevant (~0.05% of a batch).
+
+**What that leaves.** Since the kernel is 10% of runtime, making it infinitely
+fast is a 1.11x ceiling — hand-written C is close to exhausted here. The only
+bucket with room is the 55% engine glue, which is dict/allocation churn rather
+than arithmetic, so it needs a whole-module compiler rather than more `.c`.
+Measured bound on that: 161 Python-level calls per sim-day against a 41,833
+ns/sim-day budget (259 ns of work per call), so removing call overhead
+entirely is worth roughly 1.06–1.18x. Options already measured and rejected:
+CPython 3.14's JIT (`PYTHON_JIT=1`) is **5% slower** here; `gc.disable()` /
+`gc.freeze()` is noise; upgrading the interpreter is already banked (3.11 →
+3.14 was 1.16x).
+
+**The Cython build (`tools/build_cython.py`) is what took that bucket**, at
+**1.17x** on a 1000-run batch, interleaved min-of-5 against a pristine tree
+with `_fastplot` built on both sides. Scope matters: five glue modules alone
+measured only 1.122x, the whole `simulation/` package 1.157x, and
+`simulation/` + `agents/` 1.174x. Zero source changes; the `.py` files stay
+the reference. Two things make it safe and neither is optional — the Cython
+directives in that script's docstring (with `annotation_typing` left at its
+`True` default it silently coerces this codebase's `float` annotations to C
+doubles) and the opt-in, out-of-tree loading in `simulation/_compiled.py`.
+**Never build Cython output in place**: an extension module beside its own
+`.py` shadows it silently, edits stop taking effect, and it defeats the
+manifest's staleness check. `_compiled.in_tree_artifacts()` warns about this
+at import and `tests/test_compiled_shim.py` fails on it.
+
+**Worker count: leave the default alone.** `batch` defaults to
+`os.cpu_count()` (`runner/batch_run.py`). Oversubscribing past the core count
+looks like a free win on a mid-size batch and isn't: measured on a 6P+2E
+machine, 14 workers beat 8 by 1.05x at `--runs 300` but only 1.02x at 100 and
+1.007x at 1000. The straggler effect it exploits amortizes away once each
+worker has enough runs queued, so it evaporates at exactly the batch sizes
+worth optimizing. Output is byte-identical at every worker count —
+`batch_run.py` mints per-run seeds single-threaded before dispatch precisely
+so that holds — so it is safe to tune, just not worth it.
 
 Two measurement traps, both hit before:
 
@@ -94,8 +142,10 @@ per-plot daily physics (`weather.apply_weather`'s loop fused with
 `crop_growth.update_crop_stress`), worth ~1.15x. It is not built by default
 and is not required: `simulation/weather.py` falls back to the pure-Python
 loop, which stays the reference implementation. That loop is what
-`tests/test_fastplot_equivalence.py` compares the C against with **exact**
-float equality — if the two disagree, the C is wrong. Anything touching
+`tests/test_fastplot_equivalence.py` compares the C against, by `float.hex()`
+rather than `==` (`0.0 == -0.0` is True, so `==` cannot see the signed-zero
+difference the literal `max`/`min` forms exist to preserve) — if the two
+disagree, the C is wrong. Anything touching
 either implementation must keep them in lockstep, must preserve the hand-
 rolled Neumaier summation and literal `max`/`min` forms the header comment
 explains, and must be compiled with `-ffp-contract=off`. Rebuild and re-run
@@ -135,7 +185,11 @@ wraps a single `random.Random(seed)` and is the only source of randomness
 threaded through a run (weather, price variation, yields, contract offers,
 ...). The same seed must always reproduce the same day-by-day outcome —
 `main.py replay` and `tests/test_engine.py::test_same_seed_produces_identical_results`
-exist specifically to check this. Any change to simulation logic that
+exist specifically to check this, and the `replay-guard` skill is the real
+gate: a committed bit-exact baseline (hex floats, plus a per-day trajectory
+digest) across every strategy and four seeds. Run
+`python3 .claude/skills/replay-guard/scripts/golden_replay.py check` after
+touching anything in `simulation/`; it takes under a second. Any change to simulation logic that
 consumes randomness (or changes call order relative to `rng`) changes replay
 output for old seeds; if you touch anything in `simulation/`, run the full
 test suite and reason about whether existing recorded seeds still mean the
