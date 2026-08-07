@@ -1,6 +1,17 @@
 """Pure crop stress and harvest calculations."""
 
-from simulation.derived import crop_profile
+from simulation.derived import DEFAULT_DYNAMICS, crop_profile
+
+# Bounds on the multipliers harvest_multipliers produces. Named so that
+# compute_harvest_outcome can re-apply the yield bound after adding the
+# configured fertilizer bonus, rather than letting that one input escape a
+# cap the design doc says every input is subject to.
+YIELD_MULTIPLIER_BOUNDS = (0.1, 1.5)
+QUALITY_MULTIPLIER_BOUNDS = (0.0, 1.25)
+
+# Fertilizer's quality benefit when the fertilizer config does not specify
+# one. Kept equal to the value this was hard-coded to.
+DEFAULT_FERTILIZER_QUALITY_BONUS = 0.05
 
 
 def _clamp(value, low=0.0, high=1.0):
@@ -53,8 +64,16 @@ def update_crop_stress(planted, plot, crop: dict, weather: dict, profile=None) -
         setattr(plot, nutrient, max(0.0, min(1.0, getattr(plot, nutrient) - amount)))
 
 
-def harvest_multipliers(planted, crop: dict, plot=None) -> tuple[float, float]:
-    """Return yield and quality multipliers from accumulated crop conditions."""
+def harvest_multipliers(
+    planted, crop: dict, plot=None, fertilizer_config=None, dynamics=None
+) -> tuple[float, float]:
+    """Return yield and quality multipliers from accumulated crop conditions.
+
+    `fertilizer_config` supplies the fertilized-quality bonus and `dynamics`
+    the rotation/soil-health tuning; both fall back to the shipped defaults,
+    so omitting them reproduces the previous hard-coded behaviour exactly.
+    """
+    dynamics = dynamics if dynamics is not None else DEFAULT_DYNAMICS
     environmental_stress = (
         planted.water_stress * 0.16
         + planted.nutrient_stress * 0.18
@@ -71,14 +90,21 @@ def harvest_multipliers(planted, crop: dict, plot=None) -> tuple[float, float]:
     quality_multiplier = _clamp(1.0 - quality_stress * 1.25, 0.0, 1.2)
 
     if planted.fertilized:
-        quality_multiplier += 0.05
+        quality_multiplier += (fertilizer_config or {}).get(
+            "quality_bonus", DEFAULT_FERTILIZER_QUALITY_BONUS
+        )
     if plot is not None:
         family = crop.get("family")
         if family and plot.previous_crop_family == family:
-            yield_multiplier *= 0.85
-            quality_multiplier *= 0.9
-        yield_multiplier *= 0.85 + plot.soil_health * 0.25
-    return _clamp(yield_multiplier, 0.1, 1.5), _clamp(quality_multiplier, 0.0, 1.25)
+            yield_multiplier *= dynamics.same_family_yield_penalty
+            quality_multiplier *= dynamics.same_family_quality_penalty
+        yield_multiplier *= (
+            dynamics.soil_health_yield_floor + plot.soil_health * dynamics.soil_health_yield_span
+        )
+    return (
+        _clamp(yield_multiplier, *YIELD_MULTIPLIER_BOUNDS),
+        _clamp(quality_multiplier, *QUALITY_MULTIPLIER_BOUNDS),
+    )
 
 
 def quality_grade(score: float) -> str:
@@ -92,7 +118,13 @@ def quality_grade(score: float) -> str:
 
 
 def compute_harvest_outcome(
-    planted, crop: dict, watering_settings: dict, fertilizer_config: dict, rng, plot=None
+    planted,
+    crop: dict,
+    watering_settings: dict,
+    fertilizer_config: dict,
+    rng,
+    plot=None,
+    dynamics=None,
 ):
     """Compatibility API returning `(lost, yield)` for one mature plant."""
     loss_bonus = min(
@@ -106,10 +138,17 @@ def compute_harvest_outcome(
         return True, 0
 
     base_yield = rng.roll_yield(crop["min_yield"], crop["max_yield"])
-    yield_multiplier, _quality = harvest_multipliers(planted, crop, plot)
+    yield_multiplier, _quality = harvest_multipliers(
+        planted, crop, plot, fertilizer_config, dynamics
+    )
     if planted.fertilized:
         configured_bonus = fertilizer_config.get("yield_bonus_pct", 0.25)
-        yield_multiplier += configured_bonus
+        # Re-bounded after the bonus: harvest_multipliers' own clamp happens
+        # before this is added, so without this a fertilized harvest was the
+        # one input that could exceed the cap the design doc states applies
+        # to every factor ("capped so no single factor creates unbounded
+        # outcomes"). The bonus still has full effect below the cap.
+        yield_multiplier = _clamp(yield_multiplier + configured_bonus, *YIELD_MULTIPLIER_BOUNDS)
     neglect_penalty = min(
         planted.neglect_days * watering_settings["neglect_yield_penalty_per_day"],
         watering_settings["max_neglect_yield_penalty"],

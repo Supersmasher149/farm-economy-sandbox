@@ -31,14 +31,30 @@ def generate_weather(day: int, config: dict, rng) -> dict:
 
 
 def apply_weather(
-    player, crops_by_id: dict, weather: dict, growth_module, crop_profiles=None, plot_regen=None
+    player,
+    crops_by_id: dict,
+    weather: dict,
+    growth_module,
+    crop_profiles=None,
+    plot_regen=None,
+    dynamics=None,
 ) -> None:
     # Weather values are the same for every plot, so they are read once here
     # rather than per plot. `crop_profiles` maps crop_id to its cached static
     # growth inputs; the engine passes the one it already holds, and omitting
     # it just falls back to an equivalent per-crop lookup.
     rainfall = weather.get("rainfall", 0.0)
+    # Evaporation is a property of the day's weather, not of whether a plot
+    # happens to be occupied, so it is read once here and applied to every
+    # plot. Growing plots have it applied by growth_module.update_crop_stress
+    # (after that function reads today's moisture for water stress); fallow
+    # plots have it applied in the `planted is None` branch below. Previously
+    # only the former happened, so a fallow plot took on rainfall and never
+    # gave any back -- it saturated at 1.0 and handed the next crop planted
+    # there several stress-free days that no design doc ever granted it.
+    evaporation = weather.get("evaporation", 0.08)
     day = player.day
+    dynamics = dynamics if dynamics is not None else derived.DEFAULT_DYNAMICS
     # Resolved once per day, not per plot -- `plot_regen` is already a
     # cached, per-world dict (see derived.WorldLookups.plot_regen), and
     # defaults to no regen so a caller that omits it keeps today's behaviour.
@@ -82,9 +98,10 @@ def apply_weather(
             plot.disease_pressure = max(0.0, plot.disease_pressure - regen_disease)
         planted = plot.crop
         if planted is None:
-            plot.pest_pressure = max(0.0, plot.pest_pressure * 0.9)
-            plot.disease_pressure = max(0.0, plot.disease_pressure * 0.9)
-            plot.soil_health = min(1.0, plot.soil_health + 0.005)
+            plot.moisture = max(0.0, min(1.0, plot.moisture - evaporation))
+            plot.pest_pressure = max(0.0, plot.pest_pressure * dynamics.fallow_pest_decay)
+            plot.disease_pressure = max(0.0, plot.disease_pressure * dynamics.fallow_disease_decay)
+            plot.soil_health = min(1.0, plot.soil_health + dynamics.fallow_soil_health_regen)
             continue
         crop_id = planted.crop_id
         crop = crops_by_id[crop_id]
@@ -98,5 +115,10 @@ def apply_weather(
         interval = crop.get("water_interval_days", 3)
         overdue = day - planted.last_watered_day - interval
         planted.neglect_days = max(0, overdue)
-        plot.disease_pressure = min(0.8, plot.disease_pressure + rainfall * 0.08)
-        plot.pest_pressure = min(0.8, plot.pest_pressure + 0.005)
+        plot.disease_pressure = min(
+            dynamics.max_disease_pressure,
+            plot.disease_pressure + rainfall * dynamics.disease_growth_per_rainfall,
+        )
+        plot.pest_pressure = min(
+            dynamics.max_pest_pressure, plot.pest_pressure + dynamics.pest_growth_per_day
+        )

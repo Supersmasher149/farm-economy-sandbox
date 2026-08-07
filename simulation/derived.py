@@ -44,6 +44,52 @@ _MAX_ENTRIES = 512
 DEFAULT_NUTRIENT_DEMAND = {"nitrogen": 0.02, "phosphorus": 0.01, "potassium": 0.01}
 
 
+# Plot dynamics that were previously hard-coded across weather.py,
+# actions.py, and crop_growth.py. `config/soil.json`'s "dynamics" section
+# overrides any of them; every default here is the exact constant the code
+# used before, so a config that omits the section reproduces prior behaviour
+# bit-for-bit. Depletion is now tunable from config for the same reason
+# regeneration already was -- a balance pass should not have to edit
+# simulation code to move either side of the same mechanic.
+DEFAULT_SOIL_DYNAMICS = {
+    # actions.harvest_mature: soil cost of taking a harvest off a plot.
+    "harvest_soil_health_cost": 0.02,
+    "min_soil_health": 0.1,
+    # weather.apply_weather: fallow-only recovery, on top of regen_per_day.
+    "fallow_pest_decay": 0.9,
+    "fallow_disease_decay": 0.9,
+    "fallow_soil_health_regen": 0.005,
+    # weather.apply_weather: pressure accumulated while a crop is growing.
+    "pest_growth_per_day": 0.005,
+    "disease_growth_per_rainfall": 0.08,
+    "max_pest_pressure": 0.8,
+    "max_disease_pressure": 0.8,
+    # crop_growth.harvest_multipliers: rotation incentive and the soil-health
+    # yield curve (yield scales by floor + soil_health * span).
+    "same_family_yield_penalty": 0.85,
+    "same_family_quality_penalty": 0.9,
+    "soil_health_yield_floor": 0.85,
+    "soil_health_yield_span": 0.25,
+}
+
+
+class SoilDynamics:
+    """Resolved `soil.dynamics` values, read once per world config."""
+
+    __slots__ = tuple(DEFAULT_SOIL_DYNAMICS)
+
+    def __init__(self, soil_config: dict | None = None):
+        configured = (soil_config or {}).get("dynamics", {})
+        for name, default in DEFAULT_SOIL_DYNAMICS.items():
+            setattr(self, name, configured.get(name, default))
+
+
+# Shared fallback for callers outside the engine's day loop (direct unit
+# tests, forecasting helpers) that have no world config to hand. Never
+# mutated -- SoilDynamics is written once at construction.
+DEFAULT_DYNAMICS = SoilDynamics()
+
+
 class CropProfile:
     """Static growth inputs for one crop, read straight off the config dict.
 
@@ -105,6 +151,7 @@ class WorldLookups:
         "buyers",
         "processing",
         "plot_regen",
+        "soil_dynamics",
     )
 
     def __init__(self, world: dict, crops_by_id: dict):
@@ -124,7 +171,9 @@ class WorldLookups:
         # Defaults to no regen at all so a world config without a
         # "soil.regen_per_day" section behaves exactly as before this was
         # added.
-        self.plot_regen = world.get("soil", {}).get("regen_per_day", {})
+        soil = world.get("soil", {})
+        self.plot_regen = soil.get("regen_per_day", {})
+        self.soil_dynamics = SoilDynamics(soil)
         products = world["processing"].get("products", [])
         self.items_by_id = dict(crops_by_id)
         self.items_by_id.update({product["id"]: product for product in products})
@@ -151,9 +200,14 @@ class WorldLookups:
         so a caller mutating the result cannot corrupt the cache; only the
         derived values are shared, and no caller mutates those.
         """
-        key = frozenset(upgrades_owned)
-        cached = self._storage.get(key)
-        if cached is None:
+        # `base` is part of the key, not just `upgrades_owned`: the derived
+        # value depends on both, and keying on the upgrade set alone silently
+        # returned another config's storage whenever a caller passed a
+        # different base with the same upgrades owned. The entry keeps a
+        # strong reference to `base` so its id() cannot be recycled.
+        key = (id(base), frozenset(upgrades_owned))
+        entry = self._storage.get(key)
+        if entry is None:
             cached = dict(base)
             # sorted() only to keep the fold order stable across processes;
             # the shipped config has a single storage upgrade, so no ordering
@@ -167,20 +221,29 @@ class WorldLookups:
                     cached["shelf_life_multiplier"] = cached.get(
                         "shelf_life_multiplier", 1
                     ) * effect.get("shelf_life_multiplier", 1)
-            self._storage[key] = cached
-        return dict(cached)
+            entry = (base, cached)
+            self._storage[key] = entry
+        return dict(entry[1])
 
     def processing_capacity(self, config: dict, upgrades_owned: set, upgrades_by_id: dict) -> int:
-        key = frozenset(upgrades_owned)
-        capacity = self._capacity.get(key)
-        if capacity is None:
+        # Keyed on `config` as well as the owned upgrades, for the same reason
+        # effective_storage above is.
+        key = (id(config), frozenset(upgrades_owned))
+        entry = self._capacity.get(key)
+        if entry is None:
             capacity = config.get("base_capacity", 0)
-            for upgrade_id in upgrades_owned:
+            # sorted() so the fold order cannot depend on set iteration order.
+            # Configuration forces every processing_capacity amount to be an
+            # integer, so the sum is exact and order is unobservable today --
+            # this keeps that true if a fractional effect is ever introduced,
+            # rather than letting it silently break replay.
+            for upgrade_id in sorted(upgrades_owned):
                 effect = upgrades_by_id[upgrade_id]["effect"]
                 if effect["type"] == "processing_capacity":
                     capacity += effect["amount"]
-            self._capacity[key] = capacity
-        return capacity
+            entry = (config, capacity)
+            self._capacity[key] = entry
+        return entry[1]
 
 
 def _build_market_profiles(items_by_id: dict, market_config: dict) -> tuple:

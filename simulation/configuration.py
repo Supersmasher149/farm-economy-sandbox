@@ -18,6 +18,27 @@ SOIL_LEVELS = {
     "disease_pressure",
 }
 
+# Permitted range per `soil.dynamics` key, as (minimum, maximum); None means
+# unbounded on that side. Keys must match simulation.derived's
+# DEFAULT_SOIL_DYNAMICS exactly -- tests/test_configuration.py pins that.
+# The two yield-curve terms are capped above 1 because they scale a
+# multiplier rather than being one; the rest are fractions or decay factors.
+SOIL_DYNAMICS_BOUNDS = {
+    "harvest_soil_health_cost": (0, 1),
+    "min_soil_health": (0, 1),
+    "fallow_pest_decay": (0, 1),
+    "fallow_disease_decay": (0, 1),
+    "fallow_soil_health_regen": (0, 1),
+    "pest_growth_per_day": (0, 1),
+    "disease_growth_per_rainfall": (0, None),
+    "max_pest_pressure": (0, 1),
+    "max_disease_pressure": (0, 1),
+    "same_family_yield_penalty": (0, 1),
+    "same_family_quality_penalty": (0, 1),
+    "soil_health_yield_floor": (0, 2),
+    "soil_health_yield_span": (0, 2),
+}
+
 
 def validate(crops: list, upgrades: list, world: dict) -> None:
     """Validate crop, upgrade, and world configuration or raise ``ValueError``."""
@@ -216,6 +237,8 @@ def _validate_fertilizer(config: dict) -> None:
     _number(config, "cost", path, minimum=0)
     _number(config, "yield_bonus_pct", path, minimum=0)
     _number(config, "loss_chance_reduction", path, minimum=0, maximum=1)
+    if "quality_bonus" in config:
+        _number(config, "quality_bonus", path, minimum=0, maximum=1)
     _nonnegative_mapping(
         config.get("nutrients_added", {}),
         f"{path}.nutrients_added",
@@ -241,6 +264,22 @@ def _validate_soil(config: dict) -> None:
         SOIL_LEVELS - {"ph"},
         maximum=1,
     )
+    _validate_soil_dynamics(config.get("dynamics", {}))
+
+
+def _validate_soil_dynamics(dynamics) -> None:
+    """Validate `soil.dynamics`, the depletion/rotation counterpart to
+    `regen_per_day`. Every key is optional; simulation.derived's
+    DEFAULT_SOIL_DYNAMICS supplies any that are omitted.
+    """
+    path = "soil.dynamics"
+    _require_mapping(dynamics, path)
+    unknown = set(dynamics) - SOIL_DYNAMICS_BOUNDS.keys()
+    if unknown:
+        raise ValueError(f"{path} contains unknown fields: {sorted(unknown)}")
+    for key, (minimum, maximum) in SOIL_DYNAMICS_BOUNDS.items():
+        if key in dynamics:
+            _number(dynamics[key], None, f"{path}.{key}", minimum=minimum, maximum=maximum)
 
 
 def _validate_weather(config: dict) -> None:
@@ -298,6 +337,8 @@ def _validate_contracts(config: dict) -> None:
     _number(config, "production_safety_factor", "contracts", minimum=0, maximum=1)
     if "offer_expiry_days" in config:
         _integer(config, "offer_expiry_days", "contracts", minimum=1)
+    if "fallback_price_multiplier" in config:
+        _number(config, "fallback_price_multiplier", "contracts", minimum=0)
 
 
 def _validate_buyers(buyers: list, item_ids: set) -> None:

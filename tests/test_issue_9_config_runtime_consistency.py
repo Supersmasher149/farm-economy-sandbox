@@ -86,10 +86,13 @@ def test_soil_regen_moisture_is_applied_at_runtime():
     player = PlayerState(money=10, slots_total=1)
     player.plots[0].moisture = 0.5
 
+    # Evaporation pinned to zero so this isolates the regen term. Fallow
+    # plots evaporate like planted ones, so omitting the key would apply the
+    # 0.08 default and confound what this test is measuring.
     weather.apply_weather(
         player,
         crops_by_id,
-        {"rainfall": 0.0},
+        {"rainfall": 0.0, "evaporation": 0.0},
         crop_growth,
         plot_regen=malformed["soil"]["regen_per_day"],
     )

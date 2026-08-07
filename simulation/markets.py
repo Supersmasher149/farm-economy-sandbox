@@ -149,6 +149,14 @@ def sell(
         player.revenue_by_channel[channel["id"]] = (
             player.revenue_by_channel.get(channel["id"], 0.0) + revenue
         )
+        # Revenue from value-added products, tracked separately so processing
+        # margin is derivable (revenue here vs. the "processing" expense
+        # category). The field existed but was never written, so every report
+        # showed processing revenue as 0.0. Every lot in `planned` shares one
+        # item_id and therefore one item_type, so the first one classifies
+        # the whole sale.
+        if planned[0][0].item_type == "product":
+            player.processing_revenue += revenue
         player.market_supply[item_id] = player.market_supply.get(item_id, 0.0) + sold
         return revenue, sold
     return 0.0, 0
