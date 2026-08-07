@@ -6,21 +6,38 @@ and the replay-guard skill), so "close enough" is a failure: a single
 last-bit difference compounds across 365 simulated days and changes recorded
 outcomes.
 
-These tests therefore compare the two implementations with `==` on floats,
-never `pytest.approx`. The Python loop in simulation/weather.py is the
-reference; if they disagree, the C code is wrong.
+These tests therefore compare the two implementations by `float.hex()`, never
+`pytest.approx` and never bare `==`. `==` is not strong enough here: `0.0 ==
+-0.0` is True, so an `==` comparison cannot detect a signed-zero difference --
+and signed zero is precisely what the literal `max`/`min` forms in
+simulation/crop_growth.py and the hand-written `py_min`/`py_max` in
+simulation/_fastplotmodule.c exist to preserve. Comparing hex also makes NaN
+compare equal to NaN, which `==` gets wrong in the other direction. The Python
+loop in simulation/weather.py is the reference; if they disagree, the C is
+wrong.
 
-Every test is skipped when the extension is not built, so the suite passes
-on a checkout that never ran `python3 tools/build_fastplot.py`.
+Every test is skipped when the extension is not built, so the suite passes on
+a checkout that never ran `python3 tools/build_fastplot.py`. Set
+FARM_REQUIRE_COMPILED=1 to turn that skip into a failure -- CI sets it on the
+job that builds the extension, so a silently failed build cannot masquerade as
+a green run in which every one of these tests was skipped.
 """
 
 import copy
+import os
 import random
 
 import pytest
 
 from simulation import crop_growth, derived, weather
 from simulation.state import PlantedCrop, PlayerState, PlotState
+
+if weather._fastplot is None and os.environ.get("FARM_REQUIRE_COMPILED"):
+    raise RuntimeError(
+        "FARM_REQUIRE_COMPILED is set but simulation._fastplot is unavailable. "
+        "Either the build failed or the .so is stale (PROFILE_LAYOUT mismatch); "
+        "run python3 tools/build_fastplot.py and check its output."
+    )
 
 pytestmark = pytest.mark.skipif(
     weather._fastplot is None,
@@ -140,19 +157,25 @@ def _snapshot(player):
     return state
 
 
+def _bits(value):
+    """Compare-by-bits key for a float. See this module's docstring for why
+    `==` is not sufficient (it cannot see +0.0 vs -0.0)."""
+    return value.hex() if isinstance(value, float) else value
+
+
 def _assert_bit_identical(expected, actual, context):
     assert len(expected) == len(actual)
     for index, (want, got) in enumerate(zip(expected, actual, strict=True)):
         for field in PLOT_FIELDS:
-            # Exact equality, deliberately: see this module's docstring.
-            assert got[field] == want[field], (
+            # Exact bit equality, deliberately: see this module's docstring.
+            assert _bits(got[field]) == _bits(want[field]), (
                 f"{context}: plot {index} field {field!r} diverged: "
                 f"python={want[field]!r} c={got[field]!r}"
             )
         assert (want["crop"] is None) == (got["crop"] is None)
         if want["crop"] is not None:
             for field in STRESS_FIELDS:
-                assert got["crop"][field] == want["crop"][field], (
+                assert _bits(got["crop"][field]) == _bits(want["crop"][field]), (
                     f"{context}: plot {index} crop field {field!r} diverged: "
                     f"python={want['crop'][field]!r} c={got['crop'][field]!r}"
                 )
@@ -239,6 +262,45 @@ def test_all_plots_fallow_matches_python():
         player.planted.clear()
         expected, actual = _run_both(player, _random_weather(rng), REGEN, dynamics)
         _assert_bit_identical(expected, actual, f"fallow iteration {iteration}")
+
+
+def test_comparison_helper_detects_signed_zero():
+    """The harness must be able to fail on the thing it exists to protect.
+
+    Guards against someone "simplifying" _bits back to a bare `==`: that
+    change would leave every test above still passing while silently losing
+    the ability to detect a signed-zero regression in the clamps.
+    """
+    assert 0.0 == -0.0  # noqa: SIM300 - the exact reason _bits exists
+    assert _bits(0.0) != _bits(-0.0)
+    assert _bits(0.0) == _bits(0.0)
+    nan = float("nan")
+    assert nan != nan
+    assert _bits(nan) == _bits(nan)
+
+
+def test_clamps_preserve_signed_zero_in_both_implementations():
+    """max(0.0, min(1.0, x)) returns +0.0 for a -0.0 input, in C and Python.
+
+    `max(0.0, -0.0)` is +0.0 because Python's two-arg max returns its first
+    argument unless the second is strictly greater. A C kernel using fmax, or
+    a compiler rewriting the clamp as `a if a > b else b`, would return -0.0
+    here and no `==`-based assertion would notice.
+    """
+    assert (max(0.0, min(1.0, -0.0))).hex() == (0.0).hex()
+
+    player = _random_player(random.Random(11))
+    for plot in player.plots:
+        plot.crop = None
+        plot.moisture = -0.0
+        plot.pest_pressure = -0.0
+        plot.disease_pressure = -0.0
+    weather_today = {"season": "spring", "temperature": 20.0, "rainfall": 0.0, "evaporation": 0.0}
+    # No regen, no evaporation: the fallow branch reduces to max(0.0, -0.0)
+    # for moisture and for both pressures, which is the case under test.
+    expected, actual = _run_both(player, weather_today, {}, derived.SoilDynamics({}))
+    _assert_bit_identical(expected, actual, "signed-zero clamp")
+    assert all(snapshot["moisture"].hex() == (0.0).hex() for snapshot in expected)
 
 
 def test_unknown_crop_raises_key_error_like_python():
