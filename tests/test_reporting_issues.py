@@ -276,3 +276,44 @@ def test_invalid_batch_values_do_not_create_report_directory(monkeypatch):
         )
 
     assert not created
+
+
+# --- runaway-economy threshold scales with run length ---------------------
+
+
+def test_runaway_multiple_scales_with_run_length():
+    """A fixed multiple of start_money is a different test at every horizon.
+
+    A reinvesting farm compounds, so a flat 20x meant $1,200 on a $60 start
+    whether the run was 30 days or 365 -- at 365 every surviving strategy
+    cleared it, and it even flagged a strategy that went bankrupt in 63.5%
+    of its runs as a "runaway economy".
+    """
+    thresholds = main.evaluate_warnings.__globals__["DEFAULT_THRESHOLDS"]
+    from metrics.warnings import runaway_money_multiple
+
+    reference = thresholds["runaway_reference_days"]
+    assert (
+        runaway_money_multiple({"days": reference}, thresholds)
+        == (thresholds["runaway_money_multiple"])
+    )
+
+    longer = runaway_money_multiple({"days": reference * 10}, thresholds)
+    assert longer == thresholds["runaway_money_multiple"] * 10
+
+
+def test_runaway_warning_respects_the_scaled_multiple():
+    stats = aggregate([_make_run_result(final_money=5000.0) for _ in range(3)])
+
+    short_run = main.evaluate_warnings(stats, {"days": 30, "start_money": 60})
+    long_run = main.evaluate_warnings(stats, {"days": 365, "start_money": 60})
+
+    # 5000 is 83x a $60 start: runaway over 30 days, unremarkable over 365.
+    assert any("runaway economy" in w for w in short_run)
+    assert not any("runaway economy" in w for w in long_run)
+
+
+def test_runaway_warning_still_fires_for_a_genuine_outlier():
+    stats = aggregate([_make_run_result(final_money=500_000.0) for _ in range(3)])
+    warnings = main.evaluate_warnings(stats, {"days": 365, "start_money": 60})
+    assert any("runaway economy" in w for w in warnings)

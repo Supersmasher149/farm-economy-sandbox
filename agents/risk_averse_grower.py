@@ -31,7 +31,12 @@ class RiskAverseGrower(Agent):
         )
 
     def should_buy_upgrade(self, player, upgrade):
-        return player.money >= upgrade["cost"]
+        # Reserve-aware, not bare affordability. Spending the whole balance
+        # the instant an upgrade becomes affordable is what reckless_spender
+        # is documented to do ("with no cash reserve"); doing it here left
+        # this agent measuring reckless capital allocation rather than the
+        # cautious crop choice it exists to isolate.
+        return economy_rules.can_spend_with_reserve(player, upgrade["cost"])
 
     def should_use_fertilizer(self, player, crop, fertilizer_config):
         if player.money < crop["seed_cost"] + fertilizer_config["cost"]:
