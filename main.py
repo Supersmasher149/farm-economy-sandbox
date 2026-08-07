@@ -13,6 +13,7 @@ import math
 import os
 import shutil
 import tempfile
+import textwrap
 
 from agents.diversifier import Diversifier
 from agents.fast_seller import FastSeller
@@ -295,47 +296,239 @@ def _publish_report_artifacts(staging_dir: str, reports_dir: str) -> None:
         raise
 
 
-def build_parser():
-    parser = argparse.ArgumentParser(description="Farm economy sandbox simulator.")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+def strategy_roster(indent: str = "  ") -> str:
+    """Render the agent registry as a help-text block.
 
-    single = subparsers.add_parser("single", help="Run one simulation.")
-    single.add_argument("--strategy", choices=AGENT_REGISTRY.keys(), default="profit_optimizer")
-    single.add_argument("--seed", type=int, default=None)
-    single.add_argument("--verbose", action="store_true", help="Print full daily history.")
+    Built from each agent's own `description`, so `--help` can never drift
+    from what the strategies actually do -- adding an agent to
+    AGENT_REGISTRY is enough to document it here.
+    """
+    width = max(len(name) for name in AGENT_REGISTRY)
+    lines = []
+    for name, agent_cls in AGENT_REGISTRY.items():
+        body = textwrap.wrap(agent_cls.description, width=76 - width - len(indent))
+        lines.append(f"{indent}{name.ljust(width)}  {body[0] if body else ''}")
+        lines.extend(f"{indent}{' ' * width}  {line}" for line in body[1:])
+    return "\n".join(lines)
+
+
+DESCRIPTION = """\
+Headless, deterministic farm-economy simulator for balance testing.
+
+This is not a playable game. Scripted agents each probe one deliberate
+strategy, and a batch runner plays every strategy thousands of times to
+surface how the economy behaves in aggregate -- dominant crops, exploitable
+upgrades, bankruptcy traps.
+
+Every run is seeded and exactly reproducible: `single` prints the seed it
+used, and `replay` reproduces that run day for day. All tunable game data
+lives in config/*.json; rebalancing means editing those, not the code.
+"""
+
+EPILOG = """\
+examples:
+  # Play one strategy once and print a full day-by-day history
+  python3 main.py single --strategy profit_optimizer --seed 42 --verbose
+
+  # Reproduce a specific recorded run exactly
+  python3 main.py replay --strategy fast_seller --seed 123456789
+
+  # Run every strategy 1000 times and write reports/
+  python3 main.py batch --runs 1000
+
+  # A/B a config change under identical conditions (same seed both times)
+  python3 main.py batch --runs 1000 --seed 12345
+
+  # Short, richer diagnostic scenario without editing config files
+  python3 main.py batch --runs 100 --days 30 --start-money 300
+
+Run `python3 main.py <command> --help` for per-command detail.
+"""
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="main.py",
+        description=DESCRIPTION,
+        epilog=EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    subparsers = parser.add_subparsers(
+        dest="command",
+        required=True,
+        title="commands",
+        metavar="{single,replay,batch}",
+    )
+
+    single = subparsers.add_parser(
+        "single",
+        help="Run one strategy once and print a result summary.",
+        description=(
+            "Run one strategy through one simulation and print a result summary\n"
+            "(cash flow, crop mix, upgrades, contracts, watering coverage).\n\n"
+            "The seed used is printed in the output. Pass it back to `replay`\n"
+            "-- with the same strategy -- to reproduce the run exactly."
+        ),
+        epilog=(
+            "examples:\n"
+            "  # Default strategy, fresh random seed\n"
+            "  python3 main.py single\n\n"
+            "  # A specific strategy and seed, with the full daily history\n"
+            "  python3 main.py single --strategy fast_seller --seed 42 --verbose\n\n"
+            "strategies:\n" + strategy_roster() + "\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    single.add_argument(
+        "--strategy",
+        choices=AGENT_REGISTRY.keys(),
+        default="profit_optimizer",
+        metavar="NAME",
+        help=(
+            "Which scripted strategy to run (default: profit_optimizer). "
+            "See the strategy list below for what each one probes."
+        ),
+    )
+    single.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        metavar="INT",
+        help=(
+            "Seed driving the whole run. Omit for a fresh random seed; "
+            "the one used is always printed so the run can be replayed."
+        ),
+    )
+    single.add_argument(
+        "--verbose",
+        action="store_true",
+        help=(
+            "Also print the day-by-day history: money, weather, market prices, "
+            "inventory lots, and plantings for every simulated day."
+        ),
+    )
     single.set_defaults(func=cmd_single)
 
     replay = subparsers.add_parser(
-        "replay", help="Reproduce a run from a previously recorded seed."
+        "replay",
+        help="Reproduce a previously recorded run exactly.",
+        description=(
+            "Re-run a recorded (strategy, seed) pair and print the same summary\n"
+            "`single` produced. Output is byte-for-byte identical every time.\n\n"
+            "Both arguments are required, and the strategy must be the one the\n"
+            "seed was recorded with: a seed only reproduces a run for the agent\n"
+            "that made the decisions, since the sequence of random draws depends\n"
+            "on what that agent chose to do."
+        ),
+        epilog=(
+            "examples:\n"
+            "  python3 main.py replay --strategy fast_seller --seed 123456789\n"
+            "  python3 main.py replay --strategy profit_optimizer --seed 42\n\n"
+            "strategies:\n" + strategy_roster() + "\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    replay.add_argument("--strategy", choices=AGENT_REGISTRY.keys(), required=True)
-    replay.add_argument("--seed", type=int, required=True)
+    replay.add_argument(
+        "--strategy",
+        choices=AGENT_REGISTRY.keys(),
+        required=True,
+        metavar="NAME",
+        help="Required. The strategy the seed was recorded with.",
+    )
+    replay.add_argument(
+        "--seed",
+        type=int,
+        required=True,
+        metavar="INT",
+        help="Required. The recorded seed to reproduce.",
+    )
     replay.set_defaults(func=cmd_replay)
 
     batch = subparsers.add_parser(
-        "batch", help="Run a batch across all strategies and generate a report."
+        "batch",
+        help="Run every strategy many times and generate a report.",
+        description=(
+            "Run every registered strategy --runs times each and write three\n"
+            "artifacts to reports/:\n\n"
+            "  run_results.csv      one row per run, with the seed that produced it\n"
+            "  config_snapshot.json the exact config and base seed used\n"
+            "  summary_report.md    per-strategy stats, cash-flow diagnostics,\n"
+            "                       economics audit, and automated balance warnings\n\n"
+            "All three are published atomically: they are staged in a temp dir and\n"
+            "swapped in together, restoring the previous files if anything fails\n"
+            "partway, so reports/ never holds a half-updated set.\n\n"
+            "Start with the 'Warnings' section of summary_report.md -- that is where\n"
+            "a balance regression shows up without eyeballing every strategy."
+        ),
+        epilog=(
+            "examples:\n"
+            "  # Standard balance run\n"
+            "  python3 main.py batch --runs 1000\n\n"
+            "  # Reproducible batch: same seed gives the same per-run seeds, so a\n"
+            "  # config or code change can be A/B'd against identical conditions\n"
+            "  python3 main.py batch --runs 1000 --seed 12345\n\n"
+            "  # Diagnostic scenario, leaving config/*.json untouched\n"
+            "  python3 main.py batch --runs 100 --days 30 --start-money 300\n\n"
+            "  # Force sequential execution (identical results, easier to profile)\n"
+            "  python3 main.py batch --runs 1000 --workers 1\n\n"
+            f"Runs all {len(AGENT_REGISTRY)} registered strategies. See "
+            "`python3 main.py single --help`\nfor what each one probes.\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    batch.add_argument("--runs", type=_positive_int, default=1000)
     batch.add_argument(
-        "--seed", type=int, default=None, help="Base seed for generating per-run seeds."
+        "--runs",
+        type=_positive_int,
+        default=1000,
+        metavar="N",
+        help=(
+            f"Runs per strategy (default: 1000). Total simulations is this times "
+            f"the {len(AGENT_REGISTRY)} registered strategies."
+        ),
+    )
+    batch.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        metavar="INT",
+        help=(
+            "Base seed that mints every per-run seed, making the whole batch "
+            "reproducible. Omit for a fresh one; either way the value used is "
+            "recorded in the report and config snapshot."
+        ),
     )
     batch.add_argument(
         "--workers",
         type=_positive_int,
         default=None,
-        help="Parallel worker processes (default: all CPU cores; 1 for sequential).",
+        metavar="N",
+        help=(
+            "Worker processes (default: one per CPU core). Use 1 to force "
+            "sequential. Results are identical for a given seed at any worker "
+            "count -- per-run seeds are minted before dispatch."
+        ),
     )
     batch.add_argument(
         "--days",
         type=_positive_int,
         default=None,
-        help="Override simulated days for this batch without changing config files.",
+        metavar="N",
+        help=(
+            "Override simulated days per run for this batch only, without "
+            "editing config/simulation_settings.json. Useful for testing "
+            "failure timing on short runs."
+        ),
     )
     batch.add_argument(
         "--start-money",
         type=_nonnegative_float,
         default=None,
-        help="Override starting money for this batch without changing config files.",
+        metavar="AMOUNT",
+        help=(
+            "Override starting cash for this batch only, without editing "
+            "config/simulation_settings.json. Useful for checking whether "
+            "upgrades are reachable at all."
+        ),
     )
     batch.set_defaults(func=cmd_batch)
 
