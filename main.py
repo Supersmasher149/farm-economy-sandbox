@@ -326,6 +326,13 @@ lives in config/*.json; rebalancing means editing those, not the code.
 """
 
 EPILOG = """\
+parallelism:
+  `batch` runs across all CPU cores by default. Control it with --workers N
+  (process-based; 1 forces sequential). Results are identical for a given
+  --seed at any worker count, because per-run seeds are minted single-
+  threaded before any work is dispatched. `single` and `replay` are always
+  one process.
+
 examples:
   # Play one strategy once and print a full day-by-day history
   python3 main.py single --strategy profit_optimizer --seed 42 --verbose
@@ -341,6 +348,9 @@ examples:
 
   # Short, richer diagnostic scenario without editing config files
   python3 main.py batch --runs 100 --days 30 --start-money 300
+
+  # Force sequential execution (same results, easier to profile or debug)
+  python3 main.py batch --runs 1000 --workers 1
 
 Run `python3 main.py <command> --help` for per-command detail.
 """

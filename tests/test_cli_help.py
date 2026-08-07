@@ -81,6 +81,20 @@ def test_each_command_help_shows_examples(parser, command):
     assert f"main.py {command}" in help_text
 
 
+def test_top_level_help_documents_the_parallelism_option(parser):
+    """`--workers` is defined on the `batch` subparser, so it does not appear
+    on the top-level page at all unless the epilog names it. That gap is what
+    makes the only concurrency control in the tool easy to miss.
+    """
+    help_text = _help_for(parser)
+
+    assert "parallelism:" in help_text
+    assert "--workers" in help_text
+    # Execution is ProcessPoolExecutor-based; keep the help from drifting into
+    # calling it threading, which is what sent a reader looking for --threads.
+    assert "process-based" in help_text
+
+
 def test_top_level_help_shows_examples_for_every_command(parser):
     help_text = _help_for(parser)
     assert "examples:" in help_text
