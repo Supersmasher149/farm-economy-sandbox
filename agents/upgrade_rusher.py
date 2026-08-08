@@ -25,3 +25,10 @@ class UpgradeRusher(Agent):
 
     def should_buy_upgrade(self, player, upgrade):
         return player.money >= upgrade["cost"]
+
+    def choose_sales(self, player, channels, items_by_id):
+        # Hoarding cash toward the next upgrade is the whole point of this
+        # agent, so leaving revenue on the table by dumping everything at spot
+        # contradicted the strategy it exists to probe: it was measuring
+        # "rush upgrades while selling badly" rather than "rush upgrades".
+        return self.route_sales_by_best_price(player, channels)

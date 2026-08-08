@@ -73,9 +73,22 @@ class ProgressionPlayer(Agent):
         return economy_rules.should_buy_upgrade_within_budget(player, upgrade)
 
     def should_fertilize(self, player, planted, crop, fertilizer_config):
-        return crop.get("role") != "fast" and economy_rules.can_spend_with_reserve(
-            player, fertilizer_config["cost"]
-        )
+        # Fertilizing every non-fast crop unconditionally is not "saving toward
+        # the upgrades" -- it was the single largest expense in the roster
+        # (fertilizer outspending seeds roughly 2:1) while this agent's main
+        # crop carried a negative fertilizer marginal profit. Keep the
+        # role-based intent (a progression player doesn't bother fertilizing
+        # the throwaway fast crop) but require the spend to actually pay.
+        if crop.get("role") == "fast":
+            return False
+        if not economy_rules.can_spend_with_reserve(player, fertilizer_config["cost"]):
+            return False
+        return economy_rules.fertilizer_expected_marginal_profit(crop, fertilizer_config) > 0
+
+    def choose_sales(self, player, channels, items_by_id):
+        # This agent already negotiates contracts, so dumping the rest of the
+        # harvest at spot was an inconsistent level of commercial competence.
+        return self.route_sales_by_best_price(player, channels)
 
     def choose_contracts(self, player, offers):
         if any(not contract.resolved for contract in player.active_contracts):
