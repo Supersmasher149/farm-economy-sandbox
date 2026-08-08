@@ -65,6 +65,14 @@ python3 tools/build_cython.py --clean
 
 # Where time actually goes (statistical sampler, not cProfile -- see below)
 python3 tools/sample_profile.py --runs 200
+
+# Search config/*.json's numeric knobs for changes that reduce balance
+# warnings (coordinate hill-climbing, using the simulator itself as the
+# fitness function). Local and offline -- no network calls, no LLM.
+# Propose-only: never writes config/*.json; reports ranked candidate diffs
+# to reports/auto_balance/ for a human to apply by hand and re-check via the
+# balance-testing workflow below.
+python3 tools/auto_balance.py --iterations 40 --seed 42
 ```
 
 `batch` writes `reports/run_results.csv`, `reports/config_snapshot.json`, and
@@ -230,3 +238,8 @@ eyeballing every strategy's numbers.
    decision logic contradicting its own documented behavior).
 4. Re-run with the **same seed** to isolate the effect of the change from
    run-to-run noise, then drop `--seed` for the final report.
+
+`tools/auto_balance.py` automates the search step of this workflow (step 3)
+by hill-climbing over config knobs locally, but keeps the same human-in-
+the-loop boundary as `.claude/skills/balance-check`: it never edits
+`config/*.json` itself, only proposes ranked diffs for a human to apply.

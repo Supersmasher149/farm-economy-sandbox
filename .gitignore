@@ -13,6 +13,7 @@ reports/*.csv
 reports/*.json
 reports/*.md
 reports/charts/
+reports/auto_balance/
 
 # Local Claude Code permission grants -- machine-specific, not shared.
 .claude/settings.local.json
