@@ -2,21 +2,21 @@
   {
     "id": "capacity_1",
     "name": "Second Plot",
-    "description": "Increases growing slots by 2.",
+    "description": "Increases growing slots by 8.",
     "cost": 120,
     "effect": {
       "type": "capacity",
-      "amount": 2
+      "amount": 8
     }
   },
   {
     "id": "efficiency_1",
     "name": "Irrigation System",
     "description": "Reduces growth time of all crops by 20% (minimum 1 day), applied to crops planted after purchase.",
-    "cost": 200,
+    "cost": 140,
     "effect": {
       "type": "growth_time_reduction",
-      "amount": 0.20
+      "amount": 0.15
     }
   },
   {
@@ -24,13 +24,20 @@
     "name": "Cold Storage",
     "description": "Doubles storage capacity and extends shelf life by 50%.",
     "cost": 260,
-    "effect": {"type": "storage", "capacity_bonus": 100, "shelf_life_multiplier": 1.5}
+    "effect": {
+      "type": "storage",
+      "capacity_bonus": 100,
+      "shelf_life_multiplier": 1.5
+    }
   },
   {
     "id": "processing_1",
     "name": "Processing Kitchen",
     "description": "Adds two concurrent value-added processing slots.",
     "cost": 300,
-    "effect": {"type": "processing_capacity", "amount": 2}
+    "effect": {
+      "type": "processing_capacity",
+      "amount": 2
+    }
   }
 ]

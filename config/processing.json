@@ -1,8 +1,8 @@
 {
   "base_capacity": 1,
   "products": [
-    {"id": "dried_greenleaf", "name": "Dried Greenleaf", "processed_base_price": 24, "price_variation": 0.12, "seasonal_demand": {"spring": 1.0, "summer": 0.95, "autumn": 1.1, "winter": 1.25}},
-    {"id": "quickweed_bundle", "name": "Quickweed Bundle", "processed_base_price": 14, "price_variation": 0.1, "seasonal_demand": {"spring": 1.1, "summer": 1.0, "autumn": 1.0, "winter": 1.1}}
+    {"id": "dried_greenleaf", "name": "Dried Greenleaf", "processed_base_price": 34, "price_variation": 0.12, "seasonal_demand": {"spring": 1.0, "summer": 0.95, "autumn": 1.1, "winter": 1.25}},
+    {"id": "quickweed_bundle", "name": "Quickweed Bundle", "processed_base_price": 25, "price_variation": 0.1, "seasonal_demand": {"spring": 1.1, "summer": 1.0, "autumn": 1.0, "winter": 1.1}}
   ],
   "recipes": [
     {"id": "dry_greenleaf", "input_item_id": "greenleaf", "input_quantity": 4, "min_quality": "processing", "output_item_id": "dried_greenleaf", "output_quantity": 1, "processing_days": 2, "cost": 3, "shelf_life_days": 45},

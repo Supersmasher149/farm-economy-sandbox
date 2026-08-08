@@ -10,9 +10,9 @@
     "disease_pressure": 0.03
   },
   "regen_per_day": {
-    "nitrogen": 0.02,
-    "phosphorus": 0.01,
-    "potassium": 0.01,
+    "nitrogen": 0.07,
+    "phosphorus": 0.04,
+    "potassium": 0.04,
     "soil_health": 0.01,
     "pest_pressure": 0.005,
     "disease_pressure": 0.01
@@ -27,8 +27,8 @@
     "disease_growth_per_rainfall": 0.08,
     "max_pest_pressure": 0.8,
     "max_disease_pressure": 0.8,
-    "same_family_yield_penalty": 0.85,
-    "same_family_quality_penalty": 0.9,
+    "same_family_yield_penalty": 0.72,
+    "same_family_quality_penalty": 0.8,
     "soil_health_yield_floor": 0.85,
     "soil_health_yield_span": 0.25
   }
