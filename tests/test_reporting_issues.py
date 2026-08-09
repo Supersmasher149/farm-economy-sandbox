@@ -32,7 +32,9 @@ def test_upgrade_reach_counts_and_rates_are_aggregated():
 
     assert stats["first_upgrade_count"] == 2
     assert stats["second_upgrade_count"] == 1
-    assert stats["first_upgrade_rate"] == 66.67
+    # first_upgrade_rate is unrounded (it feeds a warning threshold
+    # comparison in metrics/warnings.py -- see #28); round only for display.
+    assert round(stats["first_upgrade_rate"], 2) == 66.67
     assert stats["second_upgrade_rate"] == 33.33
 
 
@@ -319,3 +321,178 @@ def test_runaway_warning_still_fires_for_a_genuine_outlier():
     stats = aggregate([_make_run_result(final_money=500_000.0) for _ in range(3)])
     warnings = main.evaluate_warnings(stats, {"days": 365, "start_money": 60})
     assert any("runaway economy" in w for w in warnings)
+
+
+# --- #31: partial threshold overrides merge with DEFAULT_THRESHOLDS -------
+
+
+def test_partial_threshold_override_merges_with_defaults():
+    from metrics.warnings import DEFAULT_THRESHOLDS
+
+    # 30% bankruptcy: above the default 20% threshold, below a raised 50%.
+    results = [_make_run_result(bankrupt=True) for _ in range(3)] + [
+        _make_run_result(bankrupt=False) for _ in range(7)
+    ]
+    stats = aggregate(results)
+    config = {"days": 30, "start_money": 60}
+
+    at_default = main.evaluate_warnings(stats, config)
+    assert any("High bankruptcy rate" in w for w in at_default)
+
+    # A partial override used to replace DEFAULT_THRESHOLDS wholesale, so any
+    # key it didn't mention (here, upgrade/crop/runaway thresholds) would
+    # KeyError the moment evaluate_warnings tried to read them.
+    overridden = main.evaluate_warnings(stats, config, {"high_bankruptcy_pct": 50})
+    assert not any("High bankruptcy rate" in w for w in overridden)
+    assert DEFAULT_THRESHOLDS["high_bankruptcy_pct"] == 20  # default mapping untouched
+
+
+def test_full_threshold_override_still_works():
+    stats = aggregate([_make_run_result(bankrupt=True) for _ in range(10)])
+    config = {"days": 30, "start_money": 60}
+
+    warnings = main.evaluate_warnings(stats, config, {"high_bankruptcy_pct": 5})
+
+    assert any("High bankruptcy rate" in w for w in warnings)
+
+
+def test_empty_threshold_override_uses_defaults():
+    stats = aggregate([_make_run_result(bankrupt=True) for _ in range(10)])
+    config = {"days": 30, "start_money": 60}
+
+    with_empty = main.evaluate_warnings(stats, config, {})
+    with_none = main.evaluate_warnings(stats, config, None)
+
+    assert with_empty == with_none
+
+
+def test_unknown_threshold_key_is_rejected():
+    stats = aggregate([_make_run_result() for _ in range(3)])
+    with pytest.raises(ValueError, match="typo_pct"):
+        main.evaluate_warnings(stats, {"days": 30, "start_money": 60}, {"typo_pct": 50})
+
+
+def test_non_numeric_threshold_value_is_rejected():
+    stats = aggregate([_make_run_result() for _ in range(3)])
+    with pytest.raises(TypeError):
+        main.evaluate_warnings(
+            stats, {"days": 30, "start_money": 60}, {"high_bankruptcy_pct": "20"}
+        )
+    with pytest.raises(TypeError):
+        main.evaluate_warnings(
+            stats, {"days": 30, "start_money": 60}, {"high_bankruptcy_pct": True}
+        )
+
+
+def test_repeated_calls_do_not_accumulate_mutations():
+    from metrics.warnings import DEFAULT_THRESHOLDS
+
+    stats = aggregate([_make_run_result() for _ in range(3)])
+    config = {"days": 30, "start_money": 60}
+
+    main.evaluate_warnings(stats, config, {"dominant_crop_pct": 1})
+    main.evaluate_warnings(stats, config, {"dead_crop_pct": 99})
+
+    assert DEFAULT_THRESHOLDS["dominant_crop_pct"] == 70
+    assert DEFAULT_THRESHOLDS["dead_crop_pct"] == 5
+
+
+# --- #28: warnings compare full precision, not the rounded display value --
+
+
+def test_bankruptcy_warning_fires_just_above_the_threshold_before_rounding():
+    # 4001/20001 = 20.0039998...%, which rounds to display as 20.0% -- a
+    # warning gated on the rounded value would have missed this.
+    results = [_make_run_result(bankrupt=True) for _ in range(4001)] + [
+        _make_run_result(bankrupt=False) for _ in range(20001 - 4001)
+    ]
+    stats = aggregate(results)
+
+    warnings = main.evaluate_warnings(stats, {"days": 30, "start_money": 60})
+
+    assert any("High bankruptcy rate" in w for w in warnings)
+
+
+def test_bankruptcy_warning_does_not_fire_just_below_the_threshold():
+    results = [_make_run_result(bankrupt=True) for _ in range(20)] + [
+        _make_run_result(bankrupt=False) for _ in range(80)
+    ]
+    stats = aggregate(results)
+
+    warnings = main.evaluate_warnings(stats, {"days": 30, "start_money": 60})
+
+    assert not any("High bankruptcy rate" in w for w in warnings)
+
+
+def test_dominant_crop_warning_uses_unrounded_percentage():
+    # 701/1000 = 70.1%, rounds to 70.1 either way, but the *comparison*
+    # itself must use the unrounded ratio -- pin a case whose true value
+    # sits just past the boundary at higher precision than 2 decimals.
+    results = [
+        _make_run_result(crop_counts={"quickweed": 1}, crops_planted=1) for _ in range(70005)
+    ] + [_make_run_result(crop_counts={"greenleaf": 1}, crops_planted=1) for _ in range(29995)]
+    stats = aggregate(results)
+
+    warnings = main.evaluate_warnings(stats, {"days": 30, "start_money": 60})
+
+    assert any("Dominant crop: 'quickweed'" in w for w in warnings)
+
+
+# --- #32: undefined per-run ratios aren't aggregated in as zero -----------
+
+
+def test_crop_loss_rate_averages_only_observed_runs():
+    # One run with a real 100% loss, nine with no harvest events at all (so
+    # crop_loss_rate is undefined, not 0%). Averaging the undefined runs in
+    # as 0.0 would report 10% and suppress the >30% warning entirely.
+    results = [_make_run_result(crop_loss_rate=100.0)] + [
+        _make_run_result(crop_loss_rate=None) for _ in range(9)
+    ]
+    stats = aggregate(results)
+
+    assert stats["test"]["avg_crop_loss_rate"] == 100.0
+    warnings = main.evaluate_warnings(stats, {"days": 30, "start_money": 60})
+    assert any("High crop loss rate" in w for w in warnings)
+
+
+def test_crop_loss_rate_is_none_when_no_run_observed_it():
+    stats = aggregate([_make_run_result(crop_loss_rate=None) for _ in range(5)])
+
+    assert stats["test"]["avg_crop_loss_rate"] is None
+    # None must not raise when compared against the threshold.
+    warnings = main.evaluate_warnings(stats, {"days": 30, "start_money": 60})
+    assert not any("crop loss" in w for w in warnings)
+
+
+def test_occupied_watering_rate_averages_only_observed_runs():
+    results = [_make_run_result(occupied_watering_rate=80.0)] + [
+        _make_run_result(occupied_watering_rate=None) for _ in range(4)
+    ]
+    stats = aggregate(results)
+
+    assert stats["test"]["avg_occupied_watering_rate"] == 80.0
+
+
+def test_no_plantings_cohort_gets_a_single_diagnostic_not_dead_crop_spam():
+    # Every crop in the catalog would otherwise show up as "0.0% of
+    # plantings" -- indistinguishable from every crop actually being dead.
+    results = [
+        _make_run_result(crop_counts={"quickweed": 0, "greenleaf": 0}, crops_planted=0)
+        for _ in range(5)
+    ]
+    stats = aggregate(results)
+
+    assert stats["test"]["crop_usage_pct"] == {}
+    assert stats["test"]["crop_usage_observed"] is False
+
+    warnings = main.evaluate_warnings(stats, {"days": 30, "start_money": 60})
+    assert any("No crops were planted" in w for w in warnings)
+    assert not any("Dead crop" in w for w in warnings)
+
+
+def test_mixed_cohort_still_reports_real_crop_usage():
+    results = [_make_run_result(crop_counts={"quickweed": 2}, crops_planted=2) for _ in range(3)]
+    stats = aggregate(results)
+
+    assert stats["test"]["crop_usage_observed"] is True
+    assert stats["test"]["crop_usage_pct"] == {"quickweed": 100.0}
