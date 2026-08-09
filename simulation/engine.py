@@ -121,6 +121,11 @@ def run_day(
     harvested = actions.harvest_mature(player, crops_by_id, rng, watering_config, fertilizer)
     spoiled = inventory.age_and_spoil(player, storage, charge_storage=False)
     completed = processing.complete_jobs(player)
+    # A completing job's output is new inventory added after age_and_spoil
+    # already ran this day -- without re-checking capacity here, overflow it
+    # causes wouldn't spoil until tomorrow, letting today's sales/deliveries
+    # use inventory that should already be gone (#19).
+    spoiled += inventory.enforce_storage_capacity(player, storage.get("capacity", 100))
     markets.update_daily_prices(player, items_by_id, lookups.markets, rng, lookups.market_profiles)
     player.market_channels = lookups.channels
     contracts.generate_offers(player, lookups.contracts, lookups.buyers, items_by_id, rng)

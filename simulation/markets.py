@@ -2,6 +2,7 @@
 
 from simulation import derived
 from simulation.state import QUALITY_ORDER
+from simulation.validation import is_positive_int
 
 QUALITY_MULTIPLIERS = {
     "rejected": 0.0,
@@ -46,7 +47,7 @@ def quote(
     quantity: int,
     capacity_used: dict | None = None,
 ) -> dict | None:
-    if item_id not in player.market_prices or quantity <= 0:
+    if item_id not in player.market_prices or not is_positive_int(quantity):
         return None
     # The channel's terms are fixed config, so they are read once from a
     # cached profile rather than re-fetched with .get defaults on every quote
@@ -93,7 +94,7 @@ def sell(
 ) -> tuple[float, int]:
     minimum = min_quality or channel.get("min_quality", "rejected")
     if (
-        quantity <= 0
+        not is_positive_int(quantity)
         or item_id not in player.market_prices
         or player.reputation < channel.get("min_reputation", 0)
         or (
