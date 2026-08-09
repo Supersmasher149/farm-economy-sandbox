@@ -53,6 +53,23 @@ def can_spend_with_reserve(player, amount: float) -> bool:
 def fertilizer_expected_marginal_profit(crop: dict, fertilizer_config: dict) -> float:
     """Expected extra profit from fertilizing one planting of this crop, ignoring
     watering neglect. Positive means fertilizer is worth its cost on average.
+
+    E[revenue] = P(survive) * E[yield | survive] * base_price, compared
+    fertilized vs. not:
+
+        E[fertilized]   = (1 - reduced_loss_chance)  * (avg_yield + yield_bonus) * base_price
+        E[unfertilized] = (1 - original_loss_chance) *  avg_yield               * base_price
+
+    Expanding E[fertilized] - E[unfertilized] gives exactly the two terms
+    below -- the yield bonus is only ever realized on a harvest that
+    survived the *fertilized* (reduced) loss roll (see
+    simulation/crop_growth.py:compute_harvest_outcome, which rolls loss
+    with the reduced chance and only then adds the yield bonus), so its
+    revenue must be weighted by `1 - reduced_loss_chance`, not
+    `1 - original_loss_chance`. Weighting it by the unfertilized survival
+    odds silently drops the joint survival-and-yield interaction and
+    understates fertilizer's value by
+    `yield_bonus * base_price * (reduced_loss_chance's edge over original)`.
     """
     avg_yield = (crop["min_yield"] + crop["max_yield"]) / 2
     original_loss_chance = crop["loss_chance"]
@@ -61,7 +78,7 @@ def fertilizer_expected_marginal_profit(crop: dict, fertilizer_config: dict) -> 
     )
 
     yield_bonus = avg_yield * fertilizer_config["yield_bonus_pct"]
-    revenue_from_yield_bonus = yield_bonus * crop["base_price"] * (1 - original_loss_chance)
+    revenue_from_yield_bonus = yield_bonus * crop["base_price"] * (1 - reduced_loss_chance)
     revenue_from_loss_reduction = (
         (original_loss_chance - reduced_loss_chance) * avg_yield * crop["base_price"]
     )
@@ -247,7 +264,27 @@ def upgrade_payback_days(
         amount = effect.get("amount", 0)
         if amount <= 0 or amount >= 1:
             return None
-        added_value_per_day = player.slots_total * best_profit_per_day * (amount / (1 - amount))
+        # Priced off the actual rounded before/after growth-day counts for
+        # the crop driving best_profit_per_day, not the continuous
+        # amount / (1 - amount) approximation runtime never applies:
+        # effective_growth_days() rounds each reduction to a whole day
+        # (simulation/derived.py), and can floor at 1. A legal `amount` can
+        # therefore round to the exact same integer duration -- zero real
+        # throughput gain -- while the continuous formula still reports a
+        # finite (and wrong) payback for it.
+        best_crop = max(viable, key=lambda c: expected_profit_per_day(c, player, upgrades_by_id))
+        current_days = effective_growth_days(best_crop, player, upgrades_by_id)
+        new_days = derived.effective_growth_days(
+            best_crop, player.upgrades_owned | {upgrade["id"]}, upgrades_by_id
+        )
+        if new_days >= current_days:
+            return None
+        avg_yield = (best_crop["min_yield"] + best_crop["max_yield"]) / 2
+        avg_revenue = avg_yield * best_crop["base_price"] * (1 - best_crop["loss_chance"])
+        profit_per_cycle = avg_revenue - best_crop["seed_cost"]
+        added_value_per_day = (
+            player.slots_total * profit_per_cycle * (1 / new_days - 1 / current_days)
+        )
     elif effect_type == "processing_capacity":
         # No recipe economics are visible from here; price one slot
         # conservatively rather than not pricing it at all.
