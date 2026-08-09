@@ -140,3 +140,82 @@ def test_fertilizer_maximalist_only_changes_fertilizer_decisions(fertilizer_conf
     assert FertilizerMaximalist().should_fertilize(player, planted, crop, fertilizer_config) is True
     assert FertilizerMaximalist.choose_crop is ProfitOptimizer.choose_crop
     assert FertilizerMaximalist.should_buy_upgrade is ProfitOptimizer.should_buy_upgrade
+
+
+# --- #33: choose_crop's endgame maturity boundary --------------------------
+#
+# Harvest runs before planting each day (simulation/engine.py), and the
+# simulation loop processes days 0..total_days-1 inclusive (runner/single_run.py),
+# so a crop planted on day `d` only ever gets harvested if
+# `d + growth_days <= total_days - 1`. These pin that boundary directly
+# against ProfitOptimizer.choose_crop rather than the inherited-identity
+# checks above, since NeglectfulGrower/NoUpgradePlayer/FertilizerMaximalist
+# all use this same method unchanged.
+
+
+def _endgame_player(day, total_days, money=100):
+    player = PlayerState(money=money, slots_total=1, day=day, total_days=total_days)
+    player.highest_money = player.money
+    return player
+
+
+QUICKWEED = {
+    "id": "quickweed",
+    "seed_cost": 5,
+    "growth_days": 3,
+    "min_yield": 1,
+    "max_yield": 2,
+    "base_price": 5,
+    "loss_chance": 0.03,
+    "water_interval_days": 2,
+    "unlock_requirement": None,
+}
+
+
+def test_choose_crop_plants_a_crop_that_matures_on_the_exact_last_harvestable_day():
+    # total_days=10, day=6: last day processed is day 9, so a crop planted
+    # today (day 6) needs growth_days <= 9 - 6 = 3 to ever be harvested.
+    # quickweed's growth_days is exactly 3 -- the boundary itself.
+    player = _endgame_player(day=6, total_days=10)
+    crop = ProfitOptimizer().choose_crop(player, [QUICKWEED], {"quickweed": QUICKWEED}, {})
+    assert crop == QUICKWEED
+
+
+def test_choose_crop_rejects_a_crop_that_would_mature_one_day_past_the_run():
+    # Same crop, one day later: day 7 needs growth_days <= 9 - 7 = 2, but
+    # quickweed needs 3. The old `<= total_days - player.day` filter (using
+    # remaining_days=3 here) let this through -- planted, never harvested.
+    player = _endgame_player(day=7, total_days=10)
+    crop = ProfitOptimizer().choose_crop(player, [QUICKWEED], {"quickweed": QUICKWEED}, {})
+    assert crop is None
+
+
+def test_choose_crop_plants_nothing_on_the_final_simulated_day():
+    player = _endgame_player(day=9, total_days=10)
+    crop = ProfitOptimizer().choose_crop(player, [QUICKWEED], {"quickweed": QUICKWEED}, {})
+    assert crop is None
+
+
+def test_choose_crop_endgame_boundary_uses_upgrade_adjusted_growth_days():
+    # A growth_time_reduction upgrade rounds quickweed's effective duration
+    # from 3 days down to 2 (max(1, round(3 * 0.6))). Day 7 excludes the
+    # unadjusted 3-day crop (previous test) but must admit the 2-day one.
+    upgrade = {
+        "id": "fast_growth",
+        "cost": 10,
+        "effect": {"type": "growth_time_reduction", "amount": 0.4},
+    }
+    player = _endgame_player(day=7, total_days=10)
+    player.upgrades_owned = {"fast_growth"}
+    crop = ProfitOptimizer().choose_crop(
+        player, [QUICKWEED], {"quickweed": QUICKWEED}, {"fast_growth": upgrade}
+    )
+    assert crop == QUICKWEED
+
+
+def test_choose_crop_still_plants_when_the_run_is_open_ended():
+    # No total_days at all (e.g. `single`/`replay` without a day cap): the
+    # endgame filter must not apply.
+    player = _endgame_player(day=9999, total_days=None)
+    crop = ProfitOptimizer().choose_crop(player, [QUICKWEED], {"quickweed": QUICKWEED}, {})
+    assert crop == QUICKWEED

@@ -130,6 +130,75 @@ def test_sequential_batch_is_invariant_to_agent_instance_reuse():
     assert reused_results == fresh_results
 
 
+class _PlantsOnceAgent:
+    """Deliberately stateful probe (#27): plants only on its first
+    `choose_crop()` call, ever. A batch runner that reuses one instance
+    across a strategy's runs would then plant on run 1 and go idle for
+    every run after it; independent runs must each get their own instance.
+    """
+
+    name = "plants_once_probe"
+    description = "Test-only agent that mutates per-instance state to expose shared-instance reuse."
+    watering_diligence = 1.0
+
+    def __init__(self):
+        self.already_planted = False
+
+    def choose_crop(self, player, crops, crops_by_id, upgrades_by_id):
+        if self.already_planted:
+            return None
+        candidates = [c for c in crops if player.money >= c["seed_cost"]]
+        if not candidates:
+            return None
+        self.already_planted = True
+        return candidates[0]
+
+    def should_buy_upgrade(self, player, upgrade):
+        return False
+
+    def should_water(self, player, planted, crop):
+        return True
+
+    def should_fertilize(self, player, planted, crop, fertilizer_config):
+        return False
+
+    def choose_contracts(self, player, offers):
+        return []
+
+    def choose_contract_deliveries(self, player):
+        return []
+
+    def choose_processing(self, player, recipes, items_by_id):
+        return []
+
+    def choose_sales(self, player, channels, items_by_id):
+        return [
+            {"item_id": lot.item_id, "quantity": lot.quantity, "channel_id": "spot"}
+            for lot in player.inventory_lots
+        ]
+
+    def should_use_fertilizer(self, player, crop, fertilizer_config):
+        return False
+
+
+def test_sequential_batch_gives_every_run_its_own_stateful_agent_instance():
+    results = _batch([_PlantsOnceAgent()], workers=1, num_runs=3)
+    planted_counts = [r[4] for r in results]  # crops_planted, per _tuples()
+
+    # Before the #27 fix, one shared instance meant only the first run ever
+    # saw already_planted == False, so this was [>=1, 0, 0] under
+    # `workers=1` -- diverging from the fresh-instance-per-job parallel path.
+    assert all(count >= 1 for count in planted_counts), (
+        f"expected every run to get a fresh, unplanted agent instance, got {planted_counts}"
+    )
+
+
+def test_sequential_and_parallel_agree_for_a_stateful_agent():
+    sequential = _batch([_PlantsOnceAgent()], workers=1, num_runs=4)
+    parallel = _batch([_PlantsOnceAgent()], workers=3, num_runs=4)
+    assert sequential == parallel
+
+
 # --- worker-count invariance ----------------------------------------------
 
 

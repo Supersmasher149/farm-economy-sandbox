@@ -30,7 +30,17 @@ class ProfitOptimizer(Agent):
             if economy_rules.is_crop_unlocked(c, player) and player.money >= c["seed_cost"]
         ]
         if player.total_days is not None:
-            remaining_days = player.total_days - player.day
+            # Harvest runs before planting each day (see engine.run_day), and
+            # the last day actually processed is total_days - 1 (the
+            # simulation loop runs days 0..total_days-1 inclusive) -- so a
+            # crop planted today is only ever checked for maturity again on
+            # a later day, and only gets harvested if day_planted +
+            # growth_days <= total_days - 1. `growth_days <= total_days -
+            # player.day` was one day too permissive: it let through a crop
+            # whose first eligible harvest day is total_days, one day past
+            # the last day the run ever processes, so it planted and then
+            # sat there forever, unsellable.
+            last_harvestable_growth_days = player.total_days - player.day - 1
             # Never sink a seed cost into a crop that provably can't mature
             # (and so can't be sold) before the run ends -- if that empties
             # the candidate list, leaving the slot idle for the rest of the
@@ -38,7 +48,8 @@ class ProfitOptimizer(Agent):
             candidates = [
                 c
                 for c in candidates
-                if economy_rules.effective_growth_days(c, player, upgrades_by_id) <= remaining_days
+                if economy_rules.effective_growth_days(c, player, upgrades_by_id)
+                <= last_harvestable_growth_days
             ]
         if not candidates:
             return None
@@ -108,21 +119,62 @@ class ProfitOptimizer(Agent):
         return [max(suitable, key=lambda offer: offer.unit_price).id] if suitable else []
 
     def choose_processing(self, player, recipes, items_by_id):
-        decisions = []
+        """Rank recipes by margin per batch and reserve input inventory,
+        cash, and processing-capacity slots across the whole plan, so what's
+        emitted here is exactly what `simulation.processing.start_job` can
+        actually execute -- not an independent per-recipe guess against the
+        unchanged starting state that silently drops (or under-batches)
+        once capacity/cash/inputs run out. Ties keep `recipes`' own order
+        (a stable sort on the margin key alone), so output only depends on
+        recipe order when two recipes are exactly equally profitable.
+        """
+        # processing_capacity is None before the engine has ever set it (e.g.
+        # a bare PlayerState in a unit test); treat that the same as 0, per
+        # the same convention simulation/contracts.py's _processing_capacity
+        # uses, rather than crashing on `None - int`.
+        remaining_capacity = (player.processing_capacity or 0) - len(player.processing_jobs)
+        if remaining_capacity <= 0:
+            return []
+
+        profitable = []
         for recipe in recipes:
-            available = inventory.available_quantity(
-                player, recipe["input_item_id"], recipe.get("min_quality", "processing")
-            )
-            if available < recipe["input_quantity"]:
-                continue
             input_value = (
                 player.market_prices.get(recipe["input_item_id"], 0) * recipe["input_quantity"]
             )
             output_value = (
                 player.market_prices.get(recipe["output_item_id"], 0) * recipe["output_quantity"]
             )
-            if output_value > input_value + recipe.get("cost", 0):
-                decisions.append({"recipe_id": recipe["id"], "batches": 1})
+            margin_per_batch = output_value - input_value - recipe.get("cost", 0)
+            if margin_per_batch > 0:
+                profitable.append((margin_per_batch, recipe))
+        profitable.sort(key=lambda scored: -scored[0])
+
+        decisions = []
+        reserved_input = {}
+        cash_remaining = player.money
+        for _margin, recipe in profitable:
+            if remaining_capacity <= 0:
+                break
+            input_item_id = recipe["input_item_id"]
+            already_reserved = reserved_input.get(input_item_id, 0)
+            available = (
+                inventory.available_quantity(
+                    player, input_item_id, recipe.get("min_quality", "processing")
+                )
+                - already_reserved
+            )
+            max_by_input = available // recipe["input_quantity"]
+            cost_per_batch = recipe.get("cost", 0)
+            max_by_cash = (
+                int(cash_remaining // cost_per_batch) if cost_per_batch > 0 else max_by_input
+            )
+            batches = min(remaining_capacity, max_by_input, max_by_cash)
+            if batches <= 0:
+                continue
+            decisions.append({"recipe_id": recipe["id"], "batches": batches})
+            remaining_capacity -= batches
+            reserved_input[input_item_id] = already_reserved + batches * recipe["input_quantity"]
+            cash_remaining -= batches * cost_per_batch
         return decisions
 
     def choose_sales(self, player, channels, items_by_id):

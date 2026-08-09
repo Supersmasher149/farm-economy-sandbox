@@ -32,6 +32,7 @@ window_size-sized slices, against one long-lived pool reused across windows,
 keeps peak in-flight jobs/futures bounded independent of total batch size.
 """
 
+import copy
 import itertools
 import os
 import random
@@ -153,9 +154,18 @@ def _iter_batch(
     workers = max(1, min(workers, total_jobs))
 
     if workers <= 1:
+        # The process-pool path below gets per-job agent isolation for free:
+        # each task is pickled across a process boundary, so a worker never
+        # sees the same Python object another task mutated. This sequential
+        # path runs every job in-process against the literal same `agent`
+        # object the generator yields (num_runs times per strategy) -- fine
+        # for the stateless agents this repo ships, but a deep copy per job
+        # is what actually delivers the "each run gets an independent agent"
+        # contract this module's docstring promises, rather than relying on
+        # every future agent staying accidentally stateless.
         for agent, run_seed in jobs:
             yield _execute(
-                agent,
+                copy.deepcopy(agent),
                 run_seed,
                 config,
                 crops,
