@@ -1,6 +1,6 @@
 """Validated state-changing farm actions."""
 
-from simulation import crop_growth, inventory
+from simulation import crop_growth, derived, inventory
 from simulation.state import InventoryLot, PlantedCrop
 
 DEFAULT_WATERING = {
@@ -32,8 +32,14 @@ def plant_seed(
     plot_index = next((index for index, plot in enumerate(player.plots) if plot.crop is None), None)
     if plot_index is None:
         return False
+    fertilizer_config = fertilizer_config or DEFAULT_FERTILIZER
     planted = PlantedCrop(
-        crop["id"], player.day, growth_days, plot_index=plot_index, fertilized=fertilized
+        crop["id"],
+        player.day,
+        growth_days,
+        plot_index=plot_index,
+        fertilized=fertilized,
+        accrued_cost=crop["seed_cost"] + (fertilizer_config["cost"] if fertilized else 0.0),
     )
     player.seed_inventory[crop["id"]] -= 1
     if fertilized:
@@ -42,7 +48,6 @@ def plant_seed(
     player.planted.append(planted)
     player.plots[plot_index].crop = planted
     if fertilized:
-        fertilizer_config = fertilizer_config or DEFAULT_FERTILIZER
         nutrients = fertilizer_config.get(
             "nutrients_added", {"nitrogen": 0.25, "phosphorus": 0.15, "potassium": 0.15}
         )
@@ -66,6 +71,7 @@ def water_crop(player, planted: PlantedCrop, watering_settings: dict) -> bool:
         return False
     player.money -= cost
     player.record_expense("watering", cost)
+    planted.accrued_cost += cost
     planted.last_watered_day = player.day
     planted.neglect_days = 0
     plot.moisture = min(1.0, plot.moisture + watering_settings.get("moisture_added", 0.45))
@@ -113,6 +119,7 @@ def fertilize_crop(player, planted: PlantedCrop, fertilizer_config: dict) -> boo
     planted.fertilized = True
     player.fertilizer_inventory -= 1
     player.total_fertilizer_applied += 1
+    planted.accrued_cost += fertilizer_config.get("cost", DEFAULT_FERTILIZER["cost"])
     if planted.plot_index is not None:
         plot = player.plots[planted.plot_index]
         nutrients = fertilizer_config.get(
@@ -134,6 +141,7 @@ def harvest_mature(player, crops_by_id: dict, *args) -> bool:
         raise TypeError("harvest_mature expects rng or watering_settings, fertilizer_config, rng")
     watering_settings = watering_settings or DEFAULT_WATERING
     fertilizer_config = fertilizer_config or DEFAULT_FERTILIZER
+    dynamics = getattr(player, "soil_dynamics", None) or derived.DEFAULT_DYNAMICS
     still_growing = []
     harvested_any = False
     for planted in player.planted:
@@ -145,13 +153,21 @@ def harvest_mature(player, crops_by_id: dict, *args) -> bool:
         crop = crops_by_id[planted.crop_id]
         plot = player.plots[planted.plot_index] if planted.plot_index is not None else None
         lost, amount = crop_growth.compute_harvest_outcome(
-            planted, crop, watering_settings, fertilizer_config, rng, plot
+            planted, crop, watering_settings, fertilizer_config, rng, plot, dynamics
         )
         if lost or amount <= 0:
             player.total_crops_lost += 1
-            player.losses_by_cause["crop_loss"] = player.losses_by_cause.get("crop_loss", 0) + 1
+            # Suffixed keys because this dict mixes measures: a lost planting
+            # yields no units to count, while rejected/spoiled stock is only
+            # meaningful in units. Naming the unit in the key stops the two
+            # from being summed or compared as if they were the same measure.
+            player.losses_by_cause["crop_loss_events"] = (
+                player.losses_by_cause.get("crop_loss_events", 0) + 1
+            )
         else:
-            _yield_multiplier, quality_score = crop_growth.harvest_multipliers(planted, crop, plot)
+            _yield_multiplier, quality_score = crop_growth.harvest_multipliers(
+                planted, crop, plot, fertilizer_config, dynamics
+            )
             grade = crop_growth.quality_grade(quality_score)
             if grade != "rejected":
                 player.inventory_lots.append(
@@ -161,20 +177,25 @@ def harvest_mature(player, crops_by_id: dict, *args) -> bool:
                         quality=grade,
                         produced_day=player.day,
                         shelf_life_days=crop.get("shelf_life_days", 7),
-                        unit_cost=crop["seed_cost"] / amount,
+                        # Real cash spent on this planting (seed + fertilizer +
+                        # watering), not seed cost alone -- otherwise every
+                        # margin derived from a lot understates production cost.
+                        unit_cost=planted.accrued_cost / amount,
                     )
                 )
                 player.total_harvested += amount
                 player.quality_harvested[grade] = player.quality_harvested.get(grade, 0) + amount
             else:
                 player.total_crops_lost += 1
-                player.losses_by_cause["rejected_quality"] = (
-                    player.losses_by_cause.get("rejected_quality", 0) + amount
+                player.losses_by_cause["rejected_quality_units"] = (
+                    player.losses_by_cause.get("rejected_quality_units", 0) + amount
                 )
         if plot is not None:
             plot.previous_crop_family = crop.get("family", crop["id"])
             plot.crop = None
-            plot.soil_health = max(0.1, plot.soil_health - 0.02)
+            plot.soil_health = max(
+                dynamics.min_soil_health, plot.soil_health - dynamics.harvest_soil_health_cost
+            )
     player.planted = still_growing
     player.rebuild_crop_inventory()
     return harvested_any

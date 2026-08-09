@@ -95,7 +95,11 @@ def age_and_spoil(player, storage_config: dict, charge_storage: bool = True) -> 
     player.inventory_lots = [lot for lot in player.inventory_lots if lot.quantity > 0]
     player.total_spoiled += spoiled
     if spoiled:
-        player.losses_by_cause["spoilage"] = player.losses_by_cause.get("spoilage", 0) + spoiled
+        # Unit-suffixed key: see the note in actions.harvest_mature on why
+        # this dict's keys name their measure.
+        player.losses_by_cause["spoilage_units"] = (
+            player.losses_by_cause.get("spoilage_units", 0) + spoiled
+        )
     if charge_storage:
         collect_storage_liability(player, liability)
     player.rebuild_crop_inventory()

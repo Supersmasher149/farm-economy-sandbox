@@ -103,6 +103,7 @@ def run_day(
     player.contract_config = lookups.contracts
     player.processing_recipes = lookups.recipes
     player.processing_capacity = capacity
+    player.soil_dynamics = lookups.soil_dynamics
 
     player.current_weather = weather.generate_weather(player.day, lookups.weather, rng)
     weather.apply_weather(
@@ -112,6 +113,8 @@ def run_day(
         crop_growth,
         lookups.crop_profiles,
         lookups.plot_regen,
+        lookups.soil_dynamics,
+        lookups.crop_profiles_flat,
     )
     storage = _effective_storage(lookups.storage_config, player, upgrades_by_id, lookups)
     storage_liability = inventory.capture_storage_liability(player, storage)
@@ -170,20 +173,37 @@ def run_day(
     _finish_day(player, crops, acted)
 
 
+def _can_fund_seed(player, crop: dict) -> bool:
+    """True if this crop can be planted without further income.
+
+    A seed already held counts: `buy_seeds` is skipped for it below, so
+    treating it as unaffordable would report a crop as blocked that the farm
+    can in fact plant. simulation.contracts._future_crop_capacity already
+    credits `seed_inventory` as usable supply when forecasting contract
+    feasibility, so this is also what keeps that forecast honest.
+    """
+    return player.money >= crop["seed_cost"] or player.seed_inventory.get(crop["id"], 0) > 0
+
+
 def _plant_open_slots(
     player, agent, crops, crops_by_id, upgrades_by_id, fertilizer_config=None
 ) -> bool:
     planted_something = False
-    while player.open_slots > 0:
+    # Both conditions, not just open_slots: open_slots is derived from
+    # slots_total, while plant_seed needs a plot object whose crop is None.
+    # These agree in normal operation, so this changes no shipped outcome --
+    # it stops the loop from spending on a seed it is then unable to plant if
+    # they ever disagree.
+    while player.open_slots > 0 and any(plot.crop is None for plot in player.plots):
         for candidate in crops:
             unlocked = economy_rules.is_crop_unlocked(candidate, player)
-            affordable = player.money >= candidate["seed_cost"]
+            affordable = _can_fund_seed(player, candidate)
             player.observe_crop_decision(candidate, unlocked, affordable)
         crop = agent.choose_crop(player, crops, crops_by_id, upgrades_by_id)
         if crop is None:
             break
         unlocked = economy_rules.is_crop_unlocked(crop, player)
-        affordable = player.money >= crop["seed_cost"]
+        affordable = _can_fund_seed(player, crop)
         if not unlocked or not affordable:
             player.observe_crop_decision(
                 crop,
@@ -205,20 +225,27 @@ def _plant_open_slots(
                 # same cash cannot also cover the seed.
                 use_fertilizer = False
         use_fertilizer = use_fertilizer and player.fertilizer_inventory > 0
-        if not actions.buy_seeds(player, crop, 1):
+        # Only buy when nothing suitable is already held. Buying
+        # unconditionally stranded any seed left over from a previous failed
+        # planting, and made that cash unrecoverable: nothing else in the
+        # simulation ever consumes seed_inventory.
+        if player.seed_inventory.get(crop["id"], 0) <= 0 and not actions.buy_seeds(player, crop, 1):
             break
         player.observe_crop_decision(crop, True, True, selected=True, count_opportunity=False)
         growth_days = economy_rules.effective_growth_days(crop, player, upgrades_by_id)
-        planted_something = (
-            actions.plant_seed(
-                player,
-                crop,
-                growth_days,
-                fertilized=use_fertilizer,
-                fertilizer_config=fertilizer_config,
-            )
-            or planted_something
-        )
+        if not actions.plant_seed(
+            player,
+            crop,
+            growth_days,
+            fertilized=use_fertilizer,
+            fertilizer_config=fertilizer_config,
+        ):
+            # The slot is still open, so without this the loop would re-enter,
+            # buy another seed, fail again, and repeat until the farm's entire
+            # cash balance had been converted into unplantable seed. The seed
+            # just bought stays in inventory for a later attempt.
+            break
+        planted_something = True
     return planted_something
 
 

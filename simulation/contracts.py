@@ -5,6 +5,10 @@ from simulation.state import QUALITY_ORDER, ContractState
 
 PRODUCTION_SAFETY_FACTOR = 0.45
 DEFAULT_OFFER_EXPIRY_DAYS = 3
+# Assumed contract premium over the bare market price, used only when no
+# sales channel can quote the item at all. Overridable via
+# contracts.fallback_price_multiplier.
+DEFAULT_FALLBACK_PRICE_MULTIPLIER = 1.15
 
 
 def offer_expiry_day(player, offer) -> int:
@@ -112,7 +116,9 @@ def best_market_alternative(player, contract) -> float:
     if alternatives:
         return max(alternatives)
     market_price = player.market_prices.get(contract.item_id, 0.0)
-    return market_price * 1.15
+    return market_price * getattr(player, "contract_config", {}).get(
+        "fallback_price_multiplier", DEFAULT_FALLBACK_PRICE_MULTIPLIER
+    )
 
 
 def is_offer_profitable(player, contract) -> bool:
@@ -163,7 +169,7 @@ def _effective_deadline(player, deadline: int) -> int:
     return min(deadline, total_days) if total_days is not None else deadline
 
 
-def _best_possible_grade(planted, crop: dict, plot) -> str:
+def _best_possible_grade(planted, crop: dict, plot, dynamics=None) -> str:
     """The best quality grade an already-planted crop could still reach.
 
     simulation.crop_growth.update_crop_stress only ever adds to a planted
@@ -173,7 +179,9 @@ def _best_possible_grade(planted, crop: dict, plot) -> str:
     enough that even this best case grades below a contract's min_quality
     can never satisfy it and must not be forecast as future supply for it.
     """
-    _yield_multiplier, quality_score = crop_growth.harvest_multipliers(planted, crop, plot)
+    _yield_multiplier, quality_score = crop_growth.harvest_multipliers(
+        planted, crop, plot, dynamics=dynamics
+    )
     return crop_growth.quality_grade(quality_score)
 
 
@@ -224,7 +232,10 @@ def _future_crop_capacity(
                 if planted.plot_index is not None and planted.plot_index < len(player.plots)
                 else None
             )
-            if QUALITY_ORDER[_best_possible_grade(planted, crop, plot)] >= min_quality_rank:
+            best_grade = _best_possible_grade(
+                planted, crop, plot, getattr(player, "soil_dynamics", None)
+            )
+            if QUALITY_ORDER[best_grade] >= min_quality_rank:
                 free_cycles += 1
             if guaranteed_grade:
                 seeded_cycles += max(0, (days_available - days_until_free) // growth_days)
@@ -442,7 +453,15 @@ def resolve_expired(player) -> None:
         if contract.resolved or player.day <= contract.deadline_day:
             continue
         shortfall_value = contract.remaining * contract.unit_price
-        penalty = min(player.money, shortfall_value * contract.penalty_rate)
+        # Both operands floored at zero. The penalty is deliberately bounded
+        # by cash on hand, but taking that bound from a negative balance made
+        # `money -= penalty` *credit* the farm for failing a contract, and
+        # record_expense silently dropped the negative while
+        # player.contract_penalties still accumulated it -- leaving the two
+        # irreconcilable. Cash cannot currently go negative (every spend site
+        # guards), so this defends an invariant rather than fixing observed
+        # output.
+        penalty = min(max(0.0, player.money), max(0.0, shortfall_value * contract.penalty_rate))
         player.money -= penalty
         player.record_expense("contract_penalties", penalty)
         player.contract_penalties += penalty
@@ -450,4 +469,14 @@ def resolve_expired(player) -> None:
         player.reputation = max(0.0, player.reputation - 4.0)
         contract.resolved = True
 
+    # Resolved contracts (completed via deliver() or failed above) were never
+    # removed, so this list grew for the whole run and was re-scanned every
+    # day by both this function and every agent's delivery hook. Every
+    # consumer already filters on `not resolved`, so dropping them here is
+    # behaviour-preserving; it just bounds the list by the number of
+    # *outstanding* contracts instead of by run length. Completion and
+    # failure totals live in player.contracts_completed/contracts_failed.
+    player.active_contracts = [
+        contract for contract in player.active_contracts if not contract.resolved
+    ]
     player.contract_offers = visible_offers(player)

@@ -1,5 +1,9 @@
 # Farm Economy Sandbox
 
+[![CI](https://github.com/Supersmasher149/farm-economy-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/Supersmasher149/farm-economy-sandbox/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
+
 A headless, deterministic farm-economy simulator built for balance testing.
 Instead of a playable game, it ships a roster of scripted agents that each
 play one deliberate strategy (optimal, reckless, neglectful, risk-averse,
@@ -13,10 +17,54 @@ the exact same day-by-day outcome.
 
 ## Requirements
 
-- Python 3.11+ (uses `match`-free but relies on `dict | None` type hints)
-- `pytest` for the test suite
+- Python 3.12+ — not 3.11. The simulation depends on `sum()` applying Neumaier
+  compensated summation to floats, which CPython only does from 3.12; on 3.11
+  the same seed produces a measurably different run.
+- `pytest` and `ruff` for the test suite and lint checks:
+  `pip install -r requirements-dev.txt`
 
 No third-party dependencies are required to run the simulator itself.
+
+### Optional: the C accelerator
+
+A compiled kernel for the per-plot daily physics is available and makes
+batches roughly 1.15x faster. It is **off by default and entirely optional** —
+building it needs only a C compiler and the CPython headers, no third-party
+packages:
+
+```bash
+python3 tools/build_fastplot.py         # build in place
+python3 tools/build_fastplot.py --clean # remove it again
+```
+
+Without it, `simulation/weather.py` uses the pure-Python plot loop, which
+remains the reference implementation. The two are held to **bit-identical**
+output by `tests/test_fastplot_equivalence.py`, so enabling the accelerator
+never changes what a seed replays to.
+
+### Optional: the Cython build
+
+A second, independent accelerator compiles `simulation/` and `agents/`
+themselves, worth a further **~1.17x** on a 1000-run batch. Unlike the C
+kernel this one needs a build-time package (`pip install cython`); nothing
+imports it at runtime, so the no-dependencies promise above still holds.
+
+```bash
+python3 tools/build_cython.py                          # build
+FARM_COMPILED=1 python3 main.py batch --runs 1000      # opt in per command
+python3 tools/build_cython.py --clean                  # remove it again
+```
+
+It is **opt-in**: without `FARM_COMPILED` set, nothing loads it and you get
+the pure-Python modules. Artifacts live under `build/compiled/<tag>/`, never
+beside the sources, and the build records a SHA-256 of every source file — so
+editing a `.py` without rebuilding falls back with a warning naming the module
+rather than silently running stale code. `FARM_COMPILED=strict` turns that
+fallback into an error, which is what CI uses.
+
+The source files remain the reference implementation, and the same golden
+replay baseline is asserted against both builds, so no combination of
+accelerators changes what a seed replays to.
 
 ## Quick start
 
@@ -50,6 +98,20 @@ since each simulated run is independent. Results are byte-for-byte
 identical to a sequential run for the same `--seed`. Pass `--workers 1` to
 force sequential execution, or `--workers N` to cap the pool size.
 
+While a batch runs, a live progress line is drawn on **stderr**:
+
+```
+[████████████░░░░░░░░░░░░░░░░]  42.7% |  4,270/10,000 | 1,523 sim/s | 00:02 elapsed | 00:03 left
+```
+
+It shows a status bar, percent complete, simulations finished versus the
+total, throughput, elapsed time, and estimated time remaining, and the same
+elapsed/rate figures are printed with the report paths at the end. It appears
+automatically when stderr is a terminal; `--progress` forces it on (useful
+when piping the report on stdout to a file) and `--no-progress` turns it off.
+The reporter only counts results as they stream past, so it never changes
+what a given `--seed` produces.
+
 Optional `--days N` and `--start-money N` batch arguments override those two
 simulation settings for the diagnostic run only; the effective values are
 recorded in the config snapshot and report.
@@ -64,13 +126,13 @@ agents/                 Scripted strategies used as balance-testing probes
 runner/                 Drives one run / a batch of runs
 metrics/                Aggregation, warnings, CSV + Markdown reporting
 tests/                  pytest suite for the simulation and engine
-docs/superpowers/specs/ Design notes for the simulation architecture
+docs/design/            Design notes for the simulation architecture
 ```
 
 ## How the simulation works
 
 Each simulated day runs through a fixed order (see
-`docs/superpowers/specs/2026-08-04-full-crop-market-simulation-design.md`
+`docs/design/2026-08-04-full-crop-market-simulation-design.md`
 for the full design): weather and prices update, mature crops are
 harvested and graded, storage ages and spoils, contract offers are
 generated, then the agent's decisions for the day (contracts, processing,
@@ -133,6 +195,24 @@ ruff format --check
    agent).
 4. Re-run with the **same seed** to isolate the effect of the change from
    run-to-run noise, then drop `--seed` for the final report.
+
+### Example output
+
+A trimmed, real `## Warnings` section from `reports/summary_report.md`
+(a sample from one seeded batch run, not the repo's current balance state --
+these are exactly the kind of findings the balance-testing workflow above
+is meant to chase down):
+
+```
+- ⚠️ [profit_optimizer] Possible runaway economy: avg final money 9011.64 is 20x+ starting money.
+- ⚠️ [reckless_spender] High bankruptcy rate: 62.5% (> 20%).
+- ⚠️ [no_upgrade_player] Dead crop: 'purplehaze' is only 3.44% of plantings (< 5%).
+- ⚠️ [no_upgrade_player] First upgrade is rarely reached: 0.0% of runs purchased one.
+- ⚠️ [diversifier] High bankruptcy rate: 50.0% (> 20%).
+```
+
+Each line is auto-generated by `metrics/warnings.py` from the batch's
+aggregate stats -- no manual eyeballing of per-strategy numbers required.
 
 Two examples from this repo's own history: `risk_averse_grower`'s
 docstring promised it "fertilizes for safety, not yield," but its code

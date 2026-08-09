@@ -22,6 +22,14 @@ Nothing here may depend on mutable run state beyond the explicit
 `upgrades_owned` key -- a cache entry outlives the run that created it.
 """
 
+from simulation.state import QUALITY_ORDER
+
+# Field order of CropProfile.flat, which the optional C kernel indexes
+# positionally. Bump on any change to that tuple; simulation/weather.py
+# refuses to use a compiled kernel whose own constant disagrees, so a stale
+# .so cannot silently read the wrong fields.
+PROFILE_LAYOUT = 1
+
 # Bounded so a caller that builds fresh config dicts in a loop (tests, mostly)
 # can't grow these without limit. Real use has a handful of long-lived config
 # objects, so the cap is never approached and a clear costs nothing.
@@ -44,6 +52,52 @@ _MAX_ENTRIES = 512
 DEFAULT_NUTRIENT_DEMAND = {"nitrogen": 0.02, "phosphorus": 0.01, "potassium": 0.01}
 
 
+# Plot dynamics that were previously hard-coded across weather.py,
+# actions.py, and crop_growth.py. `config/soil.json`'s "dynamics" section
+# overrides any of them; every default here is the exact constant the code
+# used before, so a config that omits the section reproduces prior behaviour
+# bit-for-bit. Depletion is now tunable from config for the same reason
+# regeneration already was -- a balance pass should not have to edit
+# simulation code to move either side of the same mechanic.
+DEFAULT_SOIL_DYNAMICS = {
+    # actions.harvest_mature: soil cost of taking a harvest off a plot.
+    "harvest_soil_health_cost": 0.02,
+    "min_soil_health": 0.1,
+    # weather.apply_weather: fallow-only recovery, on top of regen_per_day.
+    "fallow_pest_decay": 0.9,
+    "fallow_disease_decay": 0.9,
+    "fallow_soil_health_regen": 0.005,
+    # weather.apply_weather: pressure accumulated while a crop is growing.
+    "pest_growth_per_day": 0.005,
+    "disease_growth_per_rainfall": 0.08,
+    "max_pest_pressure": 0.8,
+    "max_disease_pressure": 0.8,
+    # crop_growth.harvest_multipliers: rotation incentive and the soil-health
+    # yield curve (yield scales by floor + soil_health * span).
+    "same_family_yield_penalty": 0.85,
+    "same_family_quality_penalty": 0.9,
+    "soil_health_yield_floor": 0.85,
+    "soil_health_yield_span": 0.25,
+}
+
+
+class SoilDynamics:
+    """Resolved `soil.dynamics` values, read once per world config."""
+
+    __slots__ = tuple(DEFAULT_SOIL_DYNAMICS)
+
+    def __init__(self, soil_config: dict | None = None):
+        configured = (soil_config or {}).get("dynamics", {})
+        for name, default in DEFAULT_SOIL_DYNAMICS.items():
+            setattr(self, name, configured.get(name, default))
+
+
+# Shared fallback for callers outside the engine's day loop (direct unit
+# tests, forecasting helpers) that have no world config to hand. Never
+# mutated -- SoilDynamics is written once at construction.
+DEFAULT_DYNAMICS = SoilDynamics()
+
+
 class CropProfile:
     """Static growth inputs for one crop, read straight off the config dict.
 
@@ -61,9 +115,12 @@ class CropProfile:
         "temperature_high",
         "pest_susceptibility",
         "disease_susceptibility",
+        "water_interval_days",
+        "flat",
     )
 
     def __init__(self, crop: dict):
+        self.water_interval_days = crop.get("water_interval_days", 3)
         self.min_moisture = crop.get("min_moisture", 0.35)
         needs = crop.get("nutrient_demand", DEFAULT_NUTRIENT_DEMAND)
         # Tuple, not dict: iterated twice per plot per day, and the order must
@@ -77,6 +134,69 @@ class CropProfile:
         self.temperature_low, self.temperature_high = temperature_range[0], temperature_range[1]
         self.pest_susceptibility = crop.get("pest_susceptibility", 1.0)
         self.disease_susceptibility = crop.get("disease_susceptibility", 1.0)
+        # Same values again as a flat tuple, purely so the optional C kernel
+        # (simulation._fastplot) can read them with PyTuple_GET_ITEM instead
+        # of nine PyObject_GetAttr calls per plot per day. Field order is
+        # part of the C module's ABI -- see _fastplotmodule.c, and bump
+        # _fastplot.PROFILE_LAYOUT if it ever changes.
+        self.flat = (
+            self.min_moisture,
+            self.ph_low,
+            self.ph_high,
+            self.temperature_low,
+            self.temperature_high,
+            self.pest_susceptibility,
+            self.disease_susceptibility,
+            self.water_interval_days,
+            self.nutrient_demand,
+        )
+
+
+class ChannelProfile:
+    """Static sale terms for one market channel, read off the config dict.
+
+    Field-for-field the same values (including the same defaults) that
+    markets.quote used to re-read from the channel dict on every call -- and
+    it is called several times per item per day per agent, so those ~7 dict
+    lookups were showing up in the profile. `min_quality_rank` additionally
+    folds in the QUALITY_ORDER lookup, which is equally fixed.
+    """
+
+    __slots__ = (
+        "channel_id",
+        "min_quality_rank",
+        "min_reputation",
+        "daily_capacity",
+        "price_multiplier",
+        "reputation_bonus",
+        "flat_fee",
+        "fee_rate",
+    )
+
+    def __init__(self, channel: dict):
+        self.channel_id = channel["id"]
+        self.min_quality_rank = QUALITY_ORDER[channel.get("min_quality", "rejected")]
+        self.min_reputation = channel.get("min_reputation", 0)
+        # None, not a number: the un-cached default was the *caller's*
+        # quantity, which is not known here. quote() substitutes it.
+        self.daily_capacity = channel.get("daily_capacity")
+        self.price_multiplier = channel.get("price_multiplier", 1.0)
+        self.reputation_bonus = channel.get("reputation_bonus", 0.002)
+        self.flat_fee = channel.get("flat_fee", 0.0)
+        self.fee_rate = channel.get("fee_rate", 0.0)
+
+
+_channel_profiles: dict = {}
+
+
+def channel_profile(channel: dict) -> ChannelProfile:
+    entry = _channel_profiles.get(id(channel))
+    if entry is None:
+        if len(_channel_profiles) >= _MAX_ENTRIES:
+            _channel_profiles.clear()
+        entry = (channel, ChannelProfile(channel))
+        _channel_profiles[id(channel)] = entry
+    return entry[1]
 
 
 class WorldLookups:
@@ -94,6 +214,7 @@ class WorldLookups:
         "channels_by_id",
         "market_profiles",
         "crop_profiles",
+        "crop_profiles_flat",
         "_storage",
         "_capacity",
         "watering",
@@ -105,6 +226,7 @@ class WorldLookups:
         "buyers",
         "processing",
         "plot_regen",
+        "soil_dynamics",
     )
 
     def __init__(self, world: dict, crops_by_id: dict):
@@ -124,7 +246,9 @@ class WorldLookups:
         # Defaults to no regen at all so a world config without a
         # "soil.regen_per_day" section behaves exactly as before this was
         # added.
-        self.plot_regen = world.get("soil", {}).get("regen_per_day", {})
+        soil = world.get("soil", {})
+        self.plot_regen = soil.get("regen_per_day", {})
+        self.soil_dynamics = SoilDynamics(soil)
         products = world["processing"].get("products", [])
         self.items_by_id = dict(crops_by_id)
         self.items_by_id.update({product["id"]: product for product in products})
@@ -138,6 +262,12 @@ class WorldLookups:
         self.channels = world["markets"]["channels"]
         self.channels_by_id = {channel["id"]: channel for channel in self.channels}
         self.crop_profiles = {crop_id: CropProfile(crop) for crop_id, crop in crops_by_id.items()}
+        # crop_id -> CropProfile.flat, so the optional C kernel resolves a
+        # plot's crop to its inputs with a single dict hit and no attribute
+        # access at all. Unused by the pure-Python path.
+        self.crop_profiles_flat = {
+            crop_id: profile.flat for crop_id, profile in self.crop_profiles.items()
+        }
         self.market_profiles = _build_market_profiles(self.items_by_id, world["markets"])
         # Keyed by frozenset(upgrades_owned); at most one entry per distinct
         # combination of owned upgrades.
@@ -151,9 +281,14 @@ class WorldLookups:
         so a caller mutating the result cannot corrupt the cache; only the
         derived values are shared, and no caller mutates those.
         """
-        key = frozenset(upgrades_owned)
-        cached = self._storage.get(key)
-        if cached is None:
+        # `base` is part of the key, not just `upgrades_owned`: the derived
+        # value depends on both, and keying on the upgrade set alone silently
+        # returned another config's storage whenever a caller passed a
+        # different base with the same upgrades owned. The entry keeps a
+        # strong reference to `base` so its id() cannot be recycled.
+        key = (id(base), frozenset(upgrades_owned))
+        entry = self._storage.get(key)
+        if entry is None:
             cached = dict(base)
             # sorted() only to keep the fold order stable across processes;
             # the shipped config has a single storage upgrade, so no ordering
@@ -167,20 +302,29 @@ class WorldLookups:
                     cached["shelf_life_multiplier"] = cached.get(
                         "shelf_life_multiplier", 1
                     ) * effect.get("shelf_life_multiplier", 1)
-            self._storage[key] = cached
-        return dict(cached)
+            entry = (base, cached)
+            self._storage[key] = entry
+        return dict(entry[1])
 
     def processing_capacity(self, config: dict, upgrades_owned: set, upgrades_by_id: dict) -> int:
-        key = frozenset(upgrades_owned)
-        capacity = self._capacity.get(key)
-        if capacity is None:
+        # Keyed on `config` as well as the owned upgrades, for the same reason
+        # effective_storage above is.
+        key = (id(config), frozenset(upgrades_owned))
+        entry = self._capacity.get(key)
+        if entry is None:
             capacity = config.get("base_capacity", 0)
-            for upgrade_id in upgrades_owned:
+            # sorted() so the fold order cannot depend on set iteration order.
+            # Configuration forces every processing_capacity amount to be an
+            # integer, so the sum is exact and order is unobservable today --
+            # this keeps that true if a fractional effect is ever introduced,
+            # rather than letting it silently break replay.
+            for upgrade_id in sorted(upgrades_owned):
                 effect = upgrades_by_id[upgrade_id]["effect"]
                 if effect["type"] == "processing_capacity":
                     capacity += effect["amount"]
-            self._capacity[key] = capacity
-        return capacity
+            entry = (config, capacity)
+            self._capacity[key] = entry
+        return entry[1]
 
 
 def _build_market_profiles(items_by_id: dict, market_config: dict) -> tuple:
@@ -292,6 +436,45 @@ def market_profiles(items_by_id: dict, market_config: dict) -> tuple:
             _market_profiles.clear()
         entry = (items_by_id, market_config, _build_market_profiles(items_by_id, market_config))
         _market_profiles[key] = entry
+    return entry[2]
+
+
+_growth_days: dict = {}
+
+
+def effective_growth_days(crop: dict, upgrades_owned: set, upgrades_by_id: dict) -> int:
+    """Growth duration for `crop` given the currently owned upgrades.
+
+    Hot enough to matter: agents call this while ranking every candidate crop,
+    so it ran ~590k times in a 2200-run batch and re-walked the whole upgrade
+    catalog each time. The result is a pure function of the crop, the owned
+    set, and the catalog, so it is memoized on exactly those -- and the fold
+    below (the only thing that computes a value) is unchanged, so every
+    rounded intermediate is bit-identical to the un-cached version.
+    """
+    # Overwhelmingly the common case, especially early in a run: with nothing
+    # owned the fold below is a no-op, so skip the key construction entirely.
+    if not upgrades_owned:
+        return crop["growth_days"]
+    key = (id(crop), id(upgrades_by_id), frozenset(upgrades_owned))
+    entry = _growth_days.get(key)
+    if entry is None:
+        if len(_growth_days) >= _MAX_ENTRIES:
+            _growth_days.clear()
+        days = crop["growth_days"]
+        # The owned-upgrade set has no stable iteration order. Fold in the
+        # order supplied by the configuration list so each rounded
+        # intermediate result is reproducible across processes and Python runs.
+        for upgrade_id, upgrade in upgrades_by_id.items():
+            if upgrade_id not in upgrades_owned:
+                continue
+            effect = upgrade["effect"]
+            if effect["type"] == "growth_time_reduction":
+                days = max(1, round(days * (1 - effect["amount"])))
+        # Strong refs to both key objects, so neither id() can be recycled
+        # while the entry lives -- same discipline as the caches above.
+        entry = (crop, upgrades_by_id, days)
+        _growth_days[key] = entry
     return entry[2]
 
 

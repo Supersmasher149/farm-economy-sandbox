@@ -2,6 +2,12 @@
 
 Every run is fully reproducible: pass the same `seed` back in to replay it
 exactly. If `seed` is None, a fresh seed is generated and returned.
+
+`record_history` rounds to 2dp for human-readable reporting, so it cannot be
+used to check bit-exact replay. `on_day` exists for that: it is handed the
+live `PlayerState` after each simulated day and may read whatever precision it
+needs. It must not mutate the player -- the golden-replay trajectory hash
+(.claude/skills/replay-guard) is its only caller.
 """
 
 from simulation import engine
@@ -19,6 +25,7 @@ def run_single(
     seed=None,
     record_history: bool = False,
     world=None,
+    on_day=None,
 ):
     crops_by_id = {c["id"]: c for c in crops}
     upgrades_by_id = {u["id"]: u for u in upgrades}
@@ -56,6 +63,8 @@ def run_single(
             rng,
             world=world,
         )
+        if on_day is not None:
+            on_day(player)
         if record_history:
             history.append(
                 {

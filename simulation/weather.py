@@ -1,8 +1,22 @@
 """Seasonal deterministic weather generation and plot updates."""
 
-from simulation import derived
+from simulation import crop_growth, derived
 
 SEASONS = ("spring", "summer", "autumn", "winter")
+
+# Optional compiled accelerator for the per-plot loop below (~20% of batch
+# runtime). Absent unless `python3 setup.py build_ext --inplace` has been
+# run, in which case the pure-Python loop -- which stays the reference
+# implementation -- is used instead. The layout check makes a stale .so
+# built against a different CropProfile.flat fall back rather than misread
+# it. tests/test_fastplot_equivalence.py asserts the two agree bit-for-bit.
+try:
+    from simulation import _fastplot
+except ImportError:
+    _fastplot = None
+else:
+    if getattr(_fastplot, "PROFILE_LAYOUT", None) != derived.PROFILE_LAYOUT:
+        _fastplot = None
 
 
 def season_for_day(day: int, season_length: int = 15) -> str:
@@ -31,14 +45,31 @@ def generate_weather(day: int, config: dict, rng) -> dict:
 
 
 def apply_weather(
-    player, crops_by_id: dict, weather: dict, growth_module, crop_profiles=None, plot_regen=None
+    player,
+    crops_by_id: dict,
+    weather: dict,
+    growth_module,
+    crop_profiles=None,
+    plot_regen=None,
+    dynamics=None,
+    crop_profiles_flat=None,
 ) -> None:
     # Weather values are the same for every plot, so they are read once here
     # rather than per plot. `crop_profiles` maps crop_id to its cached static
     # growth inputs; the engine passes the one it already holds, and omitting
     # it just falls back to an equivalent per-crop lookup.
     rainfall = weather.get("rainfall", 0.0)
+    # Evaporation is a property of the day's weather, not of whether a plot
+    # happens to be occupied, so it is read once here and applied to every
+    # plot. Growing plots have it applied by growth_module.update_crop_stress
+    # (after that function reads today's moisture for water stress); fallow
+    # plots have it applied in the `planted is None` branch below. Previously
+    # only the former happened, so a fallow plot took on rainfall and never
+    # gave any back -- it saturated at 1.0 and handed the next crop planted
+    # there several stress-free days that no design doc ever granted it.
+    evaporation = weather.get("evaporation", 0.08)
     day = player.day
+    dynamics = dynamics if dynamics is not None else derived.DEFAULT_DYNAMICS
     # Resolved once per day, not per plot -- `plot_regen` is already a
     # cached, per-world dict (see derived.WorldLookups.plot_regen), and
     # defaults to no regen so a caller that omits it keeps today's behaviour.
@@ -58,6 +89,40 @@ def apply_weather(
     regen_pest = plot_regen.get("pest_pressure", 0.0) if plot_regen else 0.0
     regen_disease = plot_regen.get("disease_pressure", 0.0) if plot_regen else 0.0
     regenerates_nutrients = regen_n or regen_p or regen_k
+
+    # Compiled fast path, taken only when it is a like-for-like substitution:
+    # the caller must be using the real crop_growth module (a few tests pass
+    # their own) and must already hold the flattened per-crop profiles the
+    # kernel indexes. Anything else falls through to the loop below.
+    if _fastplot is not None and growth_module is crop_growth and crop_profiles_flat is not None:
+        _fastplot.apply_day(
+            player.plots,
+            day,
+            rainfall,
+            evaporation,
+            weather.get("temperature", 20),
+            (
+                regen_moisture,
+                regen_n,
+                regen_p,
+                regen_k,
+                regen_soil_health,
+                regen_pest,
+                regen_disease,
+            ),
+            (
+                dynamics.fallow_pest_decay,
+                dynamics.fallow_disease_decay,
+                dynamics.fallow_soil_health_regen,
+                dynamics.max_disease_pressure,
+                dynamics.disease_growth_per_rainfall,
+                dynamics.max_pest_pressure,
+                dynamics.pest_growth_per_day,
+            ),
+            crop_profiles_flat,
+        )
+        return
+
     for plot in player.plots:
         # Config-accepted (soil.regen_per_day.moisture) alongside the other
         # SOIL_LEVELS regen fields, folded into the same rainfall addition
@@ -82,9 +147,10 @@ def apply_weather(
             plot.disease_pressure = max(0.0, plot.disease_pressure - regen_disease)
         planted = plot.crop
         if planted is None:
-            plot.pest_pressure = max(0.0, plot.pest_pressure * 0.9)
-            plot.disease_pressure = max(0.0, plot.disease_pressure * 0.9)
-            plot.soil_health = min(1.0, plot.soil_health + 0.005)
+            plot.moisture = max(0.0, min(1.0, plot.moisture - evaporation))
+            plot.pest_pressure = max(0.0, plot.pest_pressure * dynamics.fallow_pest_decay)
+            plot.disease_pressure = max(0.0, plot.disease_pressure * dynamics.fallow_disease_decay)
+            plot.soil_health = min(1.0, plot.soil_health + dynamics.fallow_soil_health_regen)
             continue
         crop_id = planted.crop_id
         crop = crops_by_id[crop_id]
@@ -98,5 +164,10 @@ def apply_weather(
         interval = crop.get("water_interval_days", 3)
         overdue = day - planted.last_watered_day - interval
         planted.neglect_days = max(0, overdue)
-        plot.disease_pressure = min(0.8, plot.disease_pressure + rainfall * 0.08)
-        plot.pest_pressure = min(0.8, plot.pest_pressure + 0.005)
+        plot.disease_pressure = min(
+            dynamics.max_disease_pressure,
+            plot.disease_pressure + rainfall * dynamics.disease_growth_per_rainfall,
+        )
+        plot.pest_pressure = min(
+            dynamics.max_pest_pressure, plot.pest_pressure + dynamics.pest_growth_per_day
+        )

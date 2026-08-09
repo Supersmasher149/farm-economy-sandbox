@@ -1,9 +1,19 @@
 __pycache__/
 *.pyc
+
+# Built C accelerator (simulation/_fastplot). Optional and machine-specific:
+# build it with `python3 tools/build_fastplot.py`, never commit the binary.
+*.so
+build/
 .pytest_cache/
+.ruff_cache/
 .DS_Store
 
 reports/*.csv
 reports/*.json
 reports/*.md
 reports/charts/
+reports/auto_balance/
+
+# Local Claude Code permission grants -- machine-specific, not shared.
+.claude/settings.local.json

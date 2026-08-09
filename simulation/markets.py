@@ -48,25 +48,30 @@ def quote(
 ) -> dict | None:
     if item_id not in player.market_prices or quantity <= 0:
         return None
-    if QUALITY_ORDER[quality] < QUALITY_ORDER[channel.get("min_quality", "rejected")]:
+    # The channel's terms are fixed config, so they are read once from a
+    # cached profile rather than re-fetched with .get defaults on every quote
+    # (see simulation.derived.ChannelProfile). Every arithmetic expression
+    # below is left in its original form and order -- only the lookups moved.
+    terms = derived.channel_profile(channel)
+    if QUALITY_ORDER[quality] < terms.min_quality_rank:
         return None
-    if player.reputation < channel.get("min_reputation", 0):
+    if player.reputation < terms.min_reputation:
         return None
     used = (capacity_used if capacity_used is not None else player.channel_capacity_used).get(
-        channel["id"], 0
+        terms.channel_id, 0
     )
-    capacity = channel.get("daily_capacity", quantity)
+    capacity = terms.daily_capacity if terms.daily_capacity is not None else quantity
     accepted = min(quantity, max(0, capacity - used))
     if accepted <= 0:
         return None
     unit_price = (
         player.market_prices[item_id]
-        * channel.get("price_multiplier", 1.0)
+        * terms.price_multiplier
         * QUALITY_MULTIPLIERS[quality]
-        * (1 + min(0.25, player.reputation * channel.get("reputation_bonus", 0.002)))
+        * (1 + min(0.25, player.reputation * terms.reputation_bonus))
     )
     gross = unit_price * accepted
-    fee = channel.get("flat_fee", 0.0) + gross * channel.get("fee_rate", 0.0)
+    fee = terms.flat_fee + gross * terms.fee_rate
     if gross <= fee:
         return None
     return {
@@ -149,6 +154,14 @@ def sell(
         player.revenue_by_channel[channel["id"]] = (
             player.revenue_by_channel.get(channel["id"], 0.0) + revenue
         )
+        # Revenue from value-added products, tracked separately so processing
+        # margin is derivable (revenue here vs. the "processing" expense
+        # category). The field existed but was never written, so every report
+        # showed processing revenue as 0.0. Every lot in `planned` shares one
+        # item_id and therefore one item_type, so the first one classifies
+        # the whole sale.
+        if planned[0][0].item_type == "product":
+            player.processing_revenue += revenue
         player.market_supply[item_id] = player.market_supply.get(item_id, 0.0) + sold
         return revenue, sold
     return 0.0, 0

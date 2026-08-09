@@ -28,3 +28,11 @@ class Diversifier(Agent):
 
     def should_buy_upgrade(self, player, upgrade):
         return player.money >= upgrade["cost"]
+
+    def choose_sales(self, player, channels, items_by_id):
+        # Rotation's main payoff is grade, not volume: this agent harvests the
+        # highest premium share in the roster. Inheriting the base spot-dump
+        # sold all of it at 1.0x and left the question this agent exists to
+        # answer -- whether diversifying pays -- measuring only the part of
+        # the answer that survives throwing the premium away.
+        return self.route_sales_by_best_price(player, channels)

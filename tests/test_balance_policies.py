@@ -121,7 +121,7 @@ def test_full_world_optimizer_diversifies_without_trailing_fast_seller():
     too-high `operating_reserve` and ProfitOptimizer's own disabled
     reserve-relaxation ladder left it at ~0% Purple Haze -- without ending up
     clearly worse off than the pure-Quickweed FastSeller baseline (see
-    docs/superpowers/specs/2026-08-05-soil-regen-and-reserve-fix.md).
+    docs/design/2026-08-05-soil-regen-and-reserve-fix.md).
 
     `avg_final_money` and `avg_bankruptcy_day` are deliberately NOT asserted
     here: at 100% bankruptcy for both strategies, final money is clipped near
@@ -161,7 +161,7 @@ def test_long_horizon_disciplined_strategies_are_self_sustaining():
     """At a 2,000-day horizon (~5.5x the 365-day default), a competently
     managed strategy should not be guaranteed to go bankrupt.
 
-    See docs/superpowers/specs/2026-08-05-soil-regen-and-reserve-fix.md for
+    See docs/design/2026-08-05-soil-regen-and-reserve-fix.md for
     the full day-by-day diagnosis: `soil_health`, `pest_pressure` and
     `disease_pressure` (alongside nitrogen/phosphorus/potassium, fixed in an
     earlier pass) previously only recovered when a plot sat completely

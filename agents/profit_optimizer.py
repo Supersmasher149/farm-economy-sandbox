@@ -4,7 +4,7 @@ crops and upgrade exploits.
 """
 
 from agents.base import Agent
-from simulation import contracts, economy_rules, inventory, markets
+from simulation import contracts, economy_rules, inventory
 
 
 class ProfitOptimizer(Agent):
@@ -126,54 +126,7 @@ class ProfitOptimizer(Agent):
         return decisions
 
     def choose_sales(self, player, channels, items_by_id):
-        planned_capacity = dict(player.channel_capacity_used)
-        quantities = {}
-        for lot in player.inventory_lots:
-            by_quality = quantities.setdefault(lot.item_id, {})
-            by_quality[lot.quality] = by_quality.get(lot.quality, 0) + lot.quantity
-
-        routes = {}
-        for item_id, by_quality in quantities.items():
-            for quality in sorted(
-                by_quality, key=lambda value: -markets.QUALITY_MULTIPLIERS[value]
-            ):
-                remaining = by_quality[quality]
-                while remaining > 0:
-                    candidates = [
-                        (
-                            markets.quote(
-                                player,
-                                item_id,
-                                quality,
-                                channel,
-                                remaining,
-                                capacity_used=planned_capacity,
-                            ),
-                            channel,
-                        )
-                        for channel in channels
-                    ]
-                    candidates = [pair for pair in candidates if pair[0]]
-                    if not candidates:
-                        break
-                    offer, channel = max(
-                        candidates, key=lambda pair: pair[0]["net"] / pair[0]["quantity"]
-                    )
-                    sold = offer["quantity"]
-                    route = (item_id, quality, channel["id"])
-                    routes[route] = routes.get(route, 0) + sold
-                    planned_capacity[channel["id"]] = planned_capacity.get(channel["id"], 0) + sold
-                    remaining -= sold
-
-        return [
-            {
-                "item_id": item_id,
-                "quantity": quantity,
-                "channel_id": channel_id,
-                "quality": quality,
-            }
-            for (item_id, quality, channel_id), quantity in routes.items()
-        ]
+        return self.route_sales_by_best_price(player, channels)
 
     def should_use_fertilizer(self, player, crop, fertilizer_config):
         marginal_profit = economy_rules.fertilizer_expected_marginal_profit(crop, fertilizer_config)

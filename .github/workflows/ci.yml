@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 3.12 is the floor: simulation/crop_growth.py depends on sum()
+        # applying Neumaier compensated summation to floats, which CPython
+        # only does from 3.12. See requires-python in pyproject.toml.
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python3 -m pytest
+
+      - name: Lint (ruff check)
+        run: ruff check
+
+      - name: Format check (ruff format)
+        run: ruff format --check
+
+  # The pure-Python jobs above never build the C accelerator, so every test in
+  # tests/test_fastplot_equivalence.py is skipped there and nothing checks the
+  # compiled path at all. This job is the one that does.
+  compiled:
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS included because the darwin `-undefined dynamic_lookup` branch
+        # in tools/build_fastplot.py is otherwise only exercised by hand.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Build the C accelerator
+        run: python3 tools/build_fastplot.py
+
+      - name: Run tests against the compiled kernel
+        # FARM_REQUIRE_COMPILED turns "extension missing" from a skip into a
+        # failure. Without it a silently broken build produces a green run in
+        # which every equivalence test was skipped.
+        env:
+          FARM_REQUIRE_COMPILED: "1"
+        run: python3 -m pytest
+
+      - name: Golden replay check
+        # The committed baseline is captured from the pure-Python reference,
+        # so this asserts the C kernel reproduces it bit for bit.
+        run: python3 .claude/skills/replay-guard/scripts/golden_replay.py check
+
+  # The Cython build is optional and off by default, so nothing above touches
+  # it. FARM_COMPILED=strict makes a missing or stale artifact an error rather
+  # than a silent fall back to pure Python.
+  cython:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dev dependencies
+        # Cython is pinned: a minor bump that changes a codegen default is
+        # exactly the silent-drift scenario this project cannot absorb.
+        run: |
+          pip install -r requirements-dev.txt
+          pip install "cython==3.2.9"
+
+      - name: Build both accelerators
+        run: |
+          python3 tools/build_fastplot.py
+          python3 tools/build_cython.py
+
+      - name: Run tests against the compiled modules
+        env:
+          FARM_COMPILED: strict
+          FARM_REQUIRE_COMPILED: "1"
+        run: python3 -m pytest
+
+      - name: Golden replay check
+        # The baseline is captured from the pure-Python reference, so this
+        # asserts the Cython build reproduces it bit for bit.
+        env:
+          FARM_COMPILED: strict
+        run: python3 .claude/skills/replay-guard/scripts/golden_replay.py check
+
+  # Determinism is a property of the reference implementation too, and the
+  # committed baseline is portable across 3.12+ (verified). A divergence here
+  # is a real regression, not a platform artifact.
+  replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Golden replay check (pure Python reference)
+        run: python3 .claude/skills/replay-guard/scripts/golden_replay.py check

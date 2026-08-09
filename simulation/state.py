@@ -18,6 +18,11 @@ class PlantedCrop:
     temperature_stress: float = 0.0
     pest_stress: float = 0.0
     disease_stress: float = 0.0
+    # Cash actually spent on this planting (seed, plus any fertilizer and
+    # watering it received). Carried into the harvested lot's unit_cost so
+    # processing margin is priced against real production cost rather than
+    # seed cost alone. Appended last to keep positional construction working.
+    accrued_cost: float = 0.0
 
     def __post_init__(self):
         if self.last_watered_day is None:
@@ -158,6 +163,11 @@ class PlayerState:
     run_seed: int | None = None
     processing_recipes: list[dict] = field(default_factory=list)
     processing_capacity: int | None = None
+    # Resolved simulation.derived.SoilDynamics for the run's world config,
+    # stashed by the engine alongside crop_catalog/contract_config so the
+    # action and forecasting helpers can reach it without a signature change
+    # on every legacy-compatible entry point. None outside the full engine.
+    soil_dynamics: object | None = None
 
     def __post_init__(self):
         if not self.plots:

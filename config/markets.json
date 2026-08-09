@@ -1,10 +1,10 @@
 {
   "default_variation": 0.12,
-  "minimum_supply_multiplier": 0.65,
+  "minimum_supply_multiplier": 0.95,
   "supply_decay": 0.75,
   "channels": [
-    {"id": "spot", "name": "Spot Market", "price_multiplier": 1.0, "min_quality": "processing", "daily_capacity": 1000, "fee_rate": 0.03},
-    {"id": "wholesale", "name": "Wholesale", "price_multiplier": 0.88, "min_quality": "standard", "daily_capacity": 1000, "flat_fee": 2.0},
+    {"id": "spot", "name": "Spot Market", "price_multiplier": 1.0, "min_quality": "processing", "daily_capacity": 20, "fee_rate": 0.03},
+    {"id": "wholesale", "name": "Wholesale", "price_multiplier": 0.88, "min_quality": "standard", "daily_capacity": 1000},
     {"id": "farm_stand", "name": "Farm Stand", "price_multiplier": 1.45, "min_quality": "standard", "daily_capacity": 8, "flat_fee": 1.0},
     {"id": "processor", "name": "Processor Buyer", "price_multiplier": 0.72, "min_quality": "processing", "daily_capacity": 40},
     {"id": "specialty", "name": "Specialty Buyer", "price_multiplier": 1.7, "min_quality": "premium", "daily_capacity": 12, "min_reputation": 20, "reputation_bonus": 0.003}
