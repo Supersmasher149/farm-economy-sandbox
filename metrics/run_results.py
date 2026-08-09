@@ -19,6 +19,15 @@ def _money_sum(values) -> float:
     return float(total.quantize(_CENT, rounding=ROUND_HALF_UP))
 
 
+def _round_or_none(value, ndigits: int = 2):
+    """Round a ratio that may be undefined (no denominator to measure it against).
+
+    None here means "not observed this run", not "observed as zero" -- callers
+    (metrics/aggregate_results.py) must not fold it into a mean as a real 0.0.
+    """
+    return None if value is None else round(value, ndigits)
+
+
 @dataclass
 class RunResult:
     strategy: str
@@ -50,9 +59,9 @@ class RunResult:
     minimum_cash_balance: float
     highest_money: float
     crops_lost: int
-    crop_loss_rate: float
+    crop_loss_rate: object  # float, or None if no crop matured (undefined, not 0%)
     watering_rate: float
-    occupied_watering_rate: float
+    occupied_watering_rate: object  # float, or None if no slot was ever occupied
     occupied_slot_days: int
     fertilizer_applications: int
     spoiled_units: int
@@ -92,16 +101,20 @@ def build_run_result(
 
     avg_profit_per_day = net_profit / days_simulated if days_simulated else 0.0
     avg_profit_per_slot_day = net_profit / player.slot_days if player.slot_days else 0.0
+    # None (not 0.0) when there's nothing to measure the ratio against -- a
+    # run with no harvest events had no loss rate to observe, and one with
+    # no occupied plot-days had no watering-of-occupied-slots to observe.
+    # Folding either into 0% would misrepresent "unobserved" as "perfect."
     crop_loss_rate = (
         100 * player.total_crops_lost / player.total_harvest_events
         if player.total_harvest_events
-        else 0.0
+        else None
     )
     watering_rate = 100 * player.total_waterings / player.slot_days if player.slot_days else 0.0
     occupied_watering_rate = (
         100 * player.total_waterings / player.occupied_slot_days
         if player.occupied_slot_days
-        else 0.0
+        else None
     )
 
     rounded_observations = {
@@ -139,9 +152,9 @@ def build_run_result(
         minimum_cash_balance=_money(player.lowest_money),
         highest_money=_money(player.highest_money),
         crops_lost=player.total_crops_lost,
-        crop_loss_rate=round(crop_loss_rate, 2),
+        crop_loss_rate=_round_or_none(crop_loss_rate),
         watering_rate=round(watering_rate, 2),
-        occupied_watering_rate=round(occupied_watering_rate, 2),
+        occupied_watering_rate=_round_or_none(occupied_watering_rate),
         occupied_slot_days=player.occupied_slot_days,
         fertilizer_applications=player.total_fertilizer_applied,
         spoiled_units=player.total_spoiled,

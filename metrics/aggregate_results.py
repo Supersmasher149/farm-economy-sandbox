@@ -10,8 +10,16 @@ approximate for larger cohorts while memory remains bounded.
 
 Running means use Neumaier (improved Kahan-Babuska) compensated summation
 instead of naive `total += value`, so they stay numerically close to
-statistics.mean's higher-precision internal calculation and don't quietly
-drift from it at the 2-decimal rounding this module reports at.
+statistics.mean's higher-precision internal calculation. `_MeanAccumulator`
+also treats `add(None)` as "not observed" rather than a real zero, so a ratio
+that's undefined for some runs (e.g. crop loss rate when nothing matured) is
+averaged only over the runs that did observe it.
+
+Fields that a warning threshold in metrics/warnings.py compares against are
+returned unrounded here, precisely so a value near a boundary isn't nudged
+to the wrong side by premature rounding; every other field is rounded to 2
+decimals in `finalize()` since nothing downstream needs more precision than
+that. metrics/report.py rounds the unrounded fields itself at render time.
 
 `aggregate(results) -> dict` is kept as a convenience wrapper with the same
 signature and output as before (works on a list or any other iterable, in a
@@ -25,6 +33,10 @@ import random
 import statistics
 
 MEDIAN_RESERVOIR_CAPACITY = 1024
+
+
+def _round_or_none(value, ndigits: int = 2):
+    return None if value is None else round(value, ndigits)
 
 
 class _DeterministicReservoir:
@@ -57,7 +69,23 @@ class _DeterministicReservoir:
 
 
 class _MeanAccumulator:
-    """Running mean via Neumaier compensated summation. count==0 -> None."""
+    """Running mean via Neumaier compensated summation. count==0 -> None.
+
+    `add(None)` is a no-op rather than treating the observation as a real
+    zero: some per-run ratios (crop loss rate, occupied watering rate) are
+    undefined when their denominator is zero (no harvest events, no occupied
+    plot-days), and averaging those in as 0.0 would silently dilute a
+    cohort's true rate toward zero. Skipping them means `mean()` is the
+    average of *observed* values only, weighted by how many runs actually
+    had something to observe -- and count stays at 0 (mean() -> None) if no
+    run in the cohort ever observed this ratio.
+
+    Returns unrounded: callers that feed a value straight into a warning
+    threshold comparison (metrics/warnings.py) need full precision, since
+    rounding first can push a value to the wrong side of a boundary. Round
+    only where a value is for display (see metrics/report.py and the
+    non-warning-facing fields in `_StrategyAccumulator.finalize` below).
+    """
 
     __slots__ = ("total", "comp", "count")
 
@@ -67,6 +95,8 @@ class _MeanAccumulator:
         self.count = 0
 
     def add(self, value) -> None:
+        if value is None:
+            return
         t = self.total + value
         if abs(self.total) >= abs(value):
             self.comp += (self.total - t) + value
@@ -76,7 +106,7 @@ class _MeanAccumulator:
         self.count += 1
 
     def mean(self):
-        return round((self.total + self.comp) / self.count, 2) if self.count else None
+        return (self.total + self.comp) / self.count if self.count else None
 
 
 # (summary-dict mean field name, RunResult attribute) for the per-run stats
@@ -211,52 +241,72 @@ class _StrategyAccumulator:
             )
         )
 
+        # False means this cohort never planted anything -- crop_usage_pct is
+        # then {} rather than fabricating a 0.0% entry per known crop, which
+        # would otherwise be indistinguishable from "every crop is dead."
+        crop_usage_observed = self.planted_total > 0
+        crop_usage_pct = (
+            {cid: 100 * count / self.planted_total for cid, count in self.crop_totals.items()}
+            if crop_usage_observed
+            else {}
+        )
+
         return {
             "num_runs": self.count,
+            # Unrounded: fed directly into a warning threshold comparison in
+            # metrics/warnings.py, which needs full precision -- round only
+            # when rendering for display (metrics/report.py).
             "avg_final_money": means["final_money"].mean(),
             "median_final_money": self.all_money_values.median(),
             "min_final_money": round(self.final_money_min, 2),
             "max_final_money": round(self.final_money_max, 2),
             "surviving_runs": self.survivor_count,
             "bankrupt_runs": self.bankrupt_count,
-            "avg_final_money_survivors": means["final_money_survivors"].mean(),
+            "avg_final_money_survivors": _round_or_none(means["final_money_survivors"].mean()),
             "median_final_money_survivors": self.survivor_money_values.median(),
-            "avg_final_money_bankrupt": means["final_money_bankrupt"].mean(),
+            "avg_final_money_bankrupt": _round_or_none(means["final_money_bankrupt"].mean()),
             "median_final_money_bankrupt": self.bankrupt_money_values.median(),
-            "bankruptcy_rate": round(100 * self.bankrupt_count / self.count, 2),
-            "avg_bankruptcy_day": means["bankruptcy_day"].mean(),
+            # Unrounded -- see avg_final_money comment above.
+            "bankruptcy_rate": 100 * self.bankrupt_count / self.count,
+            "avg_bankruptcy_day": _round_or_none(means["bankruptcy_day"].mean()),
             "median_bankruptcy_day": self.bankruptcy_day_values.median(),
             "min_bankruptcy_day": self.bankruptcy_day_min,
             "max_bankruptcy_day": self.bankruptcy_day_max,
-            "avg_minimum_cash_balance": means["minimum_cash_balance"].mean(),
-            "avg_minimum_cash_balance_bankrupt": means["minimum_cash_balance_bankrupt"].mean(),
+            "avg_minimum_cash_balance": _round_or_none(means["minimum_cash_balance"].mean()),
+            "avg_minimum_cash_balance_bankrupt": _round_or_none(
+                means["minimum_cash_balance_bankrupt"].mean()
+            ),
             "bankruptcy_reasons": self.bankruptcy_reasons,
+            # Unrounded -- see avg_final_money comment above.
             "avg_first_upgrade_day": means["first_upgrade_day"].mean(),
-            "avg_second_upgrade_day": means["second_upgrade_day"].mean(),
+            "avg_second_upgrade_day": _round_or_none(means["second_upgrade_day"].mean()),
             "first_upgrade_count": self.first_upgrade_count,
             "second_upgrade_count": self.second_upgrade_count,
-            "first_upgrade_rate": round(100 * self.first_upgrade_count / self.count, 2),
+            # Unrounded -- see avg_final_money comment above.
+            "first_upgrade_rate": 100 * self.first_upgrade_count / self.count,
             "second_upgrade_rate": round(100 * self.second_upgrade_count / self.count, 2),
             "median_reservoir_capacity": MEDIAN_RESERVOIR_CAPACITY,
             "median_approximate": median_approximate,
-            "crop_usage_pct": {
-                cid: round(100 * count / self.planted_total, 2) if self.planted_total else 0.0
-                for cid, count in self.crop_totals.items()
-            },
+            # Unrounded -- see avg_final_money comment above.
+            "crop_usage_pct": crop_usage_pct,
+            "crop_usage_observed": crop_usage_observed,
+            # Unrounded -- see avg_final_money comment above. None (not 0.0)
+            # if no run in this cohort ever had a harvest event to measure
+            # loss against.
             "avg_crop_loss_rate": means["crop_loss_rate"].mean(),
-            "avg_watering_rate": means["watering_rate"].mean(),
-            "avg_occupied_watering_rate": means["occupied_watering_rate"].mean(),
-            "avg_occupied_slot_days": means["occupied_slot_days"].mean(),
-            "avg_fertilizer_applications": means["fertilizer_applications"].mean(),
-            "avg_spoiled_units": means["spoiled_units"].mean(),
-            "avg_processed_units": means["processed_units"].mean(),
-            "avg_contracts_completed": means["contracts_completed"].mean(),
-            "avg_contracts_failed": means["contracts_failed"].mean(),
-            "avg_final_reputation": means["final_reputation"].mean(),
-            "avg_total_costs": means["total_costs"].mean(),
-            "avg_gross_profit": means["gross_profit"].mean(),
-            "avg_operating_profit": means["operating_profit"].mean(),
-            "avg_net_cash_change": means["net_cash_change"].mean(),
+            "avg_watering_rate": _round_or_none(means["watering_rate"].mean()),
+            "avg_occupied_watering_rate": _round_or_none(means["occupied_watering_rate"].mean()),
+            "avg_occupied_slot_days": _round_or_none(means["occupied_slot_days"].mean()),
+            "avg_fertilizer_applications": _round_or_none(means["fertilizer_applications"].mean()),
+            "avg_spoiled_units": _round_or_none(means["spoiled_units"].mean()),
+            "avg_processed_units": _round_or_none(means["processed_units"].mean()),
+            "avg_contracts_completed": _round_or_none(means["contracts_completed"].mean()),
+            "avg_contracts_failed": _round_or_none(means["contracts_failed"].mean()),
+            "avg_final_reputation": _round_or_none(means["final_reputation"].mean()),
+            "avg_total_costs": _round_or_none(means["total_costs"].mean()),
+            "avg_gross_profit": _round_or_none(means["gross_profit"].mean()),
+            "avg_operating_profit": _round_or_none(means["operating_profit"].mean()),
+            "avg_net_cash_change": _round_or_none(means["net_cash_change"].mean()),
             "avg_expenses_by_category": {
                 key: round(value / self.count, 2) for key, value in self.expense_totals.items()
             },

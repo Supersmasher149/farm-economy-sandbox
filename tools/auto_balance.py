@@ -320,7 +320,12 @@ def continuous_penalty(stats: dict, config: dict, thresholds: dict) -> float:
     threshold_money = config["start_money"] * multiple
     score += _term(stats["avg_final_money"], threshold_money, "above")
 
-    score += _term(stats["avg_crop_loss_rate"], thresholds["high_crop_loss_rate_pct"], "above")
+    # None means no run in this cohort ever had a harvest event to measure
+    # loss against (see metrics/aggregate_results.py) -- nothing to score,
+    # not an implicit 0% loss.
+    crop_loss_rate = stats["avg_crop_loss_rate"]
+    if crop_loss_rate is not None:
+        score += _term(crop_loss_rate, thresholds["high_crop_loss_rate_pct"], "above")
     return score
 
 

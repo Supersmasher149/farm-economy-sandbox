@@ -253,4 +253,7 @@ def test_neumaier_running_mean_matches_statistics_mean():
         expected = round(
             statistics.mean(r.final_money for r in results if r.strategy == strategy), 2
         )
-        assert stats[strategy]["avg_final_money"] == expected
+        # avg_final_money is unrounded (it feeds a warning threshold
+        # comparison in metrics/warnings.py -- see #28); round only for
+        # display, so compare against the rounded value here.
+        assert round(stats[strategy]["avg_final_money"], 2) == expected
