@@ -54,6 +54,59 @@ def test_expected_profit_per_day_is_positive_for_profitable_crop(player, standar
     assert profit > 0
 
 
+# -- fertilizer marginal profit: survival x yield-bonus interaction (#26) ----
+
+
+def test_fertilizer_marginal_profit_matches_enumerated_expected_outcomes():
+    """Brute-force E[revenue] fertilized vs. not, by direct enumeration of the
+    two outcomes (loss / no-loss) each branch can land in -- rather than
+    trusting any algebraic simplification -- and check the function against
+    that ground truth.
+    """
+    crop = {"min_yield": 4, "max_yield": 8, "base_price": 9, "loss_chance": 0.3}
+    fert = {"yield_bonus_pct": 0.2, "loss_chance_reduction": 0.05, "cost": 6}
+
+    avg_yield = (crop["min_yield"] + crop["max_yield"]) / 2
+    original_loss = crop["loss_chance"]
+    reduced_loss = original_loss - fert["loss_chance_reduction"]
+    yield_bonus = avg_yield * fert["yield_bonus_pct"]
+
+    # E[revenue] = P(survive) * yield * price, enumerated directly rather
+    # than via the marginal-profit formula under test.
+    expected_unfertilized = (1 - original_loss) * avg_yield * crop["base_price"]
+    expected_fertilized = (1 - reduced_loss) * (avg_yield + yield_bonus) * crop["base_price"]
+    expected_marginal_profit = expected_fertilized - expected_unfertilized - fert["cost"]
+
+    assert economy_rules.fertilizer_expected_marginal_profit(crop, fert) == pytest.approx(
+        expected_marginal_profit
+    )
+
+
+def test_fertilizer_marginal_profit_interaction_can_flip_the_decision_sign():
+    """A case where omitting the survival x yield-bonus interaction (the old
+    bug: weighting the yield bonus by the *unfertilized* survival odds)
+    reports fertilizer as unprofitable, but the correct joint calculation
+    says it's worth buying.
+    """
+    crop = {"min_yield": 10, "max_yield": 10, "base_price": 10, "loss_chance": 0.5}
+    fert = {"yield_bonus_pct": 0.5, "loss_chance_reduction": 0.1, "cost": 37}
+
+    # The old, buggy formula for comparison: yield bonus weighted by
+    # (1 - original_loss_chance) instead of (1 - reduced_loss_chance).
+    avg_yield = 10
+    yield_bonus = avg_yield * fert["yield_bonus_pct"]
+    buggy_yield_bonus_revenue = yield_bonus * crop["base_price"] * (1 - crop["loss_chance"])
+    buggy_loss_reduction_revenue = fert["loss_chance_reduction"] * avg_yield * crop["base_price"]
+    buggy_marginal_profit = buggy_yield_bonus_revenue + buggy_loss_reduction_revenue - fert["cost"]
+
+    assert buggy_marginal_profit == pytest.approx(-2.0)
+    assert buggy_marginal_profit <= 0  # the bug says "don't fertilize"
+
+    actual = economy_rules.fertilizer_expected_marginal_profit(crop, fert)
+    assert actual == pytest.approx(3.0)
+    assert actual > 0  # the corrected math says "fertilize"
+
+
 # -- upgrade-purchase budget gate -------------------------------------------
 
 
@@ -66,6 +119,80 @@ def test_upgrade_payback_days_prices_capacity_upgrade(player, standard_crop, cap
     payback = economy_rules.upgrade_payback_days(capacity_upgrade, player, crops_by_id, {})
     nominal = economy_rules.expected_profit_per_day(standard_crop, player, {})
     expected = capacity_upgrade["cost"] / (nominal * capacity_upgrade["effect"]["amount"])
+    assert payback == pytest.approx(expected)
+
+
+# -- growth-time-reduction upgrades priced off rounded durations (#23) ------
+
+
+def test_upgrade_payback_days_growth_reduction_no_op_has_no_finite_payback(player, fast_crop):
+    crops_by_id = {"fast": fast_crop}
+    # fast_crop.growth_days == 3; 3 * (1 - 0.1) == 2.7, which rounds to 3 --
+    # the exact same integer duration. The old continuous amount/(1-amount)
+    # approximation still priced this as a finite (and wrong) payback of
+    # cost / (slots * profit_per_day * 0.1/0.9); the fix must instead see
+    # zero real throughput gain and refuse to price it at all.
+    no_op_upgrade = {
+        "id": "no_op",
+        "cost": 50,
+        "effect": {"type": "growth_time_reduction", "amount": 0.1},
+    }
+    upgrades_by_id = {"no_op": no_op_upgrade}
+
+    assert economy_rules.effective_growth_days(fast_crop, player, upgrades_by_id) == 3
+    payback = economy_rules.upgrade_payback_days(no_op_upgrade, player, crops_by_id, upgrades_by_id)
+    assert payback is None
+
+
+def test_upgrade_payback_days_growth_reduction_prices_the_real_one_day_change(
+    player, fast_crop, efficiency_upgrade
+):
+    # fast_crop.growth_days == 3; efficiency_upgrade's 0.20 reduction rounds
+    # 3 * 0.8 == 2.4 down to 2 -- a real, one-day-shorter cycle.
+    crops_by_id = {"fast": fast_crop}
+    upgrades_by_id = {"efficiency_1": efficiency_upgrade}
+
+    payback = economy_rules.upgrade_payback_days(
+        efficiency_upgrade, player, crops_by_id, upgrades_by_id
+    )
+
+    avg_yield = (fast_crop["min_yield"] + fast_crop["max_yield"]) / 2
+    profit_per_cycle = avg_yield * fast_crop["base_price"] * (1 - fast_crop["loss_chance"])
+    profit_per_cycle -= fast_crop["seed_cost"]
+    added_value_per_day = player.slots_total * profit_per_cycle * (1 / 2 - 1 / 3)
+    expected = efficiency_upgrade["cost"] / added_value_per_day
+    assert payback == pytest.approx(expected)
+
+
+def test_upgrade_payback_days_growth_reduction_stacks_on_already_owned_upgrades(player, fast_crop):
+    """Pricing a second growth-reduction upgrade must account for the one(s)
+    already owned: the before/after day counts are both computed with the
+    already-owned set, differing only by whether the candidate is added --
+    not from the crop's raw, un-upgraded growth_days.
+    """
+    ten_day_crop = dict(fast_crop, growth_days=10)
+    crops_by_id = {"fast": ten_day_crop}
+    first = {"id": "first", "cost": 90, "effect": {"type": "growth_time_reduction", "amount": 0.15}}
+    second = {
+        "id": "second",
+        "cost": 90,
+        "effect": {"type": "growth_time_reduction", "amount": 0.20},
+    }
+    upgrades_by_id = {"first": first, "second": second}
+    player.upgrades_owned.add("first")
+
+    # Matches test_effective_growth_days_uses_upgrade_configuration_order's
+    # stacked fold: 10 -(15%)-> 8 -(20%)-> 6.
+    current_days = economy_rules.effective_growth_days(ten_day_crop, player, upgrades_by_id)
+    assert current_days == 8
+
+    payback = economy_rules.upgrade_payback_days(second, player, crops_by_id, upgrades_by_id)
+
+    avg_yield = (ten_day_crop["min_yield"] + ten_day_crop["max_yield"]) / 2
+    profit_per_cycle = avg_yield * ten_day_crop["base_price"] * (1 - ten_day_crop["loss_chance"])
+    profit_per_cycle -= ten_day_crop["seed_cost"]
+    added_value_per_day = player.slots_total * profit_per_cycle * (1 / 6 - 1 / 8)
+    expected = second["cost"] / added_value_per_day
     assert payback == pytest.approx(expected)
 
 
