@@ -4,6 +4,17 @@ strategy, warnings called out at the top.
 """
 
 
+def _r(value, ndigits: int = 2):
+    """Round a stat for display. Some fields (avg_final_money, bankruptcy_rate,
+    avg_first_upgrade_day, first_upgrade_rate, crop_usage_pct,
+    avg_crop_loss_rate) come back unrounded from aggregate_results.py on
+    purpose, so warning-threshold comparisons see full precision; this
+    rounds them at the point they're actually displayed instead. `None`
+    (an undefined ratio, not an observed zero) passes through unchanged.
+    """
+    return value if value is None else round(value, ndigits)
+
+
 def generate_markdown_report(
     config: dict,
     num_runs: int,
@@ -89,7 +100,7 @@ def generate_markdown_report(
             lines.append(f"*{agent_descriptions[strategy]}*")
             lines.append("")
         lines.append(f"- Runs: {stats['num_runs']}")
-        lines.append(f"- Average final money: {stats['avg_final_money']}")
+        lines.append(f"- Average final money: {_r(stats['avg_final_money'])}")
         lines.append(f"- Median final money: {stats['median_final_money']}")
         lines.append(
             f"- Min / Max final money: {stats['min_final_money']} / {stats['max_final_money']}"
@@ -105,7 +116,7 @@ def generate_markdown_report(
             f"- Median final money, survivors / bankrupt: "
             f"{stats['median_final_money_survivors']} / {stats['median_final_money_bankrupt']}"
         )
-        lines.append(f"- Bankruptcy rate: {stats['bankruptcy_rate']}%")
+        lines.append(f"- Bankruptcy rate: {_r(stats['bankruptcy_rate'])}%")
         lines.append(
             f"- Bankruptcy day, average / range: {stats['avg_bankruptcy_day']} / "
             f"{stats['min_bankruptcy_day']} - {stats['max_bankruptcy_day']}"
@@ -117,14 +128,14 @@ def generate_markdown_report(
         lines.append(f"- Bankruptcy reasons: {stats['bankruptcy_reasons'] or 'None'}")
         lines.append(
             f"- First upgrade reach: {stats['first_upgrade_count']} / {stats['num_runs']} runs "
-            f"({stats['first_upgrade_rate']}%)"
+            f"({_r(stats['first_upgrade_rate'])}%)"
         )
         lines.append(
             f"- Second upgrade reach: {stats['second_upgrade_count']} / {stats['num_runs']} runs "
             f"({stats['second_upgrade_rate']}%)"
         )
         lines.append(
-            f"- Average day of first upgrade (purchasing runs): {stats['avg_first_upgrade_day']}"
+            f"- Average day of first upgrade (purchasing runs): {_r(stats['avg_first_upgrade_day'])}"
         )
         lines.append(
             f"- Average day of second upgrade (purchasing runs): {stats['avg_second_upgrade_day']}"
@@ -133,7 +144,7 @@ def generate_markdown_report(
         lines.append(
             f"- Watering coverage of occupied plot-days: {stats['avg_occupied_watering_rate']}%"
         )
-        lines.append(f"- Crop loss rate: {stats['avg_crop_loss_rate']}% of matured crops")
+        lines.append(f"- Crop loss rate: {_r(stats['avg_crop_loss_rate'])}% of matured crops")
         lines.append(
             f"- Avg fertilizer applications per run: {stats['avg_fertilizer_applications']}"
         )
@@ -152,9 +163,12 @@ def generate_markdown_report(
         lines.append(f"- Average revenue by channel: {stats['revenue_by_channel'] or 'None'}")
         lines.append(f"- Harvest quality mix: {stats['quality_harvested']}")
         lines.append("- Crop usage:")
-        for cid, pct in sorted(stats["crop_usage_pct"].items(), key=lambda kv: -kv[1]):
-            name = crop_names.get(cid, cid)
-            lines.append(f"- {name}: {pct}%")
+        if not stats.get("crop_usage_observed", True):
+            lines.append("- No crops were planted in any run.")
+        else:
+            for cid, pct in sorted(stats["crop_usage_pct"].items(), key=lambda kv: -kv[1]):
+                name = crop_names.get(cid, cid)
+                lines.append(f"- {name}: {_r(pct)}%")
         for cid, observation in sorted(stats["crop_decision_observations"].items()):
             opportunities = observation.get("opportunities", 0)
             unlocked_pct = (
