@@ -2,6 +2,7 @@
 
 from simulation import crop_growth, derived, inventory
 from simulation.state import InventoryLot, PlantedCrop
+from simulation.validation import is_positive_int
 
 DEFAULT_WATERING = {
     "neglect_loss_chance_penalty_per_day": 0.05,
@@ -13,8 +14,10 @@ DEFAULT_FERTILIZER = {"cost": 8, "yield_bonus_pct": 0.25, "loss_chance_reduction
 
 
 def buy_seeds(player, crop: dict, quantity: int = 1) -> bool:
+    if not is_positive_int(quantity):
+        return False
     cost = crop["seed_cost"] * quantity
-    if quantity <= 0 or player.money < cost:
+    if player.money < cost:
         return False
     player.money -= cost
     player.record_expense("seeds", cost)
@@ -103,8 +106,10 @@ def water_farm(player, agent, crops_by_id: dict, rng, watering_settings=None) ->
 
 
 def buy_fertilizer(player, fertilizer_config: dict, quantity: int = 1) -> bool:
+    if not is_positive_int(quantity):
+        return False
     cost = fertilizer_config["cost"] * quantity
-    if quantity <= 0 or player.money < cost:
+    if player.money < cost:
         return False
     player.money -= cost
     player.record_expense("fertilizer", cost)
