@@ -2,6 +2,7 @@
 
 from simulation import crop_growth, economy_rules, inventory, markets
 from simulation.state import QUALITY_ORDER, ContractState
+from simulation.validation import is_positive_int
 
 PRODUCTION_SAFETY_FACTOR = 0.45
 DEFAULT_OFFER_EXPIRY_DAYS = 3
@@ -424,6 +425,8 @@ def is_offer_feasible(player, contract) -> bool:
 
 
 def deliver(player, contract_id: str, quantity: int) -> tuple[float, int]:
+    if not is_positive_int(quantity):
+        return 0.0, 0
     contract = next(
         (item for item in player.active_contracts if item.id == contract_id and not item.resolved),
         None,
