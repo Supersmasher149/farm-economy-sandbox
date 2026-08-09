@@ -1,6 +1,6 @@
 {
   "offer_interval_days": 7,
-  "default_penalty_rate": 0.35,
+  "default_penalty_rate": 0.56,
   "production_safety_factor": 0.45,
   "fallback_price_multiplier": 1.15
 }
