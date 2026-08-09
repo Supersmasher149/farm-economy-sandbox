@@ -15,34 +15,34 @@
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 222,
-        "purplehaze": 221,
-        "quickweed": 222
+        "greenleaf": 207,
+        "purplehaze": 207,
+        "quickweed": 208
       },
       "expenses_by_category": {
-        "seeds": "0x1.7538000000000p+13",
+        "seeds": "0x1.0fd0000000000p+14",
         "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.cb333333333e8p+8"
+        "watering": "0x1.a9f33333333c2p+8"
       },
-      "highest_money": "0x1.5b41083e9b49fp+14",
-      "idle_days": 4,
+      "highest_money": "0x1.f5d4a80775dc2p+12",
+      "idle_days": 14,
       "losses_by_cause": {
-        "crop_loss_events": 45,
-        "rejected_quality_units": 76
+        "crop_loss_events": 177,
+        "rejected_quality_units": 31
       },
-      "lowest_money": "0x1.0c4eede2d3580p+1",
-      "money": "0x1.5a64d50b6816dp+14",
-      "occupied_slot_days": 3947,
+      "lowest_money": "0x1.8b4b964601e80p-7",
+      "money": "0x1.eb05fca157831p+12",
+      "occupied_slot_days": 3699,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 991,
-        "processing": 197,
-        "standard": 1330
+        "premium": 792,
+        "processing": 162,
+        "standard": 847
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "farm_stand": "0x1.b63e82d695dbfp+14",
-        "spot": "0x1.c73c7c067c0c9p+12"
+        "farm_stand": "0x1.5dd220969031ep+14",
+        "spot": "0x1.fd995af493f08p+11"
       },
       "seed_inventory": {
         "greenleaf": 0,
@@ -50,19 +50,19 @@
         "quickweed": 0
       },
       "slot_days": 3959,
-      "total_crops_lost": 75,
-      "total_expenses": "0x1.9d31999999a4ep+13",
+      "total_crops_lost": 189,
+      "total_expenses": "0x1.2347ccccccce0p+14",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 654,
-      "total_harvested": 2518,
-      "total_planted": 665,
+      "total_harvest_events": 611,
+      "total_harvested": 1801,
+      "total_planted": 622,
       "total_processed": 0,
-      "total_revenue": "0x1.1406d0ec1a6f8p+15",
-      "total_sold": 2518,
+      "total_revenue": "0x1.9d854bf522affp+14",
+      "total_sold": 1801,
       "total_spoiled": 0,
-      "total_waterings": 1312,
-      "trajectory": "5b01bb1b20b7fc89",
+      "total_waterings": 1217,
+      "trajectory": "569d9ce203f44715",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
@@ -71,62 +71,68 @@
       ]
     },
     "diversifier:123456789": {
-      "bankrupt": true,
-      "bankruptcy_day": 19,
-      "bankruptcy_reason": "no_viable_reinvestment",
+      "bankrupt": false,
+      "bankruptcy_day": null,
+      "bankruptcy_reason": null,
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 2,
-        "purplehaze": 2,
-        "quickweed": 2
+        "greenleaf": 194,
+        "purplehaze": 194,
+        "quickweed": 195
       },
       "expenses_by_category": {
-        "seeds": "0x1.b000000000000p+6",
-        "upgrades": "0x1.e000000000000p+6",
-        "watering": "0x1.0cccccccccccdp+1"
+        "seeds": "0x1.fd80000000000p+13",
+        "upgrades": "0x1.9a00000000000p+9",
+        "watering": "0x1.91733333333a6p+8"
       },
-      "highest_money": "0x1.a5f7f89feaff0p+7",
-      "idle_days": 12,
+      "highest_money": "0x1.26e01631e9e63p+13",
+      "idle_days": 16,
       "losses_by_cause": {
-        "crop_loss_events": 2
+        "crop_loss_events": 151,
+        "rejected_quality_units": 55
       },
-      "lowest_money": "0x1.2324730931334p-2",
-      "money": "0x1.2324730931334p-2",
-      "occupied_slot_days": 42,
+      "lowest_money": "0x1.0ee9f16abbbd0p-5",
+      "money": "0x1.1ef1514f743dbp+13",
+      "occupied_slot_days": 3464,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 14,
-        "standard": 2
+        "premium": 834,
+        "processing": 130,
+        "standard": 783
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "farm_stand": "0x1.f07bf43b10128p+6",
-        "spot": "0x1.721b2d3cbf0a0p+5"
+        "farm_stand": "0x1.57fd488670a96p+14",
+        "processor": "0x1.522bdb34335a6p+4",
+        "spot": "0x1.21e287dd24e22p+12"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 153,
-      "total_crops_lost": 2,
-      "total_expenses": "0x1.cc33333333333p+7",
+      "slot_days": 3767,
+      "total_crops_lost": 170,
+      "total_expenses": "0x1.11d5ccccccd00p+14",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 6,
-      "total_harvested": 16,
-      "total_planted": 6,
+      "total_harvest_events": 572,
+      "total_harvested": 1747,
+      "total_planted": 583,
       "total_processed": 0,
-      "total_revenue": "0x1.54c4c56cb7cbcp+7",
-      "total_sold": 16,
+      "total_revenue": "0x1.a0ca757486ef1p+14",
+      "total_sold": 1747,
       "total_spoiled": 0,
-      "total_waterings": 6,
-      "trajectory": "9113a6603b02378b",
+      "total_waterings": 1147,
+      "trajectory": "1be3765e6a0d041c",
       "upgrades_owned": [
-        "capacity_1"
+        "capacity_1",
+        "efficiency_1",
+        "processing_1",
+        "storage_1"
       ]
     },
     "diversifier:42": {
@@ -138,54 +144,54 @@
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 222,
-        "purplehaze": 221,
-        "quickweed": 222
+        "greenleaf": 203,
+        "purplehaze": 203,
+        "quickweed": 204
       },
       "expenses_by_category": {
-        "seeds": "0x1.7538000000000p+13",
+        "seeds": "0x1.0a90000000000p+14",
         "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.cb8cccccccd82p+8"
+        "watering": "0x1.a3a66666666eep+8"
       },
-      "highest_money": "0x1.73b1666fc7656p+14",
-      "idle_days": 5,
+      "highest_money": "0x1.f670a178d300ap+12",
+      "idle_days": 15,
       "losses_by_cause": {
-        "crop_loss_events": 49,
-        "rejected_quality_units": 80
+        "crop_loss_events": 174,
+        "rejected_quality_units": 29
       },
-      "lowest_money": "0x1.8edbd95d7ee68p-3",
-      "money": "0x1.72d5333c94324p+14",
-      "occupied_slot_days": 3950,
+      "lowest_money": "0x1.51033499c4868p-3",
+      "money": "0x1.eab0ce07cb9cap+12",
+      "occupied_slot_days": 3616,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 1004,
-        "processing": 154,
-        "standard": 1362
+        "premium": 998,
+        "processing": 142,
+        "standard": 570
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "farm_stand": "0x1.d6cae84b9ef3bp+14",
-        "spot": "0x1.a6d1f890a1b40p+12"
+        "farm_stand": "0x1.57d7a66bdc068p+14",
+        "spot": "0x1.00fc9abec1f14p+12"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3959,
-      "total_crops_lost": 80,
-      "total_expenses": "0x1.9d3466666671bp+13",
+      "slot_days": 3791,
+      "total_crops_lost": 186,
+      "total_expenses": "0x1.1dee9999999b6p+14",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 654,
-      "total_harvested": 2520,
-      "total_planted": 665,
+      "total_harvest_events": 599,
+      "total_harvested": 1710,
+      "total_planted": 610,
       "total_processed": 0,
-      "total_revenue": "0x1.203fb337e3b09p+15",
-      "total_sold": 2520,
+      "total_revenue": "0x1.9816cd1b8c82dp+14",
+      "total_sold": 1710,
       "total_spoiled": 0,
-      "total_waterings": 1313,
-      "trajectory": "e8193edae3627c37",
+      "total_waterings": 1199,
+      "trajectory": "f0c209d734769346",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
@@ -202,54 +208,54 @@
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 221,
-        "purplehaze": 220,
-        "quickweed": 221
+        "greenleaf": 209,
+        "purplehaze": 208,
+        "quickweed": 209
       },
       "expenses_by_category": {
-        "seeds": "0x1.7388000000000p+13",
+        "seeds": "0x1.1150000000000p+14",
         "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.ca800000000b4p+8"
+        "watering": "0x1.b040000000096p+8"
       },
-      "highest_money": "0x1.5d783a332e9d3p+14",
-      "idle_days": 4,
+      "highest_money": "0x1.ab5d27c43d71ep+12",
+      "idle_days": 14,
       "losses_by_cause": {
-        "crop_loss_events": 55,
-        "rejected_quality_units": 99
+        "crop_loss_events": 170,
+        "rejected_quality_units": 40
       },
-      "lowest_money": "0x1.3b902c26b4198p-4",
-      "money": "0x1.5c966d6661d09p+14",
-      "occupied_slot_days": 3938,
+      "lowest_money": "0x1.23c624a452734p-3",
+      "money": "0x1.a020d876640f5p+12",
+      "occupied_slot_days": 3720,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 1157,
-        "processing": 201,
-        "standard": 1035
+        "premium": 794,
+        "processing": 93,
+        "standard": 883
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "farm_stand": "0x1.c3de102f3352ep+14",
-        "spot": "0x1.961974dcb9e57p+12"
+        "farm_stand": "0x1.56a2801ceb673p+14",
+        "spot": "0x1.ae15b0056cf49p+11"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3959,
-      "total_crops_lost": 90,
-      "total_expenses": "0x1.9b7c0000000b3p+13",
+      "slot_days": 3935,
+      "total_crops_lost": 185,
+      "total_expenses": "0x1.24e1000000012p+14",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 651,
-      "total_harvested": 2393,
-      "total_planted": 662,
+      "total_harvest_events": 615,
+      "total_harvested": 1770,
+      "total_planted": 626,
       "total_processed": 0,
-      "total_revenue": "0x1.14b236b330e61p+15",
-      "total_sold": 2393,
+      "total_revenue": "0x1.8c65361d9905ep+14",
+      "total_sold": 1770,
       "total_spoiled": 0,
-      "total_waterings": 1310,
-      "trajectory": "b609d77c43b6346c",
+      "total_waterings": 1235,
+      "trajectory": "fe5474cf5ddeeb3d",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
@@ -258,302 +264,276 @@
       ]
     },
     "fast_seller:1": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
+      "bankrupt": true,
+      "bankruptcy_day": 25,
+      "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "quickweed": 1281
+        "quickweed": 22
       },
       "expenses_by_category": {
-        "seeds": "0x1.9050000000000p+12",
-        "storage": "0x1.0c00000000000p+4",
-        "upgrades": "0x1.0400000000000p+8",
-        "watering": "0x1.bc2666666670ap+8"
+        "seeds": "0x1.6000000000000p+7",
+        "watering": "0x1.eccccccccccc9p+2"
       },
-      "highest_money": "0x1.91b45fad6e8bdp+12",
-      "idle_days": 55,
+      "highest_money": "0x1.0e8fdbf89445ep+6",
+      "idle_days": 8,
       "losses_by_cause": {
-        "crop_loss_events": 29
+        "crop_loss_events": 5
       },
-      "lowest_money": "0x1.8d78ce25f9ff8p-4",
-      "money": "0x1.8ef9107c9e8fap+12",
-      "occupied_slot_days": 3821,
+      "lowest_money": "0x1.336b3a7e4da8ap+2",
+      "money": "0x1.336b3a7e4da8ap+2",
+      "occupied_slot_days": 66,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 22,
-        "standard": 2317
+        "premium": 7,
+        "standard": 18
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "spot": "0x1.a44bbb71827eap+13"
+        "spot": "0x1.3701c03a58d3bp+7"
       },
       "seed_inventory": {
         "quickweed": 0
       },
-      "slot_days": 3839,
-      "total_crops_lost": 29,
-      "total_expenses": "0x1.bd5e666666710p+12",
+      "slot_days": 75,
+      "total_crops_lost": 5,
+      "total_expenses": "0x1.6f66666666663p+7",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 1270,
-      "total_harvested": 2339,
-      "total_planted": 1281,
+      "total_harvest_events": 22,
+      "total_harvested": 25,
+      "total_planted": 22,
       "total_processed": 0,
-      "total_revenue": "0x1.a44bbb71827eap+13",
-      "total_sold": 2339,
+      "total_revenue": "0x1.3701c03a58d3bp+7",
+      "total_sold": 25,
       "total_spoiled": 0,
-      "total_waterings": 1269,
-      "trajectory": "7165d21ec60abe2c",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1"
-      ]
+      "total_waterings": 22,
+      "trajectory": "8c3dda3f3c704636",
+      "upgrades_owned": []
     },
     "fast_seller:123456789": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
+      "bankrupt": true,
+      "bankruptcy_day": 37,
+      "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 1,
-        "quickweed": 1266
+        "quickweed": 30
       },
       "expenses_by_category": {
-        "seeds": "0x1.8be0000000000p+12",
-        "storage": "0x1.a000000000000p+3",
-        "upgrades": "0x1.0400000000000p+8",
-        "watering": "0x1.b6333333333d0p+8"
+        "seeds": "0x1.e000000000000p+7",
+        "watering": "0x1.2e66666666664p+3"
       },
-      "highest_money": "0x1.8a970ca9394f0p+12",
-      "idle_days": 70,
+      "highest_money": "0x1.0fe71d08c9565p+6",
+      "idle_days": 12,
       "losses_by_cause": {
-        "crop_loss_events": 37
+        "crop_loss_events": 7
       },
-      "lowest_money": "0x1.74acc76ddd9a0p-6",
-      "money": "0x1.87d6695f81151p+12",
-      "occupied_slot_days": 3782,
+      "lowest_money": "0x1.0a11e0145fda0p-6",
+      "money": "0x1.40e1bca448234p-2",
+      "occupied_slot_days": 90,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 29,
-        "standard": 2257
+        "premium": 8,
+        "standard": 30
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "spot": "0x1.9e34ce495a282p+13"
+        "spot": "0x1.b186d744b88a6p+7"
       },
       "seed_inventory": {
-        "greenleaf": 0,
         "quickweed": 0
       },
-      "slot_days": 3815,
-      "total_crops_lost": 37,
-      "total_expenses": "0x1.b8533333333d8p+12",
+      "slot_days": 111,
+      "total_crops_lost": 7,
+      "total_expenses": "0x1.f2e6666666662p+7",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 1256,
-      "total_harvested": 2286,
-      "total_planted": 1267,
+      "total_harvest_events": 30,
+      "total_harvested": 38,
+      "total_planted": 30,
       "total_processed": 0,
-      "total_revenue": "0x1.9e34ce495a282p+13",
-      "total_sold": 2286,
+      "total_revenue": "0x1.b186d744b88a6p+7",
+      "total_sold": 38,
       "total_spoiled": 0,
-      "total_waterings": 1252,
-      "trajectory": "4546c44454775bf1",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1"
-      ]
+      "total_waterings": 27,
+      "trajectory": "32a78d5ebdacc7e4",
+      "upgrades_owned": []
     },
     "fast_seller:42": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
+      "bankrupt": true,
+      "bankruptcy_day": 19,
+      "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "quickweed": 1257
+        "quickweed": 16
       },
       "expenses_by_category": {
-        "seeds": "0x1.88d0000000000p+12",
-        "storage": "0x1.c000000000000p+3",
-        "upgrades": "0x1.0400000000000p+8",
-        "watering": "0x1.b419999999a34p+8"
+        "seeds": "0x1.0000000000000p+7",
+        "watering": "0x1.6666666666665p+2"
       },
-      "highest_money": "0x1.9571e8055650fp+12",
-      "idle_days": 66,
+      "highest_money": "0x1.d286ef7570c71p+5",
+      "idle_days": 6,
       "losses_by_cause": {
-        "crop_loss_events": 37
+        "crop_loss_events": 5
       },
-      "lowest_money": "0x1.17e9ee4e6ff64p+0",
-      "money": "0x1.9201e8055650fp+12",
-      "occupied_slot_days": 3749,
+      "lowest_money": "0x1.8e2336149bc1ep+0",
+      "money": "0x1.8e2336149bc1ep+0",
+      "occupied_slot_days": 48,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 23,
-        "standard": 2265
+        "premium": 7,
+        "standard": 9
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "spot": "0x1.a1b9c0cf77f91p+13"
+        "spot": "0x1.989ef33eb8d57p+6"
       },
       "seed_inventory": {
         "quickweed": 0
       },
-      "slot_days": 3767,
-      "total_crops_lost": 37,
-      "total_expenses": "0x1.b531999999a3ap+12",
+      "slot_days": 57,
+      "total_crops_lost": 5,
+      "total_expenses": "0x1.0b33333333331p+7",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 1246,
-      "total_harvested": 2288,
-      "total_planted": 1257,
+      "total_harvest_events": 16,
+      "total_harvested": 16,
+      "total_planted": 16,
       "total_processed": 0,
-      "total_revenue": "0x1.a1b9c0cf77f91p+13",
-      "total_sold": 2288,
+      "total_revenue": "0x1.989ef33eb8d57p+6",
+      "total_sold": 16,
       "total_spoiled": 0,
-      "total_waterings": 1246,
-      "trajectory": "67398842fe24fff5",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1"
-      ]
+      "total_waterings": 16,
+      "trajectory": "1355718ed6699fbd",
+      "upgrades_owned": []
     },
     "fast_seller:777": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
+      "bankrupt": true,
+      "bankruptcy_day": 28,
+      "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 1,
-        "quickweed": 1249
+        "quickweed": 25
       },
       "expenses_by_category": {
-        "seeds": "0x1.8690000000000p+12",
-        "storage": "0x1.5000000000000p+3",
-        "upgrades": "0x1.0400000000000p+8",
-        "watering": "0x1.af8cccccccd62p+8"
+        "seeds": "0x1.9000000000000p+7",
+        "watering": "0x1.17ffffffffffep+3"
       },
-      "highest_money": "0x1.6c21907637742p+12",
-      "idle_days": 80,
+      "highest_money": "0x1.e30a86bc63f2ap+5",
+      "idle_days": 9,
       "losses_by_cause": {
-        "crop_loss_events": 43
+        "crop_loss_events": 5
       },
-      "lowest_money": "0x1.7cac8064a6b34p-3",
-      "money": "0x1.68b1907637742p+12",
-      "occupied_slot_days": 3731,
+      "lowest_money": "0x1.d74e8ffe22ed9p-1",
+      "money": "0x1.9b86a564268d8p+2",
+      "occupied_slot_days": 75,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 22,
-        "standard": 2187
+        "premium": 6,
+        "standard": 24
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "spot": "0x1.8bb12ea18222cp+13"
+        "spot": "0x1.6c5c352b21347p+7"
       },
       "seed_inventory": {
-        "greenleaf": 0,
         "quickweed": 0
       },
-      "slot_days": 3743,
-      "total_crops_lost": 43,
-      "total_expenses": "0x1.b270ccccccd69p+12",
+      "slot_days": 84,
+      "total_crops_lost": 5,
+      "total_expenses": "0x1.a17fffffffffcp+7",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 1239,
-      "total_harvested": 2209,
-      "total_planted": 1250,
+      "total_harvest_events": 25,
+      "total_harvested": 30,
+      "total_planted": 25,
       "total_processed": 0,
-      "total_revenue": "0x1.8bb12ea18222cp+13",
-      "total_sold": 2209,
+      "total_revenue": "0x1.6c5c352b21347p+7",
+      "total_sold": 30,
       "total_spoiled": 0,
-      "total_waterings": 1233,
-      "trajectory": "a46f54b21d293855",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1"
-      ]
+      "total_waterings": 25,
+      "trajectory": "e289a0d07c2e06a0",
+      "upgrades_owned": []
     },
     "fertilizer_maximalist:1": {
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.e3d70a3d70a3dp+5",
-      "contracts_completed": 37,
-      "contracts_failed": 1,
+      "contract_penalties": "0x1.e3d70a3d70a3ep+6",
+      "contracts_completed": 30,
+      "contracts_failed": 2,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 204,
-        "purplehaze": 255,
+        "greenleaf": 551,
+        "purplehaze": 70,
         "quickweed": 88
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.e3d70a3d70a3dp+5",
-        "fertilizer": "0x1.0068000000000p+13",
-        "processing": "0x1.3600000000000p+8",
-        "seeds": "0x1.8dd8000000000p+13",
-        "storage": "0x1.0000000000000p-2",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.cbe666666671cp+8"
+        "contract_penalties": "0x1.e3d70a3d70a3ep+6",
+        "fertilizer": "0x1.4c58000000000p+13",
+        "processing": "0x1.7000000000000p+8",
+        "seeds": "0x1.70a0000000000p+13",
+        "upgrades": "0x1.0400000000000p+9",
+        "watering": "0x1.41a666666667ep+8"
       },
-      "highest_money": "0x1.a2177fef5dea5p+14",
-      "idle_days": 91,
+      "highest_money": "0x1.1f3f09d8a058bp+13",
+      "idle_days": 37,
       "losses_by_cause": {
-        "crop_loss_events": 39,
-        "rejected_quality_units": 192
+        "crop_loss_events": 172,
+        "rejected_quality_units": 52
       },
-      "lowest_money": "0x1.f333333333332p+0",
-      "money": "0x1.a2177fef5dea5p+14",
-      "occupied_slot_days": 3854,
-      "processing_revenue": "0x1.6c1fae170673cp+12",
+      "lowest_money": "0x1.dd8b91ffcdabap-2",
+      "money": "0x1.1e67b8e43a23dp+13",
+      "occupied_slot_days": 3740,
+      "processing_revenue": "0x1.a822990a8b9a6p+12",
       "quality_harvested": {
-        "premium": 828,
-        "processing": 407,
-        "standard": 1682
+        "premium": 630,
+        "processing": 312,
+        "standard": 1752
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.f5c0000000000p+12",
-        "farm_stand": "0x1.c5191e6107c95p+13",
-        "processor": "0x1.59a6ee126fc98p+10",
-        "specialty": "0x1.b2f6d23e02011p+11",
-        "spot": "0x1.7b53ce9959f60p+13",
-        "wholesale": "0x1.30e48acffc326p+13"
+        "contract": "0x1.9a40000000000p+12",
+        "farm_stand": "0x1.c251775a735eep+13",
+        "processor": "0x1.97e2b9b81a379p+5",
+        "specialty": "0x1.f462c946c2913p+11",
+        "spot": "0x1.cd4263c72813cp+12",
+        "wholesale": "0x1.e52b7c4f02e05p+8"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3863,
-      "total_crops_lost": 81,
-      "total_expenses": "0x1.60ea851eb84c4p+14",
-      "total_fertilizer_applied": 547,
-      "total_fertilizer_bought": 547,
-      "total_harvest_events": 547,
-      "total_harvested": 2917,
-      "total_planted": 547,
-      "total_processed": 108,
-      "total_revenue": "0x1.810902870b1afp+15",
-      "total_sold": 2604,
+      "slot_days": 3767,
+      "total_crops_lost": 184,
+      "total_expenses": "0x1.734670a3d7052p+14",
+      "total_fertilizer_applied": 709,
+      "total_fertilizer_bought": 709,
+      "total_harvest_events": 709,
+      "total_harvested": 2694,
+      "total_planted": 709,
+      "total_processed": 126,
+      "total_revenue": "0x1.00fb268afa0f6p+15",
+      "total_sold": 2325,
       "total_spoiled": 0,
-      "total_waterings": 1314,
-      "trajectory": "064e80658e9bc84d",
+      "total_waterings": 919,
+      "trajectory": "fd1c8866b5aab79f",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
-        "processing_1",
         "storage_1"
       ]
     },
@@ -561,70 +541,66 @@
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.5999999999999p+6",
+      "contract_penalties": "0x0.0p+0",
       "contracts_completed": 37,
-      "contracts_failed": 1,
+      "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 199,
-        "purplehaze": 263,
-        "quickweed": 88
+        "greenleaf": 505,
+        "purplehaze": 66,
+        "quickweed": 127
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.5999999999999p+6",
-        "fertilizer": "0x1.fef0000000000p+12",
-        "processing": "0x1.3d00000000000p+8",
-        "seeds": "0x1.9878000000000p+13",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.d719999999a5cp+8"
+        "fertilizer": "0x1.4730000000000p+13",
+        "processing": "0x1.6b00000000000p+8",
+        "seeds": "0x1.6120000000000p+13",
+        "upgrades": "0x1.0400000000000p+9",
+        "watering": "0x1.39999999999a8p+8"
       },
-      "highest_money": "0x1.d84fc15d1c50fp+14",
-      "idle_days": 26,
+      "highest_money": "0x1.54d26c7fa7194p+13",
+      "idle_days": 9,
       "losses_by_cause": {
-        "crop_loss_events": 35,
-        "rejected_quality_units": 197
+        "crop_loss_events": 151,
+        "rejected_quality_units": 78
       },
-      "lowest_money": "0x1.d00e00bdafa00p-3",
-      "money": "0x1.d84fc15d1c50fp+14",
-      "occupied_slot_days": 3925,
-      "processing_revenue": "0x1.9a24c145df19bp+12",
+      "lowest_money": "0x1.3f37fbf596720p-2",
+      "money": "0x1.54d26c7fa7194p+13",
+      "occupied_slot_days": 3618,
+      "processing_revenue": "0x1.a56962ed0b30dp+12",
       "quality_harvested": {
-        "premium": 1170,
-        "processing": 324,
-        "standard": 1451
+        "premium": 732,
+        "processing": 241,
+        "standard": 1630
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.0614000000000p+13",
-        "farm_stand": "0x1.094f1a3239bf6p+14",
-        "processor": "0x1.bee8aa86fc806p+8",
-        "specialty": "0x1.9de75c68ed210p+12",
-        "spot": "0x1.a9f8c5cd557bfp+13",
-        "wholesale": "0x1.b81b29ff82486p+12"
+        "contract": "0x1.fa28000000000p+12",
+        "farm_stand": "0x1.dd6bc4b2fe9e4p+13",
+        "specialty": "0x1.64f4c8e9ae86bp+12",
+        "spot": "0x1.290a20493c136p+12"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3959,
-      "total_crops_lost": 80,
-      "total_expenses": "0x1.6671fffffffa3p+14",
-      "total_fertilizer_applied": 545,
-      "total_fertilizer_bought": 545,
-      "total_harvest_events": 550,
-      "total_harvested": 2945,
-      "total_planted": 550,
-      "total_processed": 117,
-      "total_revenue": "0x1.9ee8e0ae8e249p+15",
-      "total_sold": 2628,
+      "slot_days": 3655,
+      "total_crops_lost": 169,
+      "total_expenses": "0x1.66da66666662ep+14",
+      "total_fertilizer_applied": 698,
+      "total_fertilizer_bought": 698,
+      "total_harvest_events": 698,
+      "total_harvested": 2603,
+      "total_planted": 698,
+      "total_processed": 129,
+      "total_revenue": "0x1.085fce531cfb1p+15",
+      "total_sold": 2239,
       "total_spoiled": 0,
-      "total_waterings": 1346,
-      "trajectory": "88a37f426cd9529e",
+      "total_waterings": 896,
+      "trajectory": "a4be8e977c06bcb2",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
-        "processing_1",
         "storage_1"
       ]
     },
@@ -632,66 +608,66 @@
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.9eb851eb851ebp+5",
-      "contracts_completed": 41,
+      "contract_penalties": "0x1.5999999999999p+5",
+      "contracts_completed": 30,
       "contracts_failed": 1,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 187,
-        "purplehaze": 263,
-        "quickweed": 86
+        "greenleaf": 548,
+        "purplehaze": 79,
+        "quickweed": 68
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.9eb851eb851ebp+5",
-        "fertilizer": "0x1.f680000000000p+12",
-        "processing": "0x1.5f00000000000p+8",
-        "seeds": "0x1.96a8000000000p+13",
+        "contract_penalties": "0x1.5999999999999p+5",
+        "fertilizer": "0x1.4550000000000p+13",
+        "processing": "0x1.4600000000000p+9",
+        "seeds": "0x1.7c80000000000p+13",
         "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.d0733333333eep+8"
+        "watering": "0x1.4633333333350p+8"
       },
-      "highest_money": "0x1.fda478d470476p+14",
-      "idle_days": 36,
+      "highest_money": "0x1.c7775e848c30ep+13",
+      "idle_days": 66,
       "losses_by_cause": {
-        "crop_loss_events": 23,
-        "rejected_quality_units": 118
+        "crop_loss_events": 162,
+        "rejected_quality_units": 26
       },
-      "lowest_money": "0x1.f333333333332p+0",
-      "money": "0x1.fda478d470476p+14",
-      "occupied_slot_days": 3843,
-      "processing_revenue": "0x1.ab2bbad0feed5p+12",
+      "lowest_money": "0x1.41d7ab1e30600p-4",
+      "money": "0x1.c7775e848c30ep+13",
+      "occupied_slot_days": 3763,
+      "processing_revenue": "0x1.9909eb2a047cep+13",
       "quality_harvested": {
-        "premium": 845,
-        "processing": 549,
-        "standard": 1683
+        "premium": 542,
+        "processing": 274,
+        "standard": 1927
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.2834000000000p+13",
-        "farm_stand": "0x1.1575d10a6ea8dp+14",
-        "processor": "0x1.4b5baf120df12p+10",
-        "specialty": "0x1.422b1438db663p+12",
-        "spot": "0x1.03248253e2d0fp+14",
-        "wholesale": "0x1.384339b2265aep+12"
+        "contract": "0x1.bd50000000000p+12",
+        "farm_stand": "0x1.320fe2261eac2p+14",
+        "processor": "0x1.ff40f96044f8dp+6",
+        "specialty": "0x1.0de6f1865e87bp+12",
+        "spot": "0x1.bdf170748e6c9p+12",
+        "wholesale": "0x1.5181a7b4b0f24p+9"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3863,
-      "total_crops_lost": 52,
-      "total_expenses": "0x1.635128f5c289fp+14",
-      "total_fertilizer_applied": 536,
-      "total_fertilizer_bought": 536,
-      "total_harvest_events": 536,
-      "total_harvested": 3077,
-      "total_planted": 536,
-      "total_processed": 125,
-      "total_revenue": "0x1.b002d0e51964dp+15",
-      "total_sold": 2726,
+      "slot_days": 3839,
+      "total_crops_lost": 168,
+      "total_expenses": "0x1.7dad999999938p+14",
+      "total_fertilizer_applied": 694,
+      "total_fertilizer_bought": 694,
+      "total_harvest_events": 695,
+      "total_harvested": 2743,
+      "total_planted": 695,
+      "total_processed": 222,
+      "total_revenue": "0x1.3072a46defdadp+15",
+      "total_sold": 2091,
       "total_spoiled": 0,
-      "total_waterings": 1327,
-      "trajectory": "282d793c5d606e64",
+      "total_waterings": 932,
+      "trajectory": "e409330b959c9262",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
@@ -703,386 +679,371 @@
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x0.0p+0",
-      "contracts_completed": 27,
-      "contracts_failed": 0,
+      "contract_penalties": "0x1.9eb851eb851ebp+5",
+      "contracts_completed": 34,
+      "contracts_failed": 1,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 219,
-        "purplehaze": 266,
-        "quickweed": 46
+        "greenleaf": 522,
+        "purplehaze": 71,
+        "quickweed": 127
       },
       "expenses_by_category": {
-        "fertilizer": "0x1.ed20000000000p+12",
-        "processing": "0x1.f200000000000p+7",
-        "seeds": "0x1.98a0000000000p+13",
-        "storage": "0x1.0000000000000p-2",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.d2e6666666724p+8"
+        "contract_penalties": "0x1.9eb851eb851ebp+5",
+        "fertilizer": "0x1.5090000000000p+13",
+        "processing": "0x1.0a00000000000p+8",
+        "seeds": "0x1.7180000000000p+13",
+        "upgrades": "0x1.0400000000000p+9",
+        "watering": "0x1.468cccccccceap+8"
       },
-      "highest_money": "0x1.abe8dca4076f6p+14",
-      "idle_days": 92,
+      "highest_money": "0x1.a800f80edb008p+13",
+      "idle_days": 24,
       "losses_by_cause": {
-        "crop_loss_events": 49,
-        "rejected_quality_units": 155
+        "crop_loss_events": 161,
+        "rejected_quality_units": 48
       },
-      "lowest_money": "0x1.b3e6d14d92e00p-3",
-      "money": "0x1.a83edde62bf00p+14",
-      "occupied_slot_days": 3926,
-      "processing_revenue": "0x1.2bc2280c6ae0bp+12",
+      "lowest_money": "0x1.15a7316f31c9ap-1",
+      "money": "0x1.a800f80edb008p+13",
+      "occupied_slot_days": 3748,
+      "processing_revenue": "0x1.3f7bb9b837016p+12",
       "quality_harvested": {
-        "premium": 935,
-        "processing": 340,
-        "standard": 1615
+        "premium": 835,
+        "processing": 225,
+        "standard": 1764
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.d220000000000p+12",
-        "farm_stand": "0x1.aacda350afb42p+13",
-        "processor": "0x1.72cec1e8732ddp+10",
-        "specialty": "0x1.7f7ee91460343p+12",
-        "spot": "0x1.8aba412fe20fep+13",
-        "wholesale": "0x1.011dbdb7bac34p+13"
+        "contract": "0x1.ee58000000000p+12",
+        "farm_stand": "0x1.c369ed069ce7bp+13",
+        "processor": "0x1.d2c4b70fe6ec6p+2",
+        "specialty": "0x1.c0b9ca9d85c79p+12",
+        "spot": "0x1.c0f681193ce79p+12",
+        "wholesale": "0x1.1c3ab4e4cb417p+9"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3959,
-      "total_crops_lost": 86,
-      "total_expenses": "0x1.5f98999999940p+14",
-      "total_fertilizer_applied": 526,
-      "total_fertilizer_bought": 526,
-      "total_harvest_events": 531,
-      "total_harvested": 2890,
-      "total_planted": 531,
-      "total_processed": 84,
-      "total_revenue": "0x1.8373bbbfe2c1cp+15",
-      "total_sold": 2638,
+      "slot_days": 3839,
+      "total_crops_lost": 173,
+      "total_expenses": "0x1.73398f5c28f14p+14",
+      "total_fertilizer_applied": 718,
+      "total_fertilizer_bought": 718,
+      "total_harvest_events": 720,
+      "total_harvested": 2824,
+      "total_planted": 720,
+      "total_processed": 95,
+      "total_revenue": "0x1.235b05b1cb3c2p+15",
+      "total_sold": 2557,
       "total_spoiled": 0,
-      "total_waterings": 1334,
-      "trajectory": "ea3ba9ce3b500752",
+      "total_waterings": 933,
+      "trajectory": "afb6731414205d3d",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
-        "processing_1",
         "storage_1"
       ]
     },
     "neglectful_grower:1": {
+      "bankrupt": true,
+      "bankruptcy_day": 34,
+      "bankruptcy_reason": "no_viable_reinvestment",
+      "contract_penalties": "0x0.0p+0",
+      "contracts_completed": 0,
+      "contracts_failed": 0,
+      "crop_inventory": {},
+      "crop_plant_counts": {
+        "greenleaf": 8,
+        "quickweed": 14
+      },
+      "expenses_by_category": {
+        "processing": "0x1.0000000000000p+1",
+        "seeds": "0x1.a000000000000p+7",
+        "watering": "0x1.6666666666666p-1"
+      },
+      "highest_money": "0x1.494d0c6817dc0p+5",
+      "idle_days": 17,
+      "losses_by_cause": {
+        "crop_loss_events": 12
+      },
+      "lowest_money": "0x1.9aac4d016f280p-3",
+      "money": "0x1.dc1b8c3de9c06p+2",
+      "occupied_slot_days": 90,
+      "processing_revenue": "0x1.2c5371a4f79b5p+5",
+      "quality_harvested": {
+        "processing": 2,
+        "standard": 20
+      },
+      "reputation": "0x0.0p+0",
+      "revenue_by_channel": {
+        "farm_stand": "0x1.646d38bd50f4bp+7",
+        "spot": "0x1.bb41416097f82p+2"
+      },
+      "seed_inventory": {
+        "greenleaf": 0,
+        "quickweed": 0
+      },
+      "slot_days": 102,
+      "total_crops_lost": 12,
+      "total_expenses": "0x1.a566666666666p+7",
+      "total_fertilizer_applied": 0,
+      "total_fertilizer_bought": 0,
+      "total_harvest_events": 22,
+      "total_harvested": 22,
+      "total_planted": 22,
+      "total_processed": 1,
+      "total_revenue": "0x1.724742c855b47p+7",
+      "total_sold": 20,
+      "total_spoiled": 0,
+      "total_waterings": 2,
+      "trajectory": "96451ef18bf84da9",
+      "upgrades_owned": []
+    },
+    "neglectful_grower:123456789": {
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.2e66666666666p+6",
-      "contracts_completed": 26,
-      "contracts_failed": 3,
+      "contract_penalties": "0x1.f1f0a153897aep+7",
+      "contracts_completed": 22,
+      "contracts_failed": 5,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 339,
-        "purplehaze": 168,
-        "quickweed": 79
+        "greenleaf": 505,
+        "purplehaze": 60,
+        "quickweed": 173
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.2e66666666666p+6",
-        "fertilizer": "0x1.3380000000000p+11",
-        "processing": "0x1.7800000000000p+6",
-        "seeds": "0x1.22f8000000000p+13",
+        "contract_penalties": "0x1.f1f0a153897aep+7",
+        "fertilizer": "0x1.c200000000000p+9",
+        "processing": "0x1.dc00000000000p+7",
+        "seeds": "0x1.60a0000000000p+13",
         "upgrades": "0x1.0400000000000p+9",
-        "watering": "0x1.b799999999972p+6"
+        "watering": "0x1.44cccccccccc6p+6"
       },
-      "highest_money": "0x1.f68a6996b5ddcp+11",
-      "idle_days": 56,
+      "highest_money": "0x1.aa1747f98f6a4p+10",
+      "idle_days": 40,
       "losses_by_cause": {
-        "crop_loss_events": 297,
-        "rejected_quality_units": 56
+        "crop_loss_events": 277,
+        "rejected_quality_units": 57
       },
-      "lowest_money": "0x1.140e8076f9000p-6",
-      "money": "0x1.f68a6996b5ddcp+11",
-      "occupied_slot_days": 3731,
-      "processing_revenue": "0x1.a77cf9e979a77p+10",
+      "lowest_money": "0x0.0p+0",
+      "money": "0x1.aa1747f98f6a4p+10",
+      "occupied_slot_days": 3674,
+      "processing_revenue": "0x1.17c2bdae61f12p+12",
       "quality_harvested": {
-        "premium": 122,
-        "processing": 207,
-        "standard": 546
+        "premium": 150,
+        "processing": 402,
+        "standard": 682
       },
-      "reputation": "0x1.9000000000000p+6",
+      "reputation": "0x1.6800000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.7b20000000000p+12",
-        "farm_stand": "0x1.88a8fcacb1a18p+12",
-        "specialty": "0x1.82892b587e443p+10",
-        "spot": "0x1.4983da9113773p+11"
+        "contract": "0x1.0a40000000000p+12",
+        "farm_stand": "0x1.f72697096e990p+12",
+        "specialty": "0x1.0085478e012bcp+10",
+        "spot": "0x1.91c2853d11d58p+10"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3863,
-      "total_crops_lost": 318,
-      "total_expenses": "0x1.88d4000000025p+13",
-      "total_fertilizer_applied": 164,
-      "total_fertilizer_bought": 164,
-      "total_harvest_events": 586,
-      "total_harvested": 875,
-      "total_planted": 586,
-      "total_processed": 31,
-      "total_revenue": "0x1.024b4d32d6bb9p+14",
-      "total_sold": 780,
+      "slot_days": 3815,
+      "total_crops_lost": 301,
+      "total_expenses": "0x1.9ec15c1ee7c16p+13",
+      "total_fertilizer_applied": 60,
+      "total_fertilizer_bought": 60,
+      "total_harvest_events": 738,
+      "total_harvested": 1234,
+      "total_planted": 738,
+      "total_processed": 87,
+      "total_revenue": "0x1.d2fc451e19ad1p+13",
+      "total_sold": 995,
       "total_spoiled": 0,
-      "total_waterings": 314,
-      "trajectory": "0cd166cc4700ec39",
+      "total_waterings": 232,
+      "trajectory": "01d212e6d638416a",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
         "storage_1"
-      ]
-    },
-    "neglectful_grower:123456789": {
-      "bankrupt": true,
-      "bankruptcy_day": 194,
-      "bankruptcy_reason": "no_viable_reinvestment",
-      "contract_penalties": "0x1.8997767d63dbdp+5",
-      "contracts_completed": 9,
-      "contracts_failed": 2,
-      "crop_inventory": {},
-      "crop_plant_counts": {
-        "greenleaf": 176,
-        "purplehaze": 62,
-        "quickweed": 35
-      },
-      "expenses_by_category": {
-        "contract_penalties": "0x1.8997767d63dbdp+5",
-        "fertilizer": "0x1.d100000000000p+9",
-        "processing": "0x1.2400000000000p+6",
-        "seeds": "0x1.caa0000000000p+11",
-        "upgrades": "0x1.0400000000000p+8",
-        "watering": "0x1.98cccccccccdfp+5"
-      },
-      "highest_money": "0x1.1b0552dea6818p+9",
-      "idle_days": 48,
-      "losses_by_cause": {
-        "crop_loss_events": 160,
-        "rejected_quality_units": 22
-      },
-      "lowest_money": "0x0.0p+0",
-      "money": "0x1.199f721bbb457p+1",
-      "occupied_slot_days": 1809,
-      "processing_revenue": "0x1.516dba9b5d603p+10",
-      "quality_harvested": {
-        "premium": 43,
-        "processing": 77,
-        "standard": 219
-      },
-      "reputation": "0x1.2800000000000p+5",
-      "revenue_by_channel": {
-        "contract": "0x1.ff80000000000p+10",
-        "farm_stand": "0x1.08274e83a73d1p+11",
-        "specialty": "0x1.733f25861e66dp+7",
-        "spot": "0x1.3ad2e0369a377p+9"
-      },
-      "seed_inventory": {
-        "greenleaf": 0,
-        "purplehaze": 0,
-        "quickweed": 0
-      },
-      "slot_days": 1910,
-      "total_crops_lost": 167,
-      "total_expenses": "0x1.3a84c88694618p+12",
-      "total_fertilizer_applied": 62,
-      "total_fertilizer_bought": 62,
-      "total_harvest_events": 273,
-      "total_harvested": 339,
-      "total_planted": 273,
-      "total_processed": 25,
-      "total_revenue": "0x1.36e7fc74d7d8dp+12",
-      "total_sold": 266,
-      "total_spoiled": 0,
-      "total_waterings": 146,
-      "trajectory": "3f5dfce63007bb42",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1"
       ]
     },
     "neglectful_grower:42": {
       "bankrupt": true,
-      "bankruptcy_day": 331,
+      "bankruptcy_day": 214,
       "bankruptcy_reason": "no_viable_reinvestment",
-      "contract_penalties": "0x1.e3b32d1b60d43p+6",
-      "contracts_completed": 21,
-      "contracts_failed": 3,
+      "contract_penalties": "0x1.c965b2b68dddfp+5",
+      "contracts_completed": 8,
+      "contracts_failed": 2,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 337,
-        "purplehaze": 144,
-        "quickweed": 37
+        "greenleaf": 215,
+        "purplehaze": 13,
+        "quickweed": 101
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.e3b32d1b60d43p+6",
-        "fertilizer": "0x1.0860000000000p+11",
-        "processing": "0x1.6800000000000p+6",
-        "seeds": "0x1.f4d0000000000p+12",
-        "upgrades": "0x1.0400000000000p+9",
-        "watering": "0x1.7466666666652p+6"
+        "contract_penalties": "0x1.c965b2b68dddfp+5",
+        "fertilizer": "0x1.8600000000000p+7",
+        "processing": "0x1.9400000000000p+6",
+        "seeds": "0x1.07c0000000000p+12",
+        "upgrades": "0x1.0400000000000p+8",
+        "watering": "0x1.d0cccccccccd9p+4"
       },
-      "highest_money": "0x1.c433a7614c188p+9",
-      "idle_days": 50,
+      "highest_money": "0x1.4b8a440a1da74p+9",
+      "idle_days": 38,
       "losses_by_cause": {
-        "crop_loss_events": 278,
-        "rejected_quality_units": 69
+        "crop_loss_events": 127,
+        "rejected_quality_units": 26
       },
       "lowest_money": "0x0.0p+0",
-      "money": "0x1.1d5cd0c4beb66p+1",
-      "occupied_slot_days": 3372,
-      "processing_revenue": "0x1.ac02738fcd605p+10",
+      "money": "0x1.bc9ec3828bd10p+2",
+      "occupied_slot_days": 1549,
+      "processing_revenue": "0x1.cbd543d23c3c1p+10",
       "quality_harvested": {
-        "premium": 87,
-        "processing": 162,
-        "standard": 404
+        "premium": 16,
+        "processing": 171,
+        "standard": 279
       },
-      "reputation": "0x1.7400000000000p+6",
+      "reputation": "0x1.0000000000000p+5",
       "revenue_by_channel": {
-        "contract": "0x1.1568000000000p+12",
-        "farm_stand": "0x1.103e1161efb3dp+12",
-        "specialty": "0x1.8b46817bda191p+9",
-        "spot": "0x1.4754c15ad2f78p+10"
+        "contract": "0x1.2480000000000p+10",
+        "farm_stand": "0x1.70bff5048f504p+11",
+        "specialty": "0x1.f519c62de9f04p+4",
+        "spot": "0x1.566d5cd527ca3p+9"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3489,
-      "total_crops_lost": 302,
-      "total_expenses": "0x1.5640332703903p+13",
-      "total_fertilizer_applied": 141,
-      "total_fertilizer_bought": 141,
-      "total_harvest_events": 518,
-      "total_harvested": 653,
-      "total_planted": 518,
-      "total_processed": 31,
-      "total_revenue": "0x1.547208f40fda5p+13",
-      "total_sold": 563,
+      "slot_days": 1986,
+      "total_crops_lost": 146,
+      "total_expenses": "0x1.2fe3983239e87p+12",
+      "total_fertilizer_applied": 13,
+      "total_fertilizer_bought": 13,
+      "total_harvest_events": 329,
+      "total_harvested": 466,
+      "total_planted": 329,
+      "total_processed": 38,
+      "total_revenue": "0x1.2e42bfe31a8b8p+12",
+      "total_sold": 365,
       "total_spoiled": 0,
-      "total_waterings": 266,
-      "trajectory": "ce94c489c688aced",
+      "total_waterings": 83,
+      "trajectory": "d283034dfb19abff",
       "upgrades_owned": [
         "capacity_1",
-        "efficiency_1",
-        "storage_1"
+        "efficiency_1"
       ]
     },
     "neglectful_grower:777": {
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.35d6ff1a733b8p+5",
-      "contracts_completed": 22,
-      "contracts_failed": 1,
+      "contract_penalties": "0x1.999969e94fe2bp+6",
+      "contracts_completed": 17,
+      "contracts_failed": 5,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 417,
-        "purplehaze": 142,
-        "quickweed": 30
+        "greenleaf": 438,
+        "purplehaze": 69,
+        "quickweed": 108
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.35d6ff1a733b8p+5",
-        "fertilizer": "0x1.0860000000000p+11",
-        "processing": "0x1.c400000000000p+6",
-        "seeds": "0x1.0080000000000p+13",
-        "upgrades": "0x1.0400000000000p+8",
-        "watering": "0x1.9b9999999997ap+6"
+        "contract_penalties": "0x1.999969e94fe2bp+6",
+        "fertilizer": "0x1.02c0000000000p+10",
+        "processing": "0x1.3e00000000000p+7",
+        "seeds": "0x1.4940000000000p+13",
+        "upgrades": "0x1.0400000000000p+9",
+        "watering": "0x1.5c9999999998cp+6"
       },
-      "highest_money": "0x1.5bd9ca617393fp+9",
-      "idle_days": 76,
+      "highest_money": "0x1.117ebcd072efbp+11",
+      "idle_days": 59,
       "losses_by_cause": {
-        "crop_loss_events": 325,
-        "rejected_quality_units": 64
+        "crop_loss_events": 220,
+        "rejected_quality_units": 97
       },
       "lowest_money": "0x0.0p+0",
-      "money": "0x1.e0cff77f1151ap+8",
-      "occupied_slot_days": 3697,
-      "processing_revenue": "0x1.0e6bc5bee56d0p+11",
+      "money": "0x1.260b9aaa91239p+9",
+      "occupied_slot_days": 3354,
+      "processing_revenue": "0x1.7d3a389ca4365p+11",
       "quality_harvested": {
-        "premium": 118,
-        "processing": 225,
-        "standard": 407
+        "premium": 66,
+        "processing": 365,
+        "standard": 578
       },
-      "reputation": "0x1.9000000000000p+6",
+      "reputation": "0x1.0400000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.b360000000000p+11",
-        "farm_stand": "0x1.3517e601790ecp+12",
-        "specialty": "0x1.4f430b7d7cf93p+9",
-        "spot": "0x1.0ded98d6c7680p+11"
+        "contract": "0x1.0b78000000000p+12",
+        "farm_stand": "0x1.89bb29699b3ddp+12",
+        "specialty": "0x1.4d4128f6124bep+9",
+        "spot": "0x1.b53bc36c010b3p+10"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3719,
-      "total_crops_lost": 348,
-      "total_expenses": "0x1.52ad0a324da88p+13",
-      "total_fertilizer_applied": 141,
-      "total_fertilizer_bought": 141,
-      "total_harvest_events": 589,
-      "total_harvested": 750,
-      "total_planted": 589,
-      "total_processed": 38,
-      "total_revenue": "0x1.5fd389ee4630fp+13",
-      "total_sold": 637,
+      "slot_days": 3423,
+      "total_crops_lost": 262,
+      "total_expenses": "0x1.84bc660705d4fp+13",
+      "total_fertilizer_applied": 69,
+      "total_fertilizer_bought": 69,
+      "total_harvest_events": 615,
+      "total_harvested": 1009,
+      "total_planted": 615,
+      "total_processed": 57,
+      "total_revenue": "0x1.96151fb1aee4fp+13",
+      "total_sold": 849,
       "total_spoiled": 0,
-      "total_waterings": 294,
-      "trajectory": "817ae94a2ed57a3a",
+      "total_waterings": 249,
+      "trajectory": "af86fbb6141a7eae",
       "upgrades_owned": [
         "capacity_1",
-        "efficiency_1"
+        "efficiency_1",
+        "storage_1"
       ]
     },
     "no_upgrade_player:1": {
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.8d70a3d70a3d6p+7",
-      "contracts_completed": 15,
-      "contracts_failed": 3,
+      "contract_penalties": "0x1.147ae147ae147p+8",
+      "contracts_completed": 18,
+      "contracts_failed": 4,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 33,
-        "purplehaze": 61,
-        "quickweed": 53
+        "greenleaf": 71,
+        "purplehaze": 36,
+        "quickweed": 77
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.8d70a3d70a3d6p+7",
-        "fertilizer": "0x1.c980000000000p+9",
-        "processing": "0x1.3000000000000p+5",
-        "seeds": "0x1.88c0000000000p+11",
-        "watering": "0x1.11b3333333310p+7"
+        "contract_penalties": "0x1.147ae147ae147p+8",
+        "fertilizer": "0x1.0e00000000000p+9",
+        "processing": "0x1.2400000000000p+6",
+        "seeds": "0x1.d780000000000p+11",
+        "watering": "0x1.cb33333333306p+6"
       },
-      "highest_money": "0x1.7958191739b5ap+12",
-      "idle_days": 124,
+      "highest_money": "0x1.69a67f39d534cp+11",
+      "idle_days": 160,
       "losses_by_cause": {
-        "crop_loss_events": 12,
-        "rejected_quality_units": 50
+        "crop_loss_events": 58,
+        "rejected_quality_units": 34
       },
-      "lowest_money": "0x1.7799999999999p+5",
-      "money": "0x1.753a70a570d32p+12",
+      "lowest_money": "0x1.1333333333334p+2",
+      "money": "0x1.6884e5a03b9b3p+11",
       "occupied_slot_days": 1089,
-      "processing_revenue": "0x1.4d9ef0c9230c6p+9",
+      "processing_revenue": "0x1.4eeb782a5c9a6p+10",
       "quality_harvested": {
-        "premium": 150,
-        "processing": 105,
-        "standard": 315
+        "premium": 137,
+        "processing": 60,
+        "standard": 248
       },
-      "reputation": "0x1.f800000000000p+5",
+      "reputation": "0x1.2800000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.ad00000000000p+11",
-        "farm_stand": "0x1.9ee1138547169p+11",
-        "processor": "0x1.0a4dcb1341a14p+6",
-        "specialty": "0x1.562dc64ec5778p+9",
-        "spot": "0x1.60175aadc3995p+11",
-        "wholesale": "0x1.78684e17b4c50p+4"
+        "contract": "0x1.ef60000000000p+11",
+        "farm_stand": "0x1.4ba1dcae03ca3p+11",
+        "specialty": "0x1.97c27303d05b5p+8",
+        "spot": "0x1.2dcec15134825p+9"
       },
       "seed_inventory": {
         "greenleaf": 0,
@@ -1090,62 +1051,62 @@
         "quickweed": 0
       },
       "slot_days": 1095,
-      "total_crops_lost": 25,
-      "total_expenses": "0x1.14e91eb851eadp+12",
-      "total_fertilizer_applied": 61,
-      "total_fertilizer_bought": 61,
-      "total_harvest_events": 147,
-      "total_harvested": 570,
-      "total_planted": 147,
-      "total_processed": 13,
-      "total_revenue": "0x1.4331c7aee160fp+13",
-      "total_sold": 532,
+      "total_crops_lost": 66,
+      "total_expenses": "0x1.2a847ae147ae5p+12",
+      "total_fertilizer_applied": 36,
+      "total_fertilizer_bought": 36,
+      "total_harvest_events": 184,
+      "total_harvested": 445,
+      "total_planted": 184,
+      "total_processed": 27,
+      "total_revenue": "0x1.dcb6edb1657b3p+12",
+      "total_sold": 372,
       "total_spoiled": 0,
-      "total_waterings": 391,
-      "trajectory": "00c4047c663be8a7",
+      "total_waterings": 328,
+      "trajectory": "cc2112960dd6e983",
       "upgrades_owned": []
     },
     "no_upgrade_player:123456789": {
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.370a3d70a3d70p+7",
-      "contracts_completed": 16,
-      "contracts_failed": 3,
+      "contract_penalties": "0x1.7c28f5c28f5c2p+6",
+      "contracts_completed": 22,
+      "contracts_failed": 2,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 56,
-        "purplehaze": 61,
-        "quickweed": 7
+        "greenleaf": 77,
+        "purplehaze": 30,
+        "quickweed": 89
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.370a3d70a3d70p+7",
-        "fertilizer": "0x1.c980000000000p+9",
-        "processing": "0x1.a800000000000p+5",
-        "seeds": "0x1.7780000000000p+11",
-        "watering": "0x1.019999999997bp+7"
+        "contract_penalties": "0x1.7c28f5c28f5c2p+6",
+        "fertilizer": "0x1.c200000000000p+8",
+        "processing": "0x1.3400000000000p+6",
+        "seeds": "0x1.bc80000000000p+11",
+        "watering": "0x1.ba6666666663ep+6"
       },
-      "highest_money": "0x1.c4665289e8303p+12",
-      "idle_days": 87,
+      "highest_money": "0x1.4e6114fe6a15cp+12",
+      "idle_days": 161,
       "losses_by_cause": {
-        "crop_loss_events": 9,
-        "rejected_quality_units": 60
+        "crop_loss_events": 47,
+        "rejected_quality_units": 22
       },
-      "lowest_money": "0x1.7799999999999p+5",
-      "money": "0x1.c4665289e8303p+12",
+      "lowest_money": "0x1.1333333333334p+2",
+      "money": "0x1.4e6114fe6a15cp+12",
       "occupied_slot_days": 1089,
-      "processing_revenue": "0x1.ea62359d7f00ap+9",
+      "processing_revenue": "0x1.75f1e11a5da97p+10",
       "quality_harvested": {
-        "premium": 107,
-        "processing": 108,
-        "standard": 332
+        "premium": 205,
+        "processing": 33,
+        "standard": 280
       },
-      "reputation": "0x1.1000000000000p+6",
+      "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.2300000000000p+12",
-        "farm_stand": "0x1.c4693417490d0p+11",
-        "specialty": "0x1.429e2dd2540b9p+9",
-        "spot": "0x1.3a4622f8962bap+11"
+        "contract": "0x1.2f60000000000p+12",
+        "farm_stand": "0x1.80cbe40971988p+11",
+        "specialty": "0x1.06af2cf4e5bd6p+10",
+        "spot": "0x1.374ca968dd86cp+9"
       },
       "seed_inventory": {
         "greenleaf": 0,
@@ -1153,62 +1114,63 @@
         "quickweed": 0
       },
       "slot_days": 1095,
-      "total_crops_lost": 26,
-      "total_expenses": "0x1.0a051eb851eaap+12",
-      "total_fertilizer_applied": 61,
-      "total_fertilizer_bought": 61,
-      "total_harvest_events": 124,
-      "total_harvested": 547,
-      "total_planted": 124,
-      "total_processed": 18,
-      "total_revenue": "0x1.6555b8a11d0efp+13",
-      "total_sold": 494,
+      "total_crops_lost": 53,
+      "total_expenses": "0x1.0c0a3d70a3d62p+12",
+      "total_fertilizer_applied": 30,
+      "total_fertilizer_bought": 30,
+      "total_harvest_events": 196,
+      "total_harvested": 518,
+      "total_planted": 196,
+      "total_processed": 29,
+      "total_revenue": "0x1.2c2da93786f65p+13",
+      "total_sold": 441,
       "total_spoiled": 0,
-      "total_waterings": 368,
-      "trajectory": "ec088aacad94c32a",
+      "total_waterings": 316,
+      "trajectory": "34add6f43cac63dd",
       "upgrades_owned": []
     },
     "no_upgrade_player:42": {
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.a75c28f5c28f6p+7",
-      "contracts_completed": 17,
-      "contracts_failed": 4,
+      "contract_penalties": "0x1.affffffffffffp+8",
+      "contracts_completed": 14,
+      "contracts_failed": 6,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 52,
-        "purplehaze": 56,
-        "quickweed": 35
+        "greenleaf": 66,
+        "purplehaze": 45,
+        "quickweed": 51
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.a75c28f5c28f6p+7",
-        "fertilizer": "0x1.a400000000000p+9",
-        "processing": "0x1.9800000000000p+5",
-        "seeds": "0x1.6ae0000000000p+11",
-        "watering": "0x1.00e6666666648p+7"
+        "contract_penalties": "0x1.affffffffffffp+8",
+        "fertilizer": "0x1.5180000000000p+9",
+        "processing": "0x1.2800000000000p+6",
+        "seeds": "0x1.fe00000000000p+11",
+        "watering": "0x1.deccccccccc9ap+6"
       },
-      "highest_money": "0x1.ac2dd95e264f4p+12",
-      "idle_days": 122,
+      "highest_money": "0x1.4bfa8673100d1p+11",
+      "idle_days": 168,
       "losses_by_cause": {
-        "crop_loss_events": 13,
-        "rejected_quality_units": 57
+        "crop_loss_events": 40,
+        "rejected_quality_units": 47
       },
-      "lowest_money": "0x1.7799999999999p+5",
-      "money": "0x1.a6947d1554363p+12",
+      "lowest_money": "0x1.1333333333334p+2",
+      "money": "0x1.4bfa8673100d1p+11",
       "occupied_slot_days": 1089,
-      "processing_revenue": "0x1.ae7356cb1c9ebp+9",
+      "processing_revenue": "0x1.50c85c128207dp+10",
       "quality_harvested": {
-        "premium": 158,
-        "processing": 67,
-        "standard": 354
+        "premium": 199,
+        "processing": 61,
+        "standard": 208
       },
-      "reputation": "0x1.1400000000000p+6",
+      "reputation": "0x1.7000000000000p+5",
       "revenue_by_channel": {
-        "contract": "0x1.bfc0000000000p+11",
-        "farm_stand": "0x1.fb797bf4efabep+11",
-        "specialty": "0x1.1baedb6c1c3f0p+9",
-        "spot": "0x1.4847f0507444dp+11"
+        "contract": "0x1.75b0000000000p+11",
+        "farm_stand": "0x1.8e51ab42febcap+11",
+        "processor": "0x1.8cf9b7addb712p+5",
+        "specialty": "0x1.386e410924922p+9",
+        "spot": "0x1.203f94eaee487p+10"
       },
       "seed_inventory": {
         "greenleaf": 0,
@@ -1216,63 +1178,63 @@
         "quickweed": 0
       },
       "slot_days": 1095,
-      "total_crops_lost": 26,
-      "total_expenses": "0x1.0262147ae146ap+12",
-      "total_fertilizer_applied": 56,
-      "total_fertilizer_bought": 56,
-      "total_harvest_events": 143,
-      "total_harvested": 579,
-      "total_planted": 143,
-      "total_processed": 16,
-      "total_revenue": "0x1.529b48c81ac02p+13",
-      "total_sold": 527,
+      "total_crops_lost": 51,
+      "total_expenses": "0x1.504b333333343p+12",
+      "total_fertilizer_applied": 45,
+      "total_fertilizer_bought": 45,
+      "total_harvest_events": 162,
+      "total_harvested": 468,
+      "total_planted": 162,
+      "total_processed": 27,
+      "total_revenue": "0x1.f438766cbb396p+12",
+      "total_sold": 394,
       "total_spoiled": 0,
-      "total_waterings": 367,
-      "trajectory": "d4ba438f4c173bb8",
+      "total_waterings": 342,
+      "trajectory": "323465d6423fba24",
       "upgrades_owned": []
     },
     "no_upgrade_player:777": {
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.9eb851eb851ebp+7",
-      "contracts_completed": 14,
+      "contract_penalties": "0x1.e3d70a3d70a3ep+6",
+      "contracts_completed": 19,
       "contracts_failed": 3,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 42,
-        "purplehaze": 60,
-        "quickweed": 39
+        "greenleaf": 80,
+        "purplehaze": 34,
+        "quickweed": 67
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.9eb851eb851ebp+7",
-        "fertilizer": "0x1.ba80000000000p+9",
-        "processing": "0x1.8000000000000p+5",
-        "seeds": "0x1.7ee0000000000p+11",
-        "watering": "0x1.0ab3333333312p+7"
+        "contract_penalties": "0x1.e3d70a3d70a3ep+6",
+        "fertilizer": "0x1.fe00000000000p+8",
+        "processing": "0x1.4c00000000000p+6",
+        "seeds": "0x1.cb00000000000p+11",
+        "watering": "0x1.bbccccccccca4p+6"
       },
-      "highest_money": "0x1.78ec60facb6bfp+12",
+      "highest_money": "0x1.433471f185794p+12",
       "idle_days": 133,
       "losses_by_cause": {
-        "crop_loss_events": 18,
-        "rejected_quality_units": 37
+        "crop_loss_events": 48,
+        "rejected_quality_units": 11
       },
-      "lowest_money": "0x1.7799999999999p+5",
-      "money": "0x1.78ec60facb6bfp+12",
+      "lowest_money": "0x1.1333333333334p+2",
+      "money": "0x1.411f3cadf1f28p+12",
       "occupied_slot_days": 1089,
-      "processing_revenue": "0x1.b59f36a79c05dp+9",
+      "processing_revenue": "0x1.9197d5a7f9bd2p+10",
       "quality_harvested": {
-        "premium": 157,
-        "processing": 80,
-        "standard": 305
+        "premium": 212,
+        "processing": 56,
+        "standard": 247
       },
-      "reputation": "0x1.d000000000000p+5",
+      "reputation": "0x1.4c00000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.a010000000000p+11",
-        "farm_stand": "0x1.bf13358cedaedp+11",
-        "processor": "0x1.042c2263415b6p+6",
-        "specialty": "0x1.e53994804edefp+9",
-        "spot": "0x1.27dc7e8766effp+11"
+        "contract": "0x1.1b20000000000p+12",
+        "farm_stand": "0x1.7bdebc786ae23p+11",
+        "processor": "0x1.74fb9b34d2304p+5",
+        "specialty": "0x1.06c6ccdbc2b51p+10",
+        "spot": "0x1.d3961b04593e5p+9"
       },
       "seed_inventory": {
         "greenleaf": 0,
@@ -1280,19 +1242,19 @@
         "quickweed": 0
       },
       "slot_days": 1095,
-      "total_crops_lost": 29,
-      "total_expenses": "0x1.0f0b5c28f5c20p+12",
-      "total_fertilizer_applied": 59,
-      "total_fertilizer_bought": 59,
-      "total_harvest_events": 141,
-      "total_harvested": 542,
-      "total_planted": 141,
-      "total_processed": 17,
-      "total_revenue": "0x1.421bde91e0987p+13",
-      "total_sold": 494,
+      "total_crops_lost": 51,
+      "total_expenses": "0x1.190e8f5c28f54p+12",
+      "total_fertilizer_applied": 34,
+      "total_fertilizer_bought": 34,
+      "total_harvest_events": 181,
+      "total_harvested": 515,
+      "total_planted": 181,
+      "total_processed": 32,
+      "total_revenue": "0x1.2c0ee6050d752p+13",
+      "total_sold": 432,
       "total_spoiled": 0,
-      "total_waterings": 381,
-      "trajectory": "90df49a9c7c8b4d1",
+      "total_waterings": 317,
+      "trajectory": "2b419851e46bf4c6",
       "upgrades_owned": []
     },
     "profit_optimizer:1": {
@@ -1300,65 +1262,64 @@
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
       "contract_penalties": "0x0.0p+0",
-      "contracts_completed": 33,
+      "contracts_completed": 32,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 201,
-        "purplehaze": 268,
-        "quickweed": 72
+        "greenleaf": 539,
+        "purplehaze": 97,
+        "quickweed": 75
       },
       "expenses_by_category": {
-        "fertilizer": "0x1.f680000000000p+11",
-        "processing": "0x1.fe00000000000p+7",
-        "seeds": "0x1.9d40000000000p+13",
-        "storage": "0x1.0000000000000p-2",
+        "fertilizer": "0x1.6bc0000000000p+10",
+        "processing": "0x1.2880000000000p+9",
+        "seeds": "0x1.9ee0000000000p+13",
         "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.d6c00000000c2p+8"
+        "watering": "0x1.5eb333333336cp+8"
       },
-      "highest_money": "0x1.e6762257155bcp+14",
-      "idle_days": 55,
+      "highest_money": "0x1.006fa6beca6e8p+14",
+      "idle_days": 63,
       "losses_by_cause": {
-        "crop_loss_events": 39,
-        "rejected_quality_units": 214
+        "crop_loss_events": 185,
+        "rejected_quality_units": 54
       },
-      "lowest_money": "0x1.7799999999999p+5",
-      "money": "0x1.e6752257155bcp+14",
-      "occupied_slot_days": 3918,
-      "processing_revenue": "0x1.3f973b60f04dcp+12",
+      "lowest_money": "0x1.1333333333334p+2",
+      "money": "0x1.006fa6beca6e8p+14",
+      "occupied_slot_days": 3907,
+      "processing_revenue": "0x1.707b6f51b6bf3p+13",
       "quality_harvested": {
-        "premium": 696,
-        "processing": 230,
-        "standard": 1736
+        "premium": 367,
+        "processing": 267,
+        "standard": 1477
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.0d70000000000p+13",
-        "farm_stand": "0x1.e0fcf31b4ad72p+13",
-        "processor": "0x1.d297835fb3771p+8",
-        "specialty": "0x1.30a7e80059cf5p+12",
-        "spot": "0x1.a05fe66082499p+13",
-        "wholesale": "0x1.c109762e65f94p+12"
+        "contract": "0x1.ee40000000000p+12",
+        "farm_stand": "0x1.141f1ba4ff41ap+14",
+        "processor": "0x1.7ce87c6d182a3p+4",
+        "specialty": "0x1.efc19cd55266fp+10",
+        "spot": "0x1.33f4b163008b8p+12",
+        "wholesale": "0x1.67b5e859db894p+8"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3943,
-      "total_crops_lost": 91,
-      "total_expenses": "0x1.2597fffffffffp+14",
-      "total_fertilizer_applied": 268,
-      "total_fertilizer_bought": 268,
-      "total_harvest_events": 541,
-      "total_harvested": 2662,
-      "total_planted": 541,
-      "total_processed": 91,
-      "total_revenue": "0x1.858e912b8aa82p+15",
-      "total_sold": 2407,
+      "slot_days": 3911,
+      "total_crops_lost": 199,
+      "total_expenses": "0x1.01baccccccd0ep+14",
+      "total_fertilizer_applied": 97,
+      "total_fertilizer_bought": 97,
+      "total_harvest_events": 711,
+      "total_harvested": 2111,
+      "total_planted": 711,
+      "total_processed": 199,
+      "total_revenue": "0x1.00d339c5cb9f9p+15",
+      "total_sold": 1515,
       "total_spoiled": 0,
-      "total_waterings": 1345,
-      "trajectory": "92880d473eb59e13",
+      "total_waterings": 1002,
+      "trajectory": "7e92cc53e8ebbff6",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
@@ -1370,69 +1331,69 @@
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x0.0p+0",
-      "contracts_completed": 42,
-      "contracts_failed": 0,
+      "contract_penalties": "0x1.147ae147ae148p+7",
+      "contracts_completed": 20,
+      "contracts_failed": 3,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 225,
-        "purplehaze": 248,
-        "quickweed": 103
+        "greenleaf": 554,
+        "purplehaze": 83,
+        "quickweed": 81
       },
       "expenses_by_category": {
-        "fertilizer": "0x1.d100000000000p+11",
-        "processing": "0x1.8000000000000p+8",
-        "seeds": "0x1.88f8000000000p+13",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.ce000000000b8p+8"
+        "contract_penalties": "0x1.147ae147ae148p+7",
+        "fertilizer": "0x1.3740000000000p+10",
+        "processing": "0x1.fa00000000000p+7",
+        "seeds": "0x1.8a00000000000p+13",
+        "upgrades": "0x1.0400000000000p+9",
+        "watering": "0x1.51c000000002ap+8"
       },
-      "highest_money": "0x1.fc6cb88529941p+14",
-      "idle_days": 45,
+      "highest_money": "0x1.f614a4fb605a3p+12",
+      "idle_days": 70,
       "losses_by_cause": {
-        "crop_loss_events": 40,
-        "rejected_quality_units": 170
+        "crop_loss_events": 200,
+        "rejected_quality_units": 62
       },
-      "lowest_money": "0x1.5ebb9245c8b66p+5",
-      "money": "0x1.fc6cb88529941p+14",
-      "occupied_slot_days": 3931,
-      "processing_revenue": "0x1.d11f4ed98a927p+12",
+      "lowest_money": "0x1.cdae56255bd8cp-3",
+      "money": "0x1.f614a4fb605a3p+12",
+      "occupied_slot_days": 3870,
+      "processing_revenue": "0x1.24bf8f5feac8ap+12",
       "quality_harvested": {
-        "premium": 694,
-        "processing": 289,
-        "standard": 1723
+        "premium": 297,
+        "processing": 274,
+        "standard": 1366
       },
-      "reputation": "0x1.9000000000000p+6",
+      "reputation": "0x1.6000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.3974000000000p+13",
-        "farm_stand": "0x1.1d60a8964ca0fp+14",
-        "processor": "0x1.199ef8f37b0afp+8",
-        "specialty": "0x1.6bf0047bc334cp+11",
-        "spot": "0x1.d08c1c2b5e97dp+13",
-        "wholesale": "0x1.fedc2b2f3a411p+11"
+        "contract": "0x1.45e0000000000p+12",
+        "farm_stand": "0x1.464ddc7959ffbp+13",
+        "processor": "0x1.2e79d2a75e9b8p+3",
+        "specialty": "0x1.01730f56ae9b0p+11",
+        "spot": "0x1.467dd317d89d6p+12",
+        "wholesale": "0x1.33456cccc741cp+7"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3943,
-      "total_crops_lost": 79,
-      "total_expenses": "0x1.18a4000000026p+14",
-      "total_fertilizer_applied": 248,
-      "total_fertilizer_bought": 248,
-      "total_harvest_events": 576,
-      "total_harvested": 2706,
-      "total_planted": 576,
-      "total_processed": 133,
-      "total_revenue": "0x1.8a105c4294c3cp+15",
-      "total_sold": 2319,
+      "slot_days": 3887,
+      "total_crops_lost": 213,
+      "total_expenses": "0x1.d7efeb851ec0cp+13",
+      "total_fertilizer_applied": 83,
+      "total_fertilizer_bought": 83,
+      "total_harvest_events": 718,
+      "total_harvested": 1937,
+      "total_planted": 718,
+      "total_processed": 86,
+      "total_revenue": "0x1.68f91f016774dp+14",
+      "total_sold": 1683,
       "total_spoiled": 0,
-      "total_waterings": 1320,
-      "trajectory": "95b99c7f468ecdb1",
+      "total_waterings": 965,
+      "trajectory": "a485ea98d7713d82",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
-        "processing_1",
         "storage_1"
       ]
     },
@@ -1440,66 +1401,66 @@
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.370a3d70a3d70p+6",
-      "contracts_completed": 32,
+      "contract_penalties": "0x1.e3d70a3d70a3dp+5",
+      "contracts_completed": 26,
       "contracts_failed": 1,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 222,
-        "purplehaze": 252,
-        "quickweed": 94
+        "greenleaf": 548,
+        "purplehaze": 90,
+        "quickweed": 74
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.370a3d70a3d70p+6",
-        "fertilizer": "0x1.d880000000000p+11",
-        "processing": "0x1.1500000000000p+8",
-        "seeds": "0x1.8cd0000000000p+13",
+        "contract_penalties": "0x1.e3d70a3d70a3dp+5",
+        "fertilizer": "0x1.5180000000000p+10",
+        "processing": "0x1.4380000000000p+9",
+        "seeds": "0x1.9400000000000p+13",
         "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.cf66666666720p+8"
+        "watering": "0x1.57b3333333364p+8"
       },
-      "highest_money": "0x1.d3e167a275069p+14",
-      "idle_days": 115,
+      "highest_money": "0x1.b9e9056179f98p+13",
+      "idle_days": 62,
       "losses_by_cause": {
-        "crop_loss_events": 49,
-        "rejected_quality_units": 234
+        "crop_loss_events": 192,
+        "rejected_quality_units": 83
       },
-      "lowest_money": "0x1.7799999999999p+5",
-      "money": "0x1.d3e167a275069p+14",
-      "occupied_slot_days": 3929,
-      "processing_revenue": "0x1.5aeabde896e33p+12",
+      "lowest_money": "0x1.1333333333334p+2",
+      "money": "0x1.b9e9056179f98p+13",
+      "occupied_slot_days": 3878,
+      "processing_revenue": "0x1.87b8634d4ddaap+13",
       "quality_harvested": {
-        "premium": 880,
-        "processing": 111,
-        "standard": 1727
+        "premium": 444,
+        "processing": 226,
+        "standard": 1344
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.e228000000000p+12",
-        "farm_stand": "0x1.8798906fc7b35p+13",
-        "processor": "0x1.775b35dd59cb3p+7",
-        "specialty": "0x1.f18b338f958adp+11",
-        "spot": "0x1.4795a73f94edbp+13",
-        "wholesale": "0x1.9981a5884705ap+13"
+        "contract": "0x1.8ea0000000000p+12",
+        "farm_stand": "0x1.105faaf451d26p+14",
+        "processor": "0x1.f1f6c53bb86e4p+5",
+        "specialty": "0x1.8dae120113095p+11",
+        "spot": "0x1.7fa4dd18b0191p+11",
+        "wholesale": "0x1.0d1b644039632p+7"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3943,
-      "total_crops_lost": 98,
-      "total_expenses": "0x1.1b10a3d70a3f2p+14",
-      "total_fertilizer_applied": 252,
-      "total_fertilizer_bought": 252,
-      "total_harvest_events": 568,
-      "total_harvested": 2718,
-      "total_planted": 568,
-      "total_processed": 99,
-      "total_revenue": "0x1.770105bcbf9c2p+15",
-      "total_sold": 2441,
+      "slot_days": 3887,
+      "total_crops_lost": 214,
+      "total_expenses": "0x1.f8a970a3d7131p+13",
+      "total_fertilizer_applied": 90,
+      "total_fertilizer_bought": 90,
+      "total_harvest_events": 712,
+      "total_harvested": 2014,
+      "total_planted": 712,
+      "total_processed": 216,
+      "total_revenue": "0x1.d8c53b02a885ep+14",
+      "total_sold": 1364,
       "total_spoiled": 0,
-      "total_waterings": 1324,
-      "trajectory": "5eb0464a56e57b75",
+      "total_waterings": 982,
+      "trajectory": "f733a9bf8c19f7bf",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
@@ -1511,69 +1472,69 @@
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x0.0p+0",
-      "contracts_completed": 34,
-      "contracts_failed": 0,
+      "contract_penalties": "0x1.147ae147ae148p+7",
+      "contracts_completed": 39,
+      "contracts_failed": 2,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 233,
-        "purplehaze": 254,
-        "quickweed": 75
+        "greenleaf": 561,
+        "purplehaze": 69,
+        "quickweed": 107
       },
       "expenses_by_category": {
-        "fertilizer": "0x1.dc40000000000p+11",
-        "processing": "0x1.f600000000000p+7",
-        "seeds": "0x1.8e08000000000p+13",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.cf66666666720p+8"
+        "contract_penalties": "0x1.147ae147ae148p+7",
+        "fertilizer": "0x1.02c0000000000p+10",
+        "processing": "0x1.4000000000000p+8",
+        "seeds": "0x1.7720000000000p+13",
+        "upgrades": "0x1.0400000000000p+9",
+        "watering": "0x1.4a66666666688p+8"
       },
-      "highest_money": "0x1.b5318f057f8b4p+14",
-      "idle_days": 59,
+      "highest_money": "0x1.eab1ade9fb1e5p+13",
+      "idle_days": 49,
       "losses_by_cause": {
-        "crop_loss_events": 43,
-        "rejected_quality_units": 178
+        "crop_loss_events": 194,
+        "rejected_quality_units": 14
       },
-      "lowest_money": "0x1.7799999999999p+5",
-      "money": "0x1.b5318f057f8b4p+14",
-      "occupied_slot_days": 3944,
-      "processing_revenue": "0x1.3dff2b3bd8d16p+12",
+      "lowest_money": "0x1.06ca8b5f28000p-2",
+      "money": "0x1.eab1ade9fb1e5p+13",
+      "occupied_slot_days": 3834,
+      "processing_revenue": "0x1.6de47968ecf85p+12",
       "quality_harvested": {
-        "premium": 683,
-        "processing": 315,
-        "standard": 1720
+        "premium": 463,
+        "processing": 296,
+        "standard": 1428
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.0920000000000p+13",
-        "farm_stand": "0x1.bd3f1b199a03cp+13",
-        "processor": "0x1.6db7c6050f9e2p+9",
-        "specialty": "0x1.6d95eff70b10fp+11",
-        "spot": "0x1.8c52446d67dcbp+13",
-        "wholesale": "0x1.b137f2b2392b4p+12"
+        "contract": "0x1.1b44000000000p+13",
+        "farm_stand": "0x1.8b39a6ca30c2bp+13",
+        "processor": "0x1.4103afab24fe5p+5",
+        "specialty": "0x1.03de229ef8aaap+11",
+        "spot": "0x1.67b7e6e642bf0p+12",
+        "wholesale": "0x1.ae94c1b233be7p+8"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3959,
-      "total_crops_lost": 80,
-      "total_expenses": "0x1.1a859999999bep+14",
-      "total_fertilizer_applied": 254,
-      "total_fertilizer_bought": 254,
-      "total_harvest_events": 562,
-      "total_harvested": 2718,
-      "total_planted": 562,
-      "total_processed": 87,
-      "total_revenue": "0x1.6763944f8c8d2p+15",
-      "total_sold": 2465,
+      "slot_days": 3839,
+      "total_crops_lost": 198,
+      "total_expenses": "0x1.c05d1eb851f40p+13",
+      "total_fertilizer_applied": 69,
+      "total_fertilizer_bought": 69,
+      "total_harvest_events": 737,
+      "total_harvested": 2187,
+      "total_planted": 737,
+      "total_processed": 110,
+      "total_revenue": "0x1.d50366512687dp+14",
+      "total_sold": 1866,
       "total_spoiled": 0,
-      "total_waterings": 1324,
-      "trajectory": "7458d3a12c9ea794",
+      "total_waterings": 944,
+      "trajectory": "af7c59184fdc945c",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
-        "processing_1",
         "storage_1"
       ]
     },
@@ -1581,64 +1542,65 @@
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x0.0p+0",
-      "contracts_completed": 36,
-      "contracts_failed": 0,
+      "contract_penalties": "0x1.147ae147ae147p+7",
+      "contracts_completed": 33,
+      "contracts_failed": 2,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 610,
-        "purplehaze": 54,
-        "quickweed": 112
+        "greenleaf": 589,
+        "purplehaze": 78,
+        "quickweed": 72
       },
       "expenses_by_category": {
-        "fertilizer": "0x1.9500000000000p+9",
-        "seeds": "0x1.5360000000000p+12",
+        "contract_penalties": "0x1.147ae147ae147p+7",
+        "fertilizer": "0x1.2480000000000p+10",
+        "seeds": "0x1.8ae0000000000p+13",
         "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.458000000001cp+8"
+        "watering": "0x1.53d99999999c6p+8"
       },
-      "highest_money": "0x1.88d039a325bcfp+14",
-      "idle_days": 40,
+      "highest_money": "0x1.51052bd069f74p+13",
+      "idle_days": 44,
       "losses_by_cause": {
-        "crop_loss_events": 39,
-        "rejected_quality_units": 35
+        "crop_loss_events": 183,
+        "rejected_quality_units": 64
       },
-      "lowest_money": "0x1.44cccccccccccp+5",
-      "money": "0x1.884c066ff289dp+14",
-      "occupied_slot_days": 3908,
+      "lowest_money": "0x1.1333333333334p+2",
+      "money": "0x1.4ddacbea9f3c1p+13",
+      "occupied_slot_days": 3932,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 647,
-        "processing": 251,
-        "standard": 1864
+        "premium": 496,
+        "processing": 217,
+        "standard": 1446
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.0770000000000p+13",
-        "farm_stand": "0x1.3357054d162fep+13",
-        "processor": "0x1.2b5148ae9c9dcp+6",
-        "specialty": "0x1.3ad3b5ec048f5p+12",
-        "spot": "0x1.0185e40e3df5bp+13",
-        "wholesale": "0x1.976a5fd3163e3p+9"
+        "contract": "0x1.a070000000000p+12",
+        "farm_stand": "0x1.feff8084f2821p+12",
+        "processor": "0x1.22bd77a6055bdp+6",
+        "specialty": "0x1.e50c3627d1bfap+11",
+        "spot": "0x1.9b6a9fa4d1dc9p+12",
+        "wholesale": "0x1.7bbd75cd03a20p+8"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3911,
-      "total_crops_lost": 47,
-      "total_expenses": "0x1.cd9800000008ap+12",
-      "total_fertilizer_applied": 54,
-      "total_fertilizer_bought": 54,
-      "total_harvest_events": 765,
-      "total_harvested": 2762,
-      "total_planted": 776,
+      "slot_days": 3935,
+      "total_crops_lost": 197,
+      "total_expenses": "0x1.d800b851eb8d8p+13",
+      "total_fertilizer_applied": 78,
+      "total_fertilizer_bought": 78,
+      "total_harvest_events": 728,
+      "total_harvested": 2159,
+      "total_planted": 739,
       "total_processed": 0,
-      "total_revenue": "0x1.fac2066ff284fp+14",
-      "total_sold": 2762,
+      "total_revenue": "0x1.9269c21e4563ap+14",
+      "total_sold": 2159,
       "total_spoiled": 0,
-      "total_waterings": 930,
-      "trajectory": "3f4e1bb2ca019d07",
+      "total_waterings": 971,
+      "trajectory": "1a2dd87c77a59609",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
@@ -1650,69 +1612,68 @@
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.25c28f5c28f5cp+8",
-      "contracts_completed": 24,
-      "contracts_failed": 4,
+      "contract_penalties": "0x1.727c591bcf63ap+6",
+      "contracts_completed": 25,
+      "contracts_failed": 3,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 608,
-        "purplehaze": 74,
-        "quickweed": 51
+        "greenleaf": 539,
+        "purplehaze": 89,
+        "quickweed": 58
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.25c28f5c28f5cp+8",
-        "fertilizer": "0x1.1580000000000p+10",
-        "seeds": "0x1.7810000000000p+12",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.4d33333333358p+8"
+        "contract_penalties": "0x1.727c591bcf63ap+6",
+        "fertilizer": "0x1.4640000000000p+10",
+        "seeds": "0x1.8aa0000000000p+13",
+        "upgrades": "0x1.0400000000000p+9",
+        "watering": "0x1.4ac0000000022p+8"
       },
-      "highest_money": "0x1.4ab9fe961738ap+14",
-      "idle_days": 82,
+      "highest_money": "0x1.471074a972bd7p+13",
+      "idle_days": 54,
       "losses_by_cause": {
-        "crop_loss_events": 41,
-        "rejected_quality_units": 95
+        "crop_loss_events": 177,
+        "rejected_quality_units": 23
       },
-      "lowest_money": "0x1.7533333333333p+5",
-      "money": "0x1.4a2dbd9a5564ap+14",
-      "occupied_slot_days": 3932,
+      "lowest_money": "0x0.0p+0",
+      "money": "0x1.46480e430c570p+13",
+      "occupied_slot_days": 3750,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 535,
-        "processing": 457,
-        "standard": 1655
+        "premium": 408,
+        "processing": 242,
+        "standard": 1374
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.3860000000000p+12",
-        "farm_stand": "0x1.14775c945ef99p+13",
-        "processor": "0x1.042f84e2d5e25p+8",
-        "specialty": "0x1.281cf46971338p+12",
-        "spot": "0x1.3595774087023p+13",
-        "wholesale": "0x1.bfe5f1870629ap+9"
+        "contract": "0x1.7e08000000000p+12",
+        "farm_stand": "0x1.1091f0013e5bfp+13",
+        "processor": "0x1.b5b99346b6d62p+6",
+        "specialty": "0x1.24331c05d2ca1p+12",
+        "spot": "0x1.613ef03fd27b4p+12",
+        "wholesale": "0x1.a276aa963b84ep+3"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3935,
-      "total_crops_lost": 61,
-      "total_expenses": "0x1.0befae147ae6ep+13",
-      "total_fertilizer_applied": 74,
-      "total_fertilizer_bought": 74,
-      "total_harvest_events": 722,
-      "total_harvested": 2647,
-      "total_planted": 733,
+      "slot_days": 3815,
+      "total_crops_lost": 185,
+      "total_expenses": "0x1.d0e2f8b237a71p+13",
+      "total_fertilizer_applied": 87,
+      "total_fertilizer_bought": 87,
+      "total_harvest_events": 675,
+      "total_harvested": 2024,
+      "total_planted": 686,
       "total_processed": 0,
-      "total_revenue": "0x1.cf3594a492d38p+14",
-      "total_sold": 2647,
+      "total_revenue": "0x1.8b11837aa1fd9p+14",
+      "total_sold": 2024,
       "total_spoiled": 0,
-      "total_waterings": 952,
-      "trajectory": "845d1d994f4a8991",
+      "total_waterings": 945,
+      "trajectory": "f13f7702c89eb778",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
-        "processing_1",
         "storage_1"
       ]
     },
@@ -1720,45 +1681,45 @@
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.9eb851eb851ebp+5",
-      "contracts_completed": 29,
-      "contracts_failed": 1,
+      "contract_penalties": "0x1.c147ae147ae14p+6",
+      "contracts_completed": 25,
+      "contracts_failed": 2,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 629,
-        "purplehaze": 58,
-        "quickweed": 75
+        "greenleaf": 567,
+        "purplehaze": 92,
+        "quickweed": 60
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.9eb851eb851ebp+5",
-        "fertilizer": "0x1.b300000000000p+9",
-        "seeds": "0x1.57d0000000000p+12",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.45d99999999b6p+8"
+        "contract_penalties": "0x1.c147ae147ae14p+6",
+        "fertilizer": "0x1.5900000000000p+10",
+        "seeds": "0x1.9ba0000000000p+13",
+        "upgrades": "0x1.0400000000000p+9",
+        "watering": "0x1.5b33333333368p+8"
       },
-      "highest_money": "0x1.51d9c5a54653ep+14",
-      "idle_days": 54,
+      "highest_money": "0x1.58b97dd45c27dp+13",
+      "idle_days": 64,
       "losses_by_cause": {
-        "crop_loss_events": 30,
-        "rejected_quality_units": 52
+        "crop_loss_events": 195,
+        "rejected_quality_units": 63
       },
-      "lowest_money": "0x1.7533333333333p+5",
-      "money": "0x1.51b15f3edfedap+14",
-      "occupied_slot_days": 3932,
+      "lowest_money": "0x1.1333333333334p+2",
+      "money": "0x1.4720b463fc705p+13",
+      "occupied_slot_days": 3929,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 498,
-        "processing": 350,
-        "standard": 1911
+        "premium": 549,
+        "processing": 361,
+        "standard": 1098
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.9830000000000p+12",
-        "farm_stand": "0x1.1269a292c35a1p+13",
-        "processor": "0x1.df5791adcf70cp+6",
-        "specialty": "0x1.a8b744c616097p+11",
-        "spot": "0x1.14729f1982bb0p+13",
-        "wholesale": "0x1.693c0cda87898p+10"
+        "contract": "0x1.8288000000000p+12",
+        "farm_stand": "0x1.b28f17b189f74p+12",
+        "processor": "0x1.60aa91c4f65fbp+7",
+        "specialty": "0x1.869dd4d4931f6p+12",
+        "spot": "0x1.82fe04a73af53p+12",
+        "wholesale": "0x1.a62e9effc9d0ep+7"
       },
       "seed_inventory": {
         "greenleaf": 0,
@@ -1766,23 +1727,22 @@
         "quickweed": 0
       },
       "slot_days": 3935,
-      "total_crops_lost": 44,
-      "total_expenses": "0x1.d90b0a3d70ad2p+12",
-      "total_fertilizer_applied": 58,
-      "total_fertilizer_bought": 58,
-      "total_harvest_events": 751,
-      "total_harvested": 2759,
-      "total_planted": 762,
+      "total_crops_lost": 211,
+      "total_expenses": "0x1.e55c28f5c2981p+13",
+      "total_fertilizer_applied": 92,
+      "total_fertilizer_bought": 92,
+      "total_harvest_events": 708,
+      "total_harvested": 2008,
+      "total_planted": 719,
       "total_processed": 0,
-      "total_revenue": "0x1.c70421ce3c13fp+14",
-      "total_sold": 2759,
+      "total_revenue": "0x1.95ba6eacdf838p+14",
+      "total_sold": 2008,
       "total_spoiled": 0,
-      "total_waterings": 931,
-      "trajectory": "9a5f05ddc7037d21",
+      "total_waterings": 992,
+      "trajectory": "c954576f5b0fce17",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
-        "processing_1",
         "storage_1"
       ]
     },
@@ -1790,75 +1750,128 @@
       "bankrupt": false,
       "bankruptcy_day": null,
       "bankruptcy_reason": null,
-      "contract_penalties": "0x1.0333333333333p+7",
-      "contracts_completed": 26,
-      "contracts_failed": 2,
+      "contract_penalties": "0x1.147ae147ae148p+6",
+      "contracts_completed": 32,
+      "contracts_failed": 1,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 635,
-        "purplehaze": 70,
-        "quickweed": 32
+        "greenleaf": 582,
+        "purplehaze": 69,
+        "quickweed": 85
       },
       "expenses_by_category": {
-        "contract_penalties": "0x1.0333333333333p+7",
-        "fertilizer": "0x1.0680000000000p+10",
-        "seeds": "0x1.6da0000000000p+12",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.47999999999b8p+8"
+        "contract_penalties": "0x1.147ae147ae148p+6",
+        "fertilizer": "0x1.02c0000000000p+10",
+        "seeds": "0x1.7980000000000p+13",
+        "upgrades": "0x1.0400000000000p+9",
+        "watering": "0x1.46e6666666684p+8"
       },
-      "highest_money": "0x1.4645e5f11c3c2p+14",
-      "idle_days": 79,
+      "highest_money": "0x1.4a69f041a176ap+13",
+      "idle_days": 34,
       "losses_by_cause": {
-        "crop_loss_events": 47,
-        "rejected_quality_units": 59
+        "crop_loss_events": 211,
+        "rejected_quality_units": 67
       },
-      "lowest_money": "0x1.7533333333333p+5",
-      "money": "0x1.4595e5f11c3c2p+14",
-      "occupied_slot_days": 3932,
+      "lowest_money": "0x1.d6daac037ae4cp+0",
+      "money": "0x1.3b0ad965636e8p+13",
+      "occupied_slot_days": 3881,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 340,
-        "processing": 439,
-        "standard": 1879
+        "premium": 425,
+        "processing": 327,
+        "standard": 1193
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
-        "contract": "0x1.6c20000000000p+12",
-        "farm_stand": "0x1.22e5dbdf7cd4fp+13",
-        "processor": "0x1.0eba7dd253736p+8",
-        "specialty": "0x1.8e8efe8d28b65p+11",
-        "spot": "0x1.27e7d1c7ff888p+13",
-        "wholesale": "0x1.bde244278e30dp+9"
+        "contract": "0x1.a3b8000000000p+12",
+        "farm_stand": "0x1.ec0c9ce591b3cp+12",
+        "specialty": "0x1.0e5f1ed127989p+12",
+        "spot": "0x1.37bdbffdf10a4p+12",
+        "wholesale": "0x1.62912034367ecp+7"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3935,
-      "total_crops_lost": 60,
-      "total_expenses": "0x1.ff133333333d8p+12",
-      "total_fertilizer_applied": 70,
-      "total_fertilizer_bought": 70,
-      "total_harvest_events": 726,
-      "total_harvested": 2658,
-      "total_planted": 737,
+      "slot_days": 3887,
+      "total_crops_lost": 227,
+      "total_expenses": "0x1.b67828f5c2975p+13",
+      "total_fertilizer_applied": 69,
+      "total_fertilizer_bought": 69,
+      "total_harvest_events": 725,
+      "total_harvested": 1945,
+      "total_planted": 736,
       "total_processed": 0,
-      "total_revenue": "0x1.c46ab2bde9055p+14",
-      "total_sold": 2658,
+      "total_revenue": "0x1.783d812d9302fp+14",
+      "total_sold": 1945,
       "total_spoiled": 0,
-      "total_waterings": 936,
-      "trajectory": "df2263243cc3461d",
+      "total_waterings": 934,
+      "trajectory": "a74d06130aafbe0f",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
-        "processing_1",
         "storage_1"
       ]
     },
     "random_agent:1": {
       "bankrupt": true,
-      "bankruptcy_day": 15,
+      "bankruptcy_day": 31,
+      "bankruptcy_reason": "no_viable_reinvestment",
+      "contract_penalties": "0x0.0p+0",
+      "contracts_completed": 0,
+      "contracts_failed": 0,
+      "crop_inventory": {},
+      "crop_plant_counts": {
+        "greenleaf": 7,
+        "quickweed": 1
+      },
+      "expenses_by_category": {
+        "fertilizer": "0x1.6800000000000p+5",
+        "seeds": "0x1.7000000000000p+6",
+        "watering": "0x1.c000000000000p+0"
+      },
+      "highest_money": "0x1.f1da09a858448p+5",
+      "idle_days": 19,
+      "losses_by_cause": {
+        "crop_loss_events": 4
+      },
+      "lowest_money": "0x1.da09a85844800p-3",
+      "money": "0x1.bd68bc330fc6cp+0",
+      "occupied_slot_days": 45,
+      "processing_revenue": "0x0.0p+0",
+      "quality_harvested": {
+        "premium": 7,
+        "processing": 3,
+        "standard": 6
+      },
+      "reputation": "0x0.0p+0",
+      "revenue_by_channel": {
+        "spot": "0x1.adf5a2f0cc3f2p+6"
+      },
+      "seed_inventory": {
+        "greenleaf": 0,
+        "quickweed": 0
+      },
+      "slot_days": 93,
+      "total_crops_lost": 4,
+      "total_expenses": "0x1.157ffffffffffp+7",
+      "total_fertilizer_applied": 3,
+      "total_fertilizer_bought": 3,
+      "total_harvest_events": 8,
+      "total_harvested": 16,
+      "total_planted": 8,
+      "total_processed": 0,
+      "total_revenue": "0x1.adf5a2f0cc3f2p+6",
+      "total_sold": 16,
+      "total_spoiled": 0,
+      "total_waterings": 5,
+      "trajectory": "7cdb7fb8e251f1e7",
+      "upgrades_owned": []
+    },
+    "random_agent:123456789": {
+      "bankrupt": true,
+      "bankruptcy_day": 28,
       "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
@@ -1866,844 +1879,697 @@
       "crop_inventory": {},
       "crop_plant_counts": {
         "greenleaf": 4,
-        "quickweed": 3
+        "purplehaze": 1,
+        "quickweed": 4
       },
       "expenses_by_category": {
         "fertilizer": "0x1.2c00000000000p+6",
-        "seeds": "0x1.f000000000000p+4",
-        "upgrades": "0x1.1800000000000p+7",
-        "watering": "0x1.6666666666666p+0"
+        "seeds": "0x1.2000000000000p+7",
+        "watering": "0x1.6666666666667p+1"
       },
-      "highest_money": "0x1.43e157084fa32p+7",
-      "idle_days": 8,
+      "highest_money": "0x1.3b79772ee6b2fp+6",
+      "idle_days": 16,
       "losses_by_cause": {
-        "crop_loss_events": 1
+        "crop_loss_events": 3
       },
-      "lowest_money": "0x1.2243a7c8dc37ap-2",
-      "money": "0x1.cc9fd6448a348p+1",
-      "occupied_slot_days": 32,
+      "lowest_money": "0x1.ead0ed2f4d934p-3",
+      "money": "0x1.ead0ed2f4d934p-3",
+      "occupied_slot_days": 48,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 19,
-        "standard": 5
+        "premium": 17,
+        "standard": 9
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "spot": "0x1.7dff4c25def5bp+7"
+        "spot": "0x1.7a144dd4e56d0p+7"
       },
       "seed_inventory": {
         "greenleaf": 0,
+        "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 45,
-      "total_crops_lost": 1,
-      "total_expenses": "0x1.eeccccccccccdp+7",
+      "slot_days": 84,
+      "total_crops_lost": 3,
+      "total_expenses": "0x1.bb99999999999p+7",
       "total_fertilizer_applied": 5,
       "total_fertilizer_bought": 5,
-      "total_harvest_events": 7,
-      "total_harvested": 24,
-      "total_planted": 7,
+      "total_harvest_events": 9,
+      "total_harvested": 26,
+      "total_planted": 9,
       "total_processed": 0,
-      "total_revenue": "0x1.7dff4c25def5bp+7",
-      "total_sold": 24,
+      "total_revenue": "0x1.7a144dd4e56d0p+7",
+      "total_sold": 26,
       "total_spoiled": 0,
-      "total_waterings": 4,
-      "trajectory": "d83f8bed59e7757e",
-      "upgrades_owned": [
-        "efficiency_1"
-      ]
-    },
-    "random_agent:123456789": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
-      "contract_penalties": "0x0.0p+0",
-      "contracts_completed": 0,
-      "contracts_failed": 0,
-      "crop_inventory": {},
-      "crop_plant_counts": {
-        "greenleaf": 217,
-        "purplehaze": 122,
-        "quickweed": 224
-      },
-      "expenses_by_category": {
-        "fertilizer": "0x1.a220000000000p+12",
-        "seeds": "0x1.d360000000000p+12",
-        "storage": "0x1.4000000000000p+1",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.a566666666619p+7"
-      },
-      "highest_money": "0x1.faac60d4e6942p+9",
-      "idle_days": 55,
-      "losses_by_cause": {
-        "crop_loss_events": 88,
-        "rejected_quality_units": 57
-      },
-      "lowest_money": "0x1.bd75b5c880000p-10",
-      "money": "0x1.e6dac57f010acp+8",
-      "occupied_slot_days": 2992,
-      "processing_revenue": "0x0.0p+0",
-      "quality_harvested": {
-        "premium": 551,
-        "processing": 228,
-        "standard": 1008
-      },
-      "reputation": "0x0.0p+0",
-      "revenue_by_channel": {
-        "spot": "0x1.e8606fc591a20p+13"
-      },
-      "seed_inventory": {
-        "greenleaf": 0,
-        "purplehaze": 0,
-        "quickweed": 0
-      },
-      "slot_days": 3959,
-      "total_crops_lost": 105,
-      "total_expenses": "0x1.db099999999ebp+13",
-      "total_fertilizer_applied": 446,
-      "total_fertilizer_bought": 446,
-      "total_harvest_events": 552,
-      "total_harvested": 1787,
-      "total_planted": 563,
-      "total_processed": 0,
-      "total_revenue": "0x1.e8606fc591a20p+13",
-      "total_sold": 1787,
-      "total_spoiled": 0,
-      "total_waterings": 602,
-      "trajectory": "f9cb56cca6729188",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1",
-        "processing_1",
-        "storage_1"
-      ]
+      "total_waterings": 8,
+      "trajectory": "09ee56c3a69465b8",
+      "upgrades_owned": []
     },
     "random_agent:42": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
-      "contract_penalties": "0x0.0p+0",
-      "contracts_completed": 0,
-      "contracts_failed": 0,
-      "crop_inventory": {},
-      "crop_plant_counts": {
-        "greenleaf": 210,
-        "purplehaze": 172,
-        "quickweed": 255
-      },
-      "expenses_by_category": {
-        "fertilizer": "0x1.0c98000000000p+13",
-        "seeds": "0x1.33f8000000000p+13",
-        "storage": "0x1.0000000000000p+1",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.03b3333333304p+8"
-      },
-      "highest_money": "0x1.5dc06cd393324p+11",
-      "idle_days": 15,
-      "losses_by_cause": {
-        "crop_loss_events": 87,
-        "rejected_quality_units": 97
-      },
-      "lowest_money": "0x1.fddd8d75e6000p-5",
-      "money": "0x1.f66ca384f8902p+10",
-      "occupied_slot_days": 3502,
-      "processing_revenue": "0x0.0p+0",
-      "quality_harvested": {
-        "premium": 658,
-        "processing": 252,
-        "standard": 1276
-      },
-      "reputation": "0x0.0p+0",
-      "revenue_by_channel": {
-        "spot": "0x1.4fa597051c550p+14"
-      },
-      "seed_inventory": {
-        "greenleaf": 0,
-        "purplehaze": 0,
-        "quickweed": 0
-      },
-      "slot_days": 3639,
-      "total_crops_lost": 108,
-      "total_expenses": "0x1.312ecccccccc7p+14",
-      "total_fertilizer_applied": 573,
-      "total_fertilizer_bought": 573,
-      "total_harvest_events": 626,
-      "total_harvested": 2186,
-      "total_planted": 637,
-      "total_processed": 0,
-      "total_revenue": "0x1.4fa597051c550p+14",
-      "total_sold": 2186,
-      "total_spoiled": 0,
-      "total_waterings": 742,
-      "trajectory": "9151dcd6cf1521a2",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1",
-        "processing_1",
-        "storage_1"
-      ]
-    },
-    "random_agent:777": {
       "bankrupt": true,
-      "bankruptcy_day": 40,
+      "bankruptcy_day": 22,
       "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 29,
-        "purplehaze": 2,
+        "greenleaf": 4,
         "quickweed": 11
       },
       "expenses_by_category": {
-        "fertilizer": "0x1.6800000000000p+7",
-        "seeds": "0x1.0500000000000p+8",
-        "upgrades": "0x1.a400000000000p+8",
-        "watering": "0x1.2333333333331p+3"
+        "fertilizer": "0x1.2c00000000000p+6",
+        "seeds": "0x1.1000000000000p+7",
+        "watering": "0x1.9333333333334p+1"
       },
-      "highest_money": "0x1.3053a2eff2eb5p+8",
-      "idle_days": 17,
+      "highest_money": "0x1.c4e07b0fc0686p+5",
+      "idle_days": 7,
       "losses_by_cause": {
-        "crop_loss_events": 15
+        "crop_loss_events": 4
       },
-      "lowest_money": "0x1.2b75e22f00334p-3",
-      "money": "0x1.4e8bbfcbad400p-2",
-      "occupied_slot_days": 231,
+      "lowest_money": "0x1.aa1ccb47dda34p-2",
+      "money": "0x1.670390078bd6cp+0",
+      "occupied_slot_days": 57,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 33,
-        "processing": 5,
-        "standard": 62
+        "premium": 12,
+        "standard": 17
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "spot": "0x1.95369e44c6427p+9"
+        "spot": "0x1.6d1ad3ecdbe47p+7"
       },
       "seed_inventory": {
         "greenleaf": 0,
-        "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 384,
-      "total_crops_lost": 15,
-      "total_expenses": "0x1.b30ccccccccd0p+9",
-      "total_fertilizer_applied": 12,
-      "total_fertilizer_bought": 12,
-      "total_harvest_events": 42,
-      "total_harvested": 100,
-      "total_planted": 42,
+      "slot_days": 66,
+      "total_crops_lost": 4,
+      "total_expenses": "0x1.ac4cccccccccbp+7",
+      "total_fertilizer_applied": 5,
+      "total_fertilizer_bought": 5,
+      "total_harvest_events": 15,
+      "total_harvested": 29,
+      "total_planted": 15,
       "total_processed": 0,
-      "total_revenue": "0x1.95369e44c6427p+9",
-      "total_sold": 100,
+      "total_revenue": "0x1.6d1ad3ecdbe47p+7",
+      "total_sold": 29,
       "total_spoiled": 0,
-      "total_waterings": 26,
-      "trajectory": "b88bf4e678cd0f1a",
-      "upgrades_owned": [
-        "capacity_1",
-        "processing_1"
-      ]
+      "total_waterings": 9,
+      "trajectory": "4d449bd8f143a432",
+      "upgrades_owned": []
+    },
+    "random_agent:777": {
+      "bankrupt": true,
+      "bankruptcy_day": 25,
+      "bankruptcy_reason": "no_viable_reinvestment",
+      "contract_penalties": "0x0.0p+0",
+      "contracts_completed": 0,
+      "contracts_failed": 0,
+      "crop_inventory": {},
+      "crop_plant_counts": {
+        "greenleaf": 10,
+        "quickweed": 3
+      },
+      "expenses_by_category": {
+        "fertilizer": "0x1.0e00000000000p+7",
+        "seeds": "0x1.2000000000000p+7",
+        "watering": "0x1.9333333333334p+1"
+      },
+      "highest_money": "0x1.34f3ccb1b6bb8p+6",
+      "idle_days": 8,
+      "losses_by_cause": {
+        "crop_loss_events": 2,
+        "rejected_quality_units": 2
+      },
+      "lowest_money": "0x1.e799636d77000p-3",
+      "money": "0x1.b14a9e05f56e8p+2",
+      "occupied_slot_days": 69,
+      "processing_revenue": "0x0.0p+0",
+      "quality_harvested": {
+        "premium": 16,
+        "processing": 4,
+        "standard": 19
+      },
+      "reputation": "0x0.0p+0",
+      "revenue_by_channel": {
+        "spot": "0x1.ffd721bcfc785p+7"
+      },
+      "seed_inventory": {
+        "greenleaf": 0,
+        "quickweed": 0
+      },
+      "slot_days": 75,
+      "total_crops_lost": 3,
+      "total_expenses": "0x1.1a26666666666p+8",
+      "total_fertilizer_applied": 9,
+      "total_fertilizer_bought": 9,
+      "total_harvest_events": 13,
+      "total_harvested": 39,
+      "total_planted": 13,
+      "total_processed": 0,
+      "total_revenue": "0x1.ffd721bcfc785p+7",
+      "total_sold": 39,
+      "total_spoiled": 0,
+      "total_waterings": 9,
+      "trajectory": "bde7baedf67d90ad",
+      "upgrades_owned": []
     },
     "reckless_spender:1": {
       "bankrupt": true,
-      "bankruptcy_day": 184,
+      "bankruptcy_day": 31,
       "bankruptcy_reason": "no_viable_reinvestment",
-      "contract_penalties": "0x0.0p+0",
-      "contracts_completed": 0,
-      "contracts_failed": 0,
-      "crop_inventory": {},
-      "crop_plant_counts": {
-        "greenleaf": 11,
-        "purplehaze": 20,
-        "quickweed": 133
-      },
-      "expenses_by_category": {
-        "fertilizer": "0x1.7e80000000000p+9",
-        "seeds": "0x1.9240000000000p+10",
-        "storage": "0x1.0000000000000p-1",
-        "upgrades": "0x1.0400000000000p+9",
-        "watering": "0x1.1c33333333338p+6"
-      },
-      "highest_money": "0x1.48d32d675e5f8p+8",
-      "idle_days": 58,
-      "losses_by_cause": {
-        "crop_loss_events": 11,
-        "rejected_quality_units": 22
-      },
-      "lowest_money": 0,
-      "money": "0x1.7603e248b4840p-4",
-      "occupied_slot_days": 676,
-      "processing_revenue": "0x0.0p+0",
-      "quality_harvested": {
-        "premium": 33,
-        "processing": 29,
-        "standard": 300
-      },
-      "reputation": "0x0.0p+0",
-      "revenue_by_channel": {
-        "spot": "0x1.6b3485a15e2b4p+11"
-      },
-      "seed_inventory": {
-        "greenleaf": 0,
-        "purplehaze": 0,
-        "quickweed": 0
-      },
-      "slot_days": 1680,
-      "total_crops_lost": 17,
-      "total_expenses": "0x1.72b1999999982p+11",
-      "total_fertilizer_applied": 51,
-      "total_fertilizer_bought": 51,
-      "total_harvest_events": 164,
-      "total_harvested": 362,
-      "total_planted": 164,
-      "total_processed": 0,
-      "total_revenue": "0x1.6b3485a15e2b4p+11",
-      "total_sold": 362,
-      "total_spoiled": 0,
-      "total_waterings": 203,
-      "trajectory": "6150971da5ecb843",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1",
-        "storage_1"
-      ]
-    },
-    "reckless_spender:123456789": {
-      "bankrupt": true,
-      "bankruptcy_day": 52,
-      "bankruptcy_reason": "no_viable_reinvestment",
-      "contract_penalties": "0x0.0p+0",
-      "contracts_completed": 0,
-      "contracts_failed": 0,
-      "crop_inventory": {},
-      "crop_plant_counts": {
-        "greenleaf": 1,
-        "purplehaze": 4,
-        "quickweed": 20
-      },
-      "expenses_by_category": {
-        "fertilizer": "0x1.4a00000000000p+7",
-        "seeds": "0x1.1c00000000000p+8",
-        "upgrades": "0x1.e000000000000p+6",
-        "watering": "0x1.9e66666666662p+3"
-      },
-      "highest_money": "0x1.5023e7579b691p+7",
-      "idle_days": 16,
-      "losses_by_cause": {
-        "rejected_quality_units": 2
-      },
-      "lowest_money": 0,
-      "money": "0x1.51f3abcdb487ep+0",
-      "occupied_slot_days": 114,
-      "processing_revenue": "0x0.0p+0",
-      "quality_harvested": {
-        "premium": 8,
-        "processing": 5,
-        "standard": 50
-      },
-      "reputation": "0x0.0p+0",
-      "revenue_by_channel": {
-        "spot": "0x1.05a2936f8073ep+9"
-      },
-      "seed_inventory": {
-        "greenleaf": 0,
-        "purplehaze": 0,
-        "quickweed": 0
-      },
-      "slot_days": 252,
-      "total_crops_lost": 1,
-      "total_expenses": "0x1.22f999999999dp+9",
-      "total_fertilizer_applied": 11,
-      "total_fertilizer_bought": 11,
-      "total_harvest_events": 25,
-      "total_harvested": 63,
-      "total_planted": 25,
-      "total_processed": 0,
-      "total_revenue": "0x1.05a2936f8073ep+9",
-      "total_sold": 63,
-      "total_spoiled": 0,
-      "total_waterings": 37,
-      "trajectory": "98ef128688f761c1",
-      "upgrades_owned": [
-        "capacity_1"
-      ]
-    },
-    "reckless_spender:42": {
-      "bankrupt": true,
-      "bankruptcy_day": 97,
-      "bankruptcy_reason": "no_viable_reinvestment",
-      "contract_penalties": "0x0.0p+0",
-      "contracts_completed": 0,
-      "contracts_failed": 0,
-      "crop_inventory": {},
-      "crop_plant_counts": {
-        "greenleaf": 1,
-        "purplehaze": 3,
-        "quickweed": 61
-      },
-      "expenses_by_category": {
-        "fertilizer": "0x1.5900000000000p+8",
-        "seeds": "0x1.bc00000000000p+8",
-        "upgrades": "0x1.e000000000000p+6",
-        "watering": "0x1.1d99999999999p+4"
-      },
-      "highest_money": "0x1.c422867ee4f53p+7",
-      "idle_days": 38,
-      "losses_by_cause": {
-        "crop_loss_events": 6
-      },
-      "lowest_money": 0,
-      "money": "0x1.1d9ca96b72ce0p-6",
-      "occupied_slot_days": 225,
-      "processing_revenue": "0x0.0p+0",
-      "quality_harvested": {
-        "premium": 7,
-        "standard": 111
-      },
-      "reputation": "0x0.0p+0",
-      "revenue_by_channel": {
-        "spot": "0x1.b16f08061fa3ap+9"
-      },
-      "seed_inventory": {
-        "greenleaf": 0,
-        "purplehaze": 0,
-        "quickweed": 0
-      },
-      "slot_days": 387,
-      "total_crops_lost": 6,
-      "total_expenses": "0x1.cf6ccccccccd4p+9",
-      "total_fertilizer_applied": 23,
-      "total_fertilizer_bought": 23,
-      "total_harvest_events": 65,
-      "total_harvested": 118,
-      "total_planted": 65,
-      "total_processed": 0,
-      "total_revenue": "0x1.b16f08061fa3ap+9",
-      "total_sold": 118,
-      "total_spoiled": 0,
-      "total_waterings": 51,
-      "trajectory": "f009c17a22861e6c",
-      "upgrades_owned": [
-        "capacity_1"
-      ]
-    },
-    "reckless_spender:777": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
         "greenleaf": 7,
-        "purplehaze": 252,
-        "quickweed": 143
+        "quickweed": 1
       },
       "expenses_by_category": {
-        "fertilizer": "0x1.1760000000000p+12",
-        "seeds": "0x1.7998000000000p+13",
-        "storage": "0x1.5000000000000p+2",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.84d99999999fep+8"
+        "fertilizer": "0x1.6800000000000p+5",
+        "seeds": "0x1.7000000000000p+6",
+        "watering": "0x1.c000000000000p+0"
       },
-      "highest_money": "0x1.c0d44fb4aadfcp+11",
-      "idle_days": 47,
+      "highest_money": "0x1.f1da09a858448p+5",
+      "idle_days": 20,
       "losses_by_cause": {
-        "crop_loss_events": 27,
-        "rejected_quality_units": 153
+        "crop_loss_events": 4
       },
-      "lowest_money": 0,
-      "money": "0x1.49c02ffb1ae38p+11",
-      "occupied_slot_days": 2942,
+      "lowest_money": "0x1.da09a85844800p-3",
+      "money": "0x1.bd68bc330fc6cp+0",
+      "occupied_slot_days": 45,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 111,
-        "processing": 420,
-        "standard": 978
+        "premium": 7,
+        "processing": 3,
+        "standard": 6
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "spot": "0x1.3de46c65c9c23p+14"
+        "spot": "0x1.adf5a2f0cc3f2p+6"
+      },
+      "seed_inventory": {
+        "greenleaf": 0,
+        "quickweed": 0
+      },
+      "slot_days": 93,
+      "total_crops_lost": 4,
+      "total_expenses": "0x1.157ffffffffffp+7",
+      "total_fertilizer_applied": 3,
+      "total_fertilizer_bought": 3,
+      "total_harvest_events": 8,
+      "total_harvested": 16,
+      "total_planted": 8,
+      "total_processed": 0,
+      "total_revenue": "0x1.adf5a2f0cc3f2p+6",
+      "total_sold": 16,
+      "total_spoiled": 0,
+      "total_waterings": 5,
+      "trajectory": "56e2eb144548299b",
+      "upgrades_owned": []
+    },
+    "reckless_spender:123456789": {
+      "bankrupt": true,
+      "bankruptcy_day": 61,
+      "bankruptcy_reason": "no_viable_reinvestment",
+      "contract_penalties": "0x0.0p+0",
+      "contracts_completed": 0,
+      "contracts_failed": 0,
+      "crop_inventory": {},
+      "crop_plant_counts": {
+        "greenleaf": 24,
+        "quickweed": 3
+      },
+      "expenses_by_category": {
+        "fertilizer": "0x1.e000000000000p+6",
+        "seeds": "0x1.3800000000000p+8",
+        "watering": "0x1.0199999999998p+3"
+      },
+      "highest_money": "0x1.09807a1128dfep+6",
+      "idle_days": 39,
+      "losses_by_cause": {
+        "crop_loss_events": 9
+      },
+      "lowest_money": "0x1.a13aac27979a0p-6",
+      "money": "0x1.bc8fd9a4fa3e7p+1",
+      "occupied_slot_days": 153,
+      "processing_revenue": "0x0.0p+0",
+      "quality_harvested": {
+        "premium": 12,
+        "processing": 10,
+        "standard": 50
+      },
+      "reputation": "0x0.0p+0",
+      "revenue_by_channel": {
+        "spot": "0x1.9a85ec8016c16p+8"
+      },
+      "seed_inventory": {
+        "greenleaf": 0,
+        "quickweed": 0
+      },
+      "slot_days": 183,
+      "total_crops_lost": 9,
+      "total_expenses": "0x1.b80ccccccccd0p+8",
+      "total_fertilizer_applied": 8,
+      "total_fertilizer_bought": 8,
+      "total_harvest_events": 27,
+      "total_harvested": 72,
+      "total_planted": 27,
+      "total_processed": 0,
+      "total_revenue": "0x1.9a85ec8016c16p+8",
+      "total_sold": 72,
+      "total_spoiled": 0,
+      "total_waterings": 23,
+      "trajectory": "cd3e9a4230b1eb73",
+      "upgrades_owned": []
+    },
+    "reckless_spender:42": {
+      "bankrupt": true,
+      "bankruptcy_day": 25,
+      "bankruptcy_reason": "no_viable_reinvestment",
+      "contract_penalties": "0x0.0p+0",
+      "contracts_completed": 0,
+      "contracts_failed": 0,
+      "crop_inventory": {},
+      "crop_plant_counts": {
+        "greenleaf": 4,
+        "purplehaze": 1,
+        "quickweed": 1
+      },
+      "expenses_by_category": {
+        "fertilizer": "0x1.2c00000000000p+6",
+        "seeds": "0x1.e000000000000p+6",
+        "watering": "0x1.399999999999ap+1"
+      },
+      "highest_money": "0x1.ca39d47cc7588p+6",
+      "idle_days": 14,
+      "losses_by_cause": {
+        "crop_loss_events": 2
+      },
+      "lowest_money": "0x1.a6dc2cc1e4334p-3",
+      "money": "0x1.af49bebd50499p+2",
+      "occupied_slot_days": 39,
+      "processing_revenue": "0x0.0p+0",
+      "quality_harvested": {
+        "premium": 14,
+        "processing": 2,
+        "standard": 6
+      },
+      "reputation": "0x0.0p+0",
+      "revenue_by_channel": {
+        "spot": "0x1.5660b45c50e8cp+7"
       },
       "seed_inventory": {
         "greenleaf": 0,
         "purplehaze": 0,
         "quickweed": 0
       },
-      "slot_days": 3383,
-      "total_crops_lost": 63,
-      "total_expenses": "0x1.159c66666668bp+14",
-      "total_fertilizer_applied": 298,
-      "total_fertilizer_bought": 298,
-      "total_harvest_events": 391,
-      "total_harvested": 1509,
-      "total_planted": 402,
+      "slot_days": 75,
+      "total_crops_lost": 2,
+      "total_expenses": "0x1.8ae6666666665p+7",
+      "total_fertilizer_applied": 5,
+      "total_fertilizer_bought": 5,
+      "total_harvest_events": 6,
+      "total_harvested": 22,
+      "total_planted": 6,
       "total_processed": 0,
-      "total_revenue": "0x1.3de46c65c9c23p+14",
-      "total_sold": 1509,
+      "total_revenue": "0x1.5660b45c50e8cp+7",
+      "total_sold": 22,
       "total_spoiled": 0,
-      "total_waterings": 1111,
-      "trajectory": "247eac61b0e5143f",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1",
-        "processing_1",
-        "storage_1"
-      ]
+      "total_waterings": 7,
+      "trajectory": "c8e02046746237d2",
+      "upgrades_owned": []
     },
-    "risk_averse_grower:1": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
+    "reckless_spender:777": {
+      "bankrupt": true,
+      "bankruptcy_day": 55,
+      "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "quickweed": 1262
+        "greenleaf": 17,
+        "quickweed": 4
       },
       "expenses_by_category": {
-        "seeds": "0x1.8a60000000000p+12",
-        "storage": "0x1.6800000000000p+3",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.b2b33333333ccp+8"
+        "fertilizer": "0x1.0e00000000000p+7",
+        "seeds": "0x1.d800000000000p+7",
+        "watering": "0x1.d666666666663p+2"
       },
-      "highest_money": "0x1.51c9bf54a07e2p+12",
-      "idle_days": 77,
+      "highest_money": "0x1.044a213fc0168p+6",
+      "idle_days": 32,
       "losses_by_cause": {
-        "crop_loss_events": 42
+        "crop_loss_events": 5
       },
-      "lowest_money": "0x1.9d8a9e96a6cd0p-4",
-      "money": "0x1.4e59bf54a07e2p+12",
-      "occupied_slot_days": 3764,
+      "lowest_money": "0x1.e581d3e613040p-3",
+      "money": "0x1.9abfb7ade9b3ap+2",
+      "occupied_slot_days": 114,
+      "processing_revenue": "0x0.0p+0",
+      "quality_harvested": {
+        "premium": 16,
+        "processing": 16,
+        "standard": 28
+      },
+      "reputation": "0x0.0p+0",
+      "revenue_by_channel": {
+        "spot": "0x1.5fc4987851408p+8"
+      },
+      "seed_inventory": {
+        "greenleaf": 0,
+        "quickweed": 0
+      },
+      "slot_days": 165,
+      "total_crops_lost": 5,
+      "total_expenses": "0x1.7a5999999999cp+8",
+      "total_fertilizer_applied": 9,
+      "total_fertilizer_bought": 9,
+      "total_harvest_events": 21,
+      "total_harvested": 60,
+      "total_planted": 21,
+      "total_processed": 0,
+      "total_revenue": "0x1.5fc4987851408p+8",
+      "total_sold": 60,
+      "total_spoiled": 0,
+      "total_waterings": 21,
+      "trajectory": "ebfee4d7e8925df5",
+      "upgrades_owned": []
+    },
+    "risk_averse_grower:1": {
+      "bankrupt": true,
+      "bankruptcy_day": 25,
+      "bankruptcy_reason": "no_viable_reinvestment",
+      "contract_penalties": "0x0.0p+0",
+      "contracts_completed": 0,
+      "contracts_failed": 0,
+      "crop_inventory": {},
+      "crop_plant_counts": {
+        "quickweed": 22
+      },
+      "expenses_by_category": {
+        "seeds": "0x1.6000000000000p+7",
+        "watering": "0x1.eccccccccccc9p+2"
+      },
+      "highest_money": "0x1.0e8fdbf89445ep+6",
+      "idle_days": 8,
+      "losses_by_cause": {
+        "crop_loss_events": 5
+      },
+      "lowest_money": "0x1.336b3a7e4da82p+2",
+      "money": "0x1.336b3a7e4da82p+2",
+      "occupied_slot_days": 66,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
         "premium": 7,
-        "standard": 2213
+        "standard": 18
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "spot": "0x1.920c7943e9d9bp+13"
+        "spot": "0x1.3701c03a58d3ep+7"
       },
       "seed_inventory": {
         "quickweed": 0
       },
-      "slot_days": 3767,
-      "total_crops_lost": 42,
-      "total_expenses": "0x1.d97f333333408p+12",
+      "slot_days": 75,
+      "total_crops_lost": 5,
+      "total_expenses": "0x1.6f66666666663p+7",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 1251,
-      "total_harvested": 2220,
-      "total_planted": 1262,
+      "total_harvest_events": 22,
+      "total_harvested": 25,
+      "total_planted": 22,
       "total_processed": 0,
-      "total_revenue": "0x1.920c7943e9d9bp+13",
-      "total_sold": 2220,
+      "total_revenue": "0x1.3701c03a58d3ep+7",
+      "total_sold": 25,
       "total_spoiled": 0,
-      "total_waterings": 1242,
-      "trajectory": "f309386332da62a7",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1",
-        "processing_1",
-        "storage_1"
-      ]
+      "total_waterings": 22,
+      "trajectory": "677a7b9c1d7573be",
+      "upgrades_owned": []
     },
     "risk_averse_grower:123456789": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
+      "bankrupt": true,
+      "bankruptcy_day": 37,
+      "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "quickweed": 1261
+        "quickweed": 30
       },
       "expenses_by_category": {
-        "seeds": "0x1.8a10000000000p+12",
-        "storage": "0x1.a800000000000p+3",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.afe66666666fcp+8"
+        "seeds": "0x1.e000000000000p+7",
+        "watering": "0x1.2e66666666664p+3"
       },
-      "highest_money": "0x1.46fbd37485f1dp+12",
-      "idle_days": 69,
+      "highest_money": "0x1.0fe71d08c9566p+6",
+      "idle_days": 12,
       "losses_by_cause": {
-        "crop_loss_events": 33
+        "crop_loss_events": 7
       },
-      "lowest_money": "0x1.33f416666dcd0p-4",
-      "money": "0x1.44286d9d8cc1ap+12",
-      "occupied_slot_days": 3761,
+      "lowest_money": "0x1.0a11e014605a0p-6",
+      "money": "0x1.40e1bca4482b4p-2",
+      "occupied_slot_days": 90,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
         "premium": 8,
-        "standard": 2191
+        "standard": 30
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "spot": "0x1.8cc56a01f991ep+13"
+        "spot": "0x1.b186d744b88a6p+7"
       },
       "seed_inventory": {
         "quickweed": 0
       },
-      "slot_days": 3767,
-      "total_crops_lost": 33,
-      "total_expenses": "0x1.d92266666673ap+12",
+      "slot_days": 111,
+      "total_crops_lost": 7,
+      "total_expenses": "0x1.f2e6666666662p+7",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 1250,
-      "total_harvested": 2199,
-      "total_planted": 1261,
+      "total_harvest_events": 30,
+      "total_harvested": 38,
+      "total_planted": 30,
       "total_processed": 0,
-      "total_revenue": "0x1.8cc56a01f991ep+13",
-      "total_sold": 2199,
+      "total_revenue": "0x1.b186d744b88a6p+7",
+      "total_sold": 38,
       "total_spoiled": 0,
-      "total_waterings": 1234,
-      "trajectory": "8664d780ce129309",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1",
-        "processing_1",
-        "storage_1"
-      ]
+      "total_waterings": 27,
+      "trajectory": "df6e2f15bf476dd7",
+      "upgrades_owned": []
     },
     "risk_averse_grower:42": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
+      "bankrupt": true,
+      "bankruptcy_day": 19,
+      "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "quickweed": 1253
+        "quickweed": 16
       },
       "expenses_by_category": {
-        "seeds": "0x1.8790000000000p+12",
-        "storage": "0x1.9000000000000p+3",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.b040000000096p+8"
+        "seeds": "0x1.0000000000000p+7",
+        "watering": "0x1.6666666666665p+2"
       },
-      "highest_money": "0x1.6201f3338c335p+12",
-      "idle_days": 72,
+      "highest_money": "0x1.d286ef7570c70p+5",
+      "idle_days": 6,
       "losses_by_cause": {
-        "crop_loss_events": 41
+        "crop_loss_events": 5
       },
-      "lowest_money": "0x1.1b96b6d6363f6p-2",
-      "money": "0x1.5e91f3338c335p+12",
-      "occupied_slot_days": 3737,
+      "lowest_money": "0x1.8e2336149bc1ep+0",
+      "money": "0x1.8e2336149bc1ep+0",
+      "occupied_slot_days": 48,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 11,
-        "standard": 2241
+        "premium": 7,
+        "standard": 9
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "spot": "0x1.98b6f999c61ddp+13"
+        "spot": "0x1.989ef33eb8d57p+6"
       },
       "seed_inventory": {
         "quickweed": 0
       },
-      "slot_days": 3743,
-      "total_crops_lost": 41,
-      "total_expenses": "0x1.d69c0000000d1p+12",
+      "slot_days": 57,
+      "total_crops_lost": 5,
+      "total_expenses": "0x1.0b33333333331p+7",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 1242,
-      "total_harvested": 2252,
-      "total_planted": 1253,
+      "total_harvest_events": 16,
+      "total_harvested": 16,
+      "total_planted": 16,
       "total_processed": 0,
-      "total_revenue": "0x1.98b6f999c61ddp+13",
-      "total_sold": 2252,
+      "total_revenue": "0x1.989ef33eb8d57p+6",
+      "total_sold": 16,
       "total_spoiled": 0,
-      "total_waterings": 1235,
-      "trajectory": "6b9dff49fa18ed4b",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1",
-        "processing_1",
-        "storage_1"
-      ]
+      "total_waterings": 16,
+      "trajectory": "824be4201b825538",
+      "upgrades_owned": []
     },
     "risk_averse_grower:777": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
+      "bankrupt": true,
+      "bankruptcy_day": 28,
+      "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "quickweed": 1246
+        "quickweed": 25
       },
       "expenses_by_category": {
-        "seeds": "0x1.8560000000000p+12",
-        "storage": "0x1.6000000000000p+3",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.b040000000096p+8"
+        "seeds": "0x1.9000000000000p+7",
+        "watering": "0x1.17ffffffffffep+3"
       },
-      "highest_money": "0x1.3914ca0e36017p+12",
-      "idle_days": 78,
+      "highest_money": "0x1.e30a86bc63f2ap+5",
+      "idle_days": 9,
       "losses_by_cause": {
-        "crop_loss_events": 39
+        "crop_loss_events": 5
       },
-      "lowest_money": "0x1.b12ee4ded1eeap+0",
-      "money": "0x1.35a4ca0e36017p+12",
-      "occupied_slot_days": 3716,
+      "lowest_money": "0x1.d74e8ffe22e59p-1",
+      "money": "0x1.9b86a564268c4p+2",
+      "occupied_slot_days": 75,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 26,
-        "standard": 2129
+        "premium": 6,
+        "standard": 24
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "spot": "0x1.831c65071b008p+13"
+        "spot": "0x1.6c5c352b21348p+7"
       },
       "seed_inventory": {
         "quickweed": 0
       },
-      "slot_days": 3719,
-      "total_crops_lost": 39,
-      "total_expenses": "0x1.d4540000000cbp+12",
+      "slot_days": 84,
+      "total_crops_lost": 5,
+      "total_expenses": "0x1.a17fffffffffcp+7",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 1235,
-      "total_harvested": 2155,
-      "total_planted": 1246,
+      "total_harvest_events": 25,
+      "total_harvested": 30,
+      "total_planted": 25,
       "total_processed": 0,
-      "total_revenue": "0x1.831c65071b008p+13",
-      "total_sold": 2155,
+      "total_revenue": "0x1.6c5c352b21348p+7",
+      "total_sold": 30,
       "total_spoiled": 0,
-      "total_waterings": 1235,
-      "trajectory": "c43d2c9504da1a79",
-      "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1",
-        "processing_1",
-        "storage_1"
-      ]
+      "total_waterings": 25,
+      "trajectory": "72d6190666d07025",
+      "upgrades_owned": []
     },
     "upgrade_rusher:1": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
+      "bankrupt": true,
+      "bankruptcy_day": 34,
+      "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 773
+        "quickweed": 33
       },
       "expenses_by_category": {
-        "seeds": "0x1.8280000000000p+11",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.07e666666663cp+8"
+        "seeds": "0x1.0800000000000p+8",
+        "upgrades": "0x1.e000000000000p+6",
+        "watering": "0x1.7199999999996p+3"
       },
-      "highest_money": "0x1.641bdfeb7757cp+13",
-      "idle_days": 220,
+      "highest_money": "0x1.e0e88f8a759d0p+6",
+      "idle_days": 11,
       "losses_by_cause": {
-        "crop_loss_events": 43
+        "crop_loss_events": 7
       },
-      "lowest_money": "0x1.9d2f18a2c3b34p-3",
-      "money": "0x1.62bbdfeb7757cp+13",
-      "occupied_slot_days": 3846,
+      "lowest_money": "0x1.d11f14eb3a000p-3",
+      "money": "0x1.d11f14eb3a000p-3",
+      "occupied_slot_days": 99,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 50,
-        "processing": 301,
-        "standard": 2218
+        "premium": 7,
+        "standard": 35
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "farm_stand": "0x1.109bafeb4e3b0p+12",
-        "processor": "0x1.43a81c5648f0fp+8",
-        "spot": "0x1.e05009b771e57p+12",
-        "wholesale": "0x1.831fd5aa60e1cp+11"
+        "farm_stand": "0x1.6ac6f0af6a33ep+8"
       },
       "seed_inventory": {
-        "greenleaf": 0
+        "quickweed": 0
       },
-      "slot_days": 3959,
-      "total_crops_lost": 43,
-      "total_expenses": "0x1.04fe666666626p+12",
+      "slot_days": 102,
+      "total_crops_lost": 7,
+      "total_expenses": "0x1.8b8ccccccccccp+8",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 762,
-      "total_harvested": 2569,
-      "total_planted": 773,
+      "total_harvest_events": 33,
+      "total_harvested": 42,
+      "total_planted": 33,
       "total_processed": 0,
-      "total_revenue": "0x1.e35b131eaa902p+13",
-      "total_sold": 2569,
+      "total_revenue": "0x1.6ac6f0af6a33ep+8",
+      "total_sold": 42,
       "total_spoiled": 0,
-      "total_waterings": 754,
-      "trajectory": "61365de829d1daed",
+      "total_waterings": 33,
+      "trajectory": "adc03ce132651cee",
       "upgrades_owned": [
-        "capacity_1",
-        "efficiency_1",
-        "processing_1",
-        "storage_1"
+        "capacity_1"
       ]
     },
     "upgrade_rusher:123456789": {
-      "bankrupt": false,
-      "bankruptcy_day": null,
-      "bankruptcy_reason": null,
+      "bankrupt": true,
+      "bankruptcy_day": 85,
+      "bankruptcy_reason": "no_viable_reinvestment",
       "contract_penalties": "0x0.0p+0",
       "contracts_completed": 0,
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 795
+        "quickweed": 102
       },
       "expenses_by_category": {
-        "seeds": "0x1.8d80000000000p+11",
-        "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.1266666666648p+8"
+        "seeds": "0x1.9800000000000p+9",
+        "upgrades": "0x1.0400000000000p+8",
+        "watering": "0x1.01999999999a1p+5"
       },
-      "highest_money": "0x1.6a80f5167ecb8p+13",
-      "idle_days": 220,
+      "highest_money": "0x1.3223761c999eep+7",
+      "idle_days": 30,
       "losses_by_cause": {
-        "crop_loss_events": 42
+        "crop_loss_events": 21
       },
-      "lowest_money": "0x1.7799999999999p+5",
-      "money": "0x1.6920f5167ecb8p+13",
-      "occupied_slot_days": 3956,
+      "lowest_money": "0x1.0e3a9e822f580p-3",
+      "money": "0x1.2e085d2ccd75ap+2",
+      "occupied_slot_days": 306,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 55,
-        "processing": 332,
-        "standard": 2260
+        "premium": 10,
+        "processing": 4,
+        "standard": 135
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "farm_stand": "0x1.0b9774ffc9465p+12",
-        "processor": "0x1.6b2acc9b5d53ep+8",
-        "spot": "0x1.f1a2b3efeedbbp+12",
-        "wholesale": "0x1.8b76f5b3ec22bp+11"
+        "farm_stand": "0x1.b3e9dde6d2f5ep+9",
+        "spot": "0x1.a02f31b480fa8p+7"
       },
       "seed_inventory": {
-        "greenleaf": 0
+        "quickweed": 0
       },
-      "slot_days": 3959,
-      "total_crops_lost": 42,
-      "total_expenses": "0x1.0b2666666662ep+12",
+      "slot_days": 687,
+      "total_crops_lost": 21,
+      "total_expenses": "0x1.150ccccccccd2p+10",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 784,
-      "total_harvested": 2647,
-      "total_planted": 795,
+      "total_harvest_events": 102,
+      "total_harvested": 149,
+      "total_planted": 102,
       "total_processed": 0,
-      "total_revenue": "0x1.ecd42849b2048p+13",
-      "total_sold": 2647,
+      "total_revenue": "0x1.0dfad529f99a4p+10",
+      "total_sold": 149,
       "total_spoiled": 0,
-      "total_waterings": 784,
-      "trajectory": "fb827267de5741b4",
+      "total_waterings": 92,
+      "trajectory": "dc15ec49abd28989",
       "upgrades_owned": [
         "capacity_1",
-        "efficiency_1",
-        "processing_1",
-        "storage_1"
+        "efficiency_1"
       ]
     },
     "upgrade_rusher:42": {
@@ -2715,51 +2581,48 @@
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 788
+        "quickweed": 1157
       },
       "expenses_by_category": {
-        "seeds": "0x1.8a00000000000p+11",
+        "seeds": "0x1.2140000000000p+13",
         "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.0ff3333333312p+8"
+        "watering": "0x1.8accccccccd38p+8"
       },
-      "highest_money": "0x1.6351b42c82590p+13",
-      "idle_days": 220,
+      "highest_money": "0x1.2bb173dc314f5p+11",
+      "idle_days": 123,
       "losses_by_cause": {
-        "crop_loss_events": 39
+        "crop_loss_events": 214
       },
-      "lowest_money": "0x1.a938591ca6f98p+0",
-      "money": "0x1.61f1b42c82590p+13",
-      "occupied_slot_days": 3921,
+      "lowest_money": "0x1.72e07706a0e30p-5",
+      "money": "0x1.20b173dc314f5p+11",
+      "occupied_slot_days": 3449,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 57,
-        "processing": 448,
-        "standard": 2167
+        "premium": 9,
+        "standard": 1758
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "farm_stand": "0x1.f7b81d061a840p+11",
-        "processor": "0x1.01ec3424ff5ffp+9",
-        "spot": "0x1.e20726b6488c7p+12",
-        "wholesale": "0x1.9683bf9c8469dp+11"
+        "farm_stand": "0x1.e00eb83540c2fp+12",
+        "spot": "0x1.3ca6ce85a4aebp+12"
       },
       "seed_inventory": {
-        "greenleaf": 0
+        "quickweed": 0
       },
-      "slot_days": 3959,
-      "total_crops_lost": 39,
-      "total_expenses": "0x1.093f3333332fap+12",
+      "slot_days": 3695,
+      "total_crops_lost": 214,
+      "total_expenses": "0x1.47366666666f0p+13",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 777,
-      "total_harvested": 2672,
-      "total_planted": 788,
+      "total_harvest_events": 1146,
+      "total_harvested": 1767,
+      "total_planted": 1157,
       "total_processed": 0,
-      "total_revenue": "0x1.e4b14dc61bf7dp+13",
-      "total_sold": 2672,
+      "total_revenue": "0x1.8e5ac35d72b8cp+13",
+      "total_sold": 1767,
       "total_spoiled": 0,
-      "total_waterings": 777,
-      "trajectory": "037ee9964f454b27",
+      "total_waterings": 1128,
+      "trajectory": "07a7f899f73063ea",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
@@ -2776,51 +2639,48 @@
       "contracts_failed": 0,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 793
+        "quickweed": 1150
       },
       "expenses_by_category": {
-        "seeds": "0x1.8c80000000000p+11",
+        "seeds": "0x1.1f80000000000p+13",
         "upgrades": "0x1.9a00000000000p+9",
-        "watering": "0x1.11b3333333314p+8"
+        "watering": "0x1.8b266666666d2p+8"
       },
-      "highest_money": "0x1.68968c76f6810p+13",
-      "idle_days": 220,
+      "highest_money": "0x1.fc96132fe719ep+10",
+      "idle_days": 123,
       "losses_by_cause": {
-        "crop_loss_events": 47
+        "crop_loss_events": 221
       },
-      "lowest_money": "0x1.4048579db065cp-2",
-      "money": "0x1.67368c76f6810p+13",
-      "occupied_slot_days": 3946,
+      "lowest_money": "0x1.4c1cc07d61800p-3",
+      "money": "0x1.e696132fe719ep+10",
+      "occupied_slot_days": 3428,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
-        "premium": 14,
-        "processing": 270,
-        "standard": 2381
+        "premium": 15,
+        "standard": 1703
       },
       "reputation": "0x0.0p+0",
       "revenue_by_channel": {
-        "farm_stand": "0x1.16b7f49b984f5p+12",
-        "processor": "0x1.f9f9145b3fe9dp+7",
-        "spot": "0x1.e7ac6a622eb94p+12",
-        "wholesale": "0x1.8e284900fe6f9p+11"
+        "farm_stand": "0x1.d9bafb4812a43p+12",
+        "spot": "0x1.28ccefea4d877p+12"
       },
       "seed_inventory": {
-        "greenleaf": 0
+        "quickweed": 0
       },
-      "slot_days": 3959,
-      "total_crops_lost": 47,
-      "total_expenses": "0x1.0a9b3333332fbp+12",
+      "slot_days": 3743,
+      "total_crops_lost": 221,
+      "total_expenses": "0x1.45793333333bap+13",
       "total_fertilizer_applied": 0,
       "total_fertilizer_bought": 0,
-      "total_harvest_events": 782,
-      "total_harvested": 2665,
-      "total_planted": 793,
+      "total_harvest_events": 1139,
+      "total_harvested": 1718,
+      "total_planted": 1150,
       "total_processed": 0,
-      "total_revenue": "0x1.eaa42610901fbp+13",
-      "total_sold": 2665,
+      "total_revenue": "0x1.8143f5993015ap+13",
+      "total_sold": 1718,
       "total_spoiled": 0,
-      "total_waterings": 782,
-      "trajectory": "7556b86839a62000",
+      "total_waterings": 1129,
+      "trajectory": "05c77065f586a62d",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",
