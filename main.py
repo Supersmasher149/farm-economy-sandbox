@@ -414,10 +414,16 @@ def _publish_report_artifacts(staging_dir: str, reports_dir: str) -> str:
         # rather than silently making reports/ private to its owner.
         with contextlib.suppress(OSError):
             os.chmod(run_dir, 0o755)
+        latest_link_path = os.path.join(reports_dir, LATEST_LINK)
+        # Captured before the swap below so a failure partway through -- even
+        # after `latest` itself has already moved -- can put it back rather
+        # than leave it dangling at a run_dir this function is about to
+        # delete. None means nothing was published before this attempt.
+        previous_latest_target = (
+            os.readlink(latest_link_path) if os.path.islink(latest_link_path) else None
+        )
         try:
-            _replace_symlink(
-                os.path.join(RUNS_DIRNAME, run_id), os.path.join(reports_dir, LATEST_LINK)
-            )
+            _replace_symlink(os.path.join(RUNS_DIRNAME, run_id), latest_link_path)
             for name in ARTIFACT_NAMES:
                 link_path = os.path.join(reports_dir, name)
                 target = os.path.join(LATEST_LINK, name)
@@ -426,6 +432,18 @@ def _publish_report_artifacts(staging_dir: str, reports_dir: str) -> str:
                 if not os.path.islink(link_path) or os.readlink(link_path) != target:
                     _replace_symlink(target, link_path)
         except Exception:
+            # `latest` may already point at run_dir (the swap above can
+            # succeed even if a later ARTIFACT_NAMES swap fails) -- restore
+            # it to whatever it pointed at before this attempt so it never
+            # dangles at the run_dir being deleted below. The ARTIFACT_NAMES
+            # links all indirect through `latest` rather than encoding a run
+            # id, so restoring this one pointer is enough to make them
+            # resolve correctly again too.
+            with contextlib.suppress(OSError):
+                if previous_latest_target is None:
+                    os.unlink(latest_link_path)
+                else:
+                    _replace_symlink(previous_latest_target, latest_link_path)
             shutil.rmtree(run_dir, ignore_errors=True)
             raise
         _sweep_old_runs(runs_dir, RUNS_RETAINED, run_id)

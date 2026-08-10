@@ -236,6 +236,56 @@ def test_publication_failure_leaves_the_previous_run_published(tmp_path, monkeyp
     ]
 
 
+def test_publication_failure_after_latest_swap_does_not_leave_it_dangling(tmp_path, monkeypatch):
+    """A failure partway through the ARTIFACT_NAMES loop -- after `latest`
+    has already been repointed at the new (about-to-be-deleted) run -- used
+    to leave `latest` dangling instead of restored to the previous run."""
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    _publish(tmp_path, reports, "first")
+
+    # Simulate a tree upgraded from the old real-file layout (see the
+    # "upgrading a tree that still has real files here" comment in
+    # main.py): one artifact link is a real file rather than the stable
+    # `latest/<name>` symlink, so the ARTIFACT_NAMES loop has to touch it on
+    # the next publish instead of skipping it as already-correct.
+    stale_link = reports / "run_results.csv"
+    stale_link.unlink()
+    stale_link.write_text("pre-migration content")
+
+    original_replace = os.replace
+
+    def fail_artifact_swap(source, destination):
+        if os.path.basename(destination) == "run_results.csv":
+            raise OSError("injected artifact publication failure")
+        original_replace(source, destination)
+
+    monkeypatch.setattr(main.os, "replace", fail_artifact_swap)
+
+    with pytest.raises(OSError, match="injected artifact publication failure"):
+        _publish(tmp_path, reports, "second")
+
+    monkeypatch.undo()
+
+    # `latest` must be restored to the previous run, not left pointing at
+    # the "second" run_dir this function just deleted.
+    latest_link = reports / main.LATEST_LINK
+    assert latest_link.is_symlink()
+    assert os.path.isdir(latest_link)
+
+    # Links untouched by the failed swap still resolve, through the
+    # restored `latest` pointer, to the previous run's content.
+    for name in ("config_snapshot.json", "summary_report.md"):
+        assert (reports / name).read_text() == f"first {name}"
+    # The file the failed swap never got to replace is untouched.
+    assert stale_link.read_text() == "pre-migration content"
+
+    # Only the previous run directory remains; the half-published one is gone.
+    assert [d.name for d in (reports / main.RUNS_DIRNAME).iterdir()] == [
+        os.path.basename(os.path.realpath(latest_link))
+    ]
+
+
 def test_old_run_directories_are_swept_but_the_live_one_is_kept(tmp_path):
     reports = tmp_path / "reports"
     reports.mkdir()
