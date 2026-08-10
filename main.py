@@ -8,12 +8,14 @@ Examples:
 """
 
 import argparse
+import contextlib
 import json
 import math
 import os
 import shutil
 import tempfile
 import textwrap
+import time
 
 from agents.diversifier import Diversifier
 from agents.fast_seller import FastSeller
@@ -214,7 +216,12 @@ def cmd_batch(args):
     agent_descriptions = {agent.name: agent.description for agent in agents}
     economics_audit = build_economics_audit(crops, fertilizer_config, world["markets"])
 
-    with tempfile.TemporaryDirectory(prefix=".batch-", dir=REPORTS_DIR) as staging_dir:
+    _sweep_stale_staging(REPORTS_DIR)
+    # mkdtemp rather than TemporaryDirectory: publication *renames* this
+    # directory into place, so its cleanup is conditional on having failed
+    # before that point rather than unconditional.
+    staging_dir = tempfile.mkdtemp(prefix=STAGING_PREFIX, dir=REPORTS_DIR)
+    try:
         # run_batch streams one RunResult at a time rather than returning a
         # materialized list, so CSV output and aggregation stay in one pass.
         aggregator = BatchAggregator()
@@ -258,7 +265,11 @@ def cmd_batch(args):
         with open(staged_report_path, "w") as f:
             f.write(report_text)
 
-        _publish_report_artifacts(staging_dir, REPORTS_DIR)
+        run_dir = _publish_report_artifacts(staging_dir, REPORTS_DIR)
+    finally:
+        # Publication consumed the staging directory by renaming it, so this
+        # only removes it when the batch failed before getting that far.
+        shutil.rmtree(staging_dir, ignore_errors=True)
 
     csv_path = os.path.join(REPORTS_DIR, "run_results.csv")
     config_snapshot_path = os.path.join(REPORTS_DIR, "config_snapshot.json")
@@ -271,38 +282,154 @@ def cmd_batch(args):
     print(f"CSV:    {csv_path}")
     print(f"Config: {config_snapshot_path}")
     print(f"Report: {report_path}")
+    print(f"Run:    {run_dir}")
     print()
     print(report_text)
 
 
-def _publish_report_artifacts(staging_dir: str, reports_dir: str) -> None:
-    """Replace all report artifacts together, restoring old files on failure."""
-    artifact_names = ("run_results.csv", "config_snapshot.json", "summary_report.md")
-    backups = {}
-    published = []
-    try:
-        for name in artifact_names:
-            final_path = os.path.join(reports_dir, name)
-            if os.path.exists(final_path):
-                backup_path = os.path.join(staging_dir, f".{name}.bak")
-                shutil.copy2(final_path, backup_path)
-                backups[name] = backup_path
+ARTIFACT_NAMES = ("run_results.csv", "config_snapshot.json", "summary_report.md")
+STAGING_PREFIX = ".batch-"
+# Age past which a leftover staging directory is assumed to be from an
+# interrupted run rather than a batch still writing into it. Generous
+# because a multi-million-run batch legitimately takes hours, and deleting a
+# live batch's staging directory would be far worse than leaving one behind.
+STALE_STAGING_SECONDS = 24 * 60 * 60
+RUNS_DIRNAME = "runs"
+LATEST_LINK = "latest"
+PUBLISH_LOCK = ".publish.lock"
+# How many published run directories to keep. They are immutable, so old ones
+# stay readable (and diffable) until this sweep removes them.
+RUNS_RETAINED = 5
 
-        for name in artifact_names:
-            os.replace(
-                os.path.join(staging_dir, name),
-                os.path.join(reports_dir, name),
+
+class _PublishLock:
+    """Inter-process exclusive lock around report publication.
+
+    Three separate `os.replace` calls could interleave between concurrent
+    batch processes, so a reader could pair a CSV from one run with a summary
+    from another, and one process's rollback could clobber another's freshly
+    published file. Publication now swaps a single pointer, and this
+    serializes even that against a second batch running at the same time.
+
+    Degrades to a no-op where `fcntl` is unavailable rather than failing the
+    run: the pointer swap is still atomic on its own, the lock only adds
+    mutual exclusion for the surrounding directory bookkeeping.
+    """
+
+    def __init__(self, path: str):
+        self.path = path
+        self._handle = None
+
+    def __enter__(self):
+        try:
+            import fcntl
+        except ImportError:
+            return self
+        self._handle = open(self.path, "w")
+        fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *_exc):
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
+        return False
+
+
+def _replace_symlink(target: str, link_path: str) -> None:
+    """Point `link_path` at `target`, atomically replacing whatever is there.
+
+    A symlink cannot be retargeted in place, so this creates a uniquely named
+    one beside it and renames over the old one -- `os.replace` on a symlink
+    swaps the link itself, so no reader ever observes the link missing.
+    """
+    temporary = f"{link_path}.{os.getpid()}.tmp"
+    if os.path.lexists(temporary):
+        os.unlink(temporary)
+    os.symlink(target, temporary)
+    os.replace(temporary, link_path)
+
+
+def _sweep_stale_staging(reports_dir: str, max_age: int = STALE_STAGING_SECONDS) -> None:
+    """Remove staging directories abandoned by interrupted runs.
+
+    A batch killed mid-write leaves a `reports/.batch-*/` directory holding a
+    partial (and potentially very large) CSV. Only directories older than
+    `max_age` are touched, so a batch currently writing into one -- including
+    another process's -- is never disturbed.
+    """
+    now = time.time()
+    try:
+        entries = os.listdir(reports_dir)
+    except FileNotFoundError:
+        return
+    for name in entries:
+        if not name.startswith(STAGING_PREFIX):
+            continue
+        path = os.path.join(reports_dir, name)
+        try:
+            if os.path.isdir(path) and now - os.stat(path).st_mtime > max_age:
+                shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            continue
+
+
+def _sweep_old_runs(runs_dir: str, keep: int, current: str) -> None:
+    try:
+        entries = sorted(os.listdir(runs_dir))
+    except FileNotFoundError:
+        return
+    for name in entries[: max(0, len(entries) - keep)]:
+        if name == current:
+            continue
+        shutil.rmtree(os.path.join(runs_dir, name), ignore_errors=True)
+
+
+def _publish_report_artifacts(staging_dir: str, reports_dir: str) -> str:
+    """Publish one batch's artifacts as an immutable set, atomically.
+
+    The staging directory is renamed into `reports/runs/<id>/` (a single
+    atomic rename), then `reports/latest` is repointed at it (a single atomic
+    symlink swap). The three familiar `reports/<name>` paths are stable
+    symlinks through `latest`, so that one swap moves all of them together --
+    replacing the previous three independent `os.replace` calls, which let a
+    reader pair artifacts from different batches.
+
+    Returns the run directory that was published. Nothing mutates a published
+    run directory afterwards, so a reader that resolves `reports/latest` once
+    holds a consistent snapshot even while a later batch publishes.
+    """
+    runs_dir = os.path.join(reports_dir, RUNS_DIRNAME)
+    run_id = os.path.basename(staging_dir).lstrip(".").replace("batch-", "", 1)
+    run_id = f"{time.strftime('%Y%m%dT%H%M%S')}-{run_id}"
+
+    with _PublishLock(os.path.join(reports_dir, PUBLISH_LOCK)):
+        os.makedirs(runs_dir, exist_ok=True)
+        run_dir = os.path.join(runs_dir, run_id)
+        # Atomic, and it consumes the staging directory: everything below
+        # either succeeds or leaves the previous `latest` untouched.
+        os.replace(staging_dir, run_dir)
+        # mkdtemp creates 0700; published artifacts used to sit in reports/
+        # itself and be world-readable, so widen the directory back out
+        # rather than silently making reports/ private to its owner.
+        with contextlib.suppress(OSError):
+            os.chmod(run_dir, 0o755)
+        try:
+            _replace_symlink(
+                os.path.join(RUNS_DIRNAME, run_id), os.path.join(reports_dir, LATEST_LINK)
             )
-            published.append(name)
-    except Exception:
-        for name in published:
-            final_path = os.path.join(reports_dir, name)
-            backup_path = backups.get(name)
-            if backup_path is not None:
-                os.replace(backup_path, final_path)
-            elif os.path.exists(final_path):
-                os.unlink(final_path)
-        raise
+            for name in ARTIFACT_NAMES:
+                link_path = os.path.join(reports_dir, name)
+                target = os.path.join(LATEST_LINK, name)
+                # Recreate only when it is not already the stable pointer --
+                # e.g. upgrading a tree that still has real files here.
+                if not os.path.islink(link_path) or os.readlink(link_path) != target:
+                    _replace_symlink(target, link_path)
+        except Exception:
+            shutil.rmtree(run_dir, ignore_errors=True)
+            raise
+        _sweep_old_runs(runs_dir, RUNS_RETAINED, run_id)
+    return run_dir
 
 
 def strategy_roster(indent: str = "  ") -> str:
@@ -479,9 +606,9 @@ def build_parser():
             "  config_snapshot.json the exact config and base seed used\n"
             "  summary_report.md    per-strategy stats, cash-flow diagnostics,\n"
             "                       economics audit, and automated balance warnings\n\n"
-            "All three are published atomically: they are staged in a temp dir and\n"
-            "swapped in together, restoring the previous files if anything fails\n"
-            "partway, so reports/ never holds a half-updated set.\n\n"
+            "All three are symlinks through reports/latest into an immutable\n"
+            "reports/runs/<id>/ directory. Publishing swaps that one pointer, so\n"
+            "reports/ never holds a half-updated set and past runs stay readable.\n\n"
             "Start with the 'Warnings' section of summary_report.md -- that is where\n"
             "a balance regression shows up without eyeballing every strategy."
         ),

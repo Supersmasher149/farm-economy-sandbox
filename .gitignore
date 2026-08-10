@@ -3,17 +3,29 @@ __pycache__/
 
 # Built C accelerator (simulation/_fastplot). Optional and machine-specific:
 # build it with `python3 tools/build_fastplot.py`, never commit the binary.
+# The .incoming-* form is that builder's staging path -- it swaps atomically
+# into place on success, but a killed build can leave one behind.
 *.so
+*.so.incoming-*
 build/
 .pytest_cache/
 .ruff_cache/
 .DS_Store
 
+# Batch output. The three top-level names are symlinks through reports/latest
+# into an immutable reports/runs/<id>/ directory -- see _publish_report_artifacts
+# in main.py. reports/.batch-*/ is publication staging: normally renamed into
+# runs/ on success, but an interrupted batch can leave one behind (they hold a
+# partial run_results.csv, which gets large).
 reports/*.csv
 reports/*.json
 reports/*.md
 reports/charts/
 reports/auto_balance/
+reports/runs/
+reports/latest
+reports/.batch-*/
+reports/.publish.lock
 
 # Local Claude Code permission grants -- machine-specific, not shared.
 .claude/settings.local.json

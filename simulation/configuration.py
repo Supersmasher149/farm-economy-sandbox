@@ -1,4 +1,13 @@
-"""Validation for configuration consumed by the simulation runtime."""
+"""Validation for configuration consumed by the simulation runtime.
+
+Unknown keys are rejected, not ignored. Rebalancing this economy means
+editing `config/*.json` by hand, and a typo there is otherwise silent: the
+runtime reads the key it expects, finds nothing, falls back to a default, and
+the batch completes with numbers that look plausible and do not reflect what
+you wrote. `loss_chnace` costs an afternoon. Each ALLOWED_* set below is
+therefore exactly the keys the runtime consumes -- adding a field to a config
+file means adding it here too, which is the intended friction.
+"""
 
 import math
 from collections.abc import Mapping
@@ -39,12 +48,143 @@ SOIL_DYNAMICS_BOUNDS = {
     "soil_health_yield_span": (0, 2),
 }
 
+# Every key each record type may carry. See the module docstring for why these
+# are closed sets rather than a minimum.
+ALLOWED_WORLD_SECTIONS = {
+    "watering",
+    "fertilizer",
+    "soil",
+    "weather",
+    "markets",
+    "storage",
+    "contracts",
+    "buyers",
+    "processing",
+}
+ALLOWED_CROP_FIELDS = {
+    "id",
+    "name",
+    "role",
+    "family",
+    "seed_cost",
+    "growth_days",
+    "min_yield",
+    "max_yield",
+    "base_price",
+    "price_variation",
+    "loss_chance",
+    "water_interval_days",
+    "unlock_requirement",
+    "shelf_life_days",
+    "temperature_range",
+    "ph_range",
+    "min_moisture",
+    "pest_susceptibility",
+    "disease_susceptibility",
+    "nutrient_demand",
+    "seasonal_demand",
+    # Carried by every shipped crop but read by nothing: processing economics
+    # come from processing.json's recipes. Allowed so the shipped config keeps
+    # validating, and listed here so it is visibly vestigial rather than
+    # mistaken for a knob that does something.
+    "processing_value",
+}
+ALLOWED_UNLOCK_FIELDS = {"type", "value", "id"}
+ALLOWED_UPGRADE_FIELDS = {"id", "name", "description", "cost", "effect"}
+# Per effect type, because the union would let a storage upgrade carry an
+# `amount` that is silently never applied.
+ALLOWED_EFFECT_FIELDS = {
+    "capacity": {"type", "amount"},
+    "processing_capacity": {"type", "amount"},
+    "growth_time_reduction": {"type", "amount"},
+    "storage": {"type", "capacity_bonus", "shelf_life_multiplier"},
+}
+ALLOWED_PRODUCT_FIELDS = {
+    "id",
+    "name",
+    "processed_base_price",
+    "price_variation",
+    "seasonal_demand",
+}
+ALLOWED_RECIPE_FIELDS = {
+    "id",
+    "input_item_id",
+    "output_item_id",
+    "input_quantity",
+    "output_quantity",
+    "min_quality",
+    "processing_days",
+    "cost",
+    "shelf_life_days",
+}
+ALLOWED_PROCESSING_FIELDS = {"base_capacity", "products", "recipes"}
+ALLOWED_WATERING_FIELDS = {
+    "neglect_loss_chance_penalty_per_day",
+    "neglect_yield_penalty_per_day",
+    "max_neglect_loss_chance_bonus",
+    "max_neglect_yield_penalty",
+    "cost_per_plot",
+    "moisture_added",
+}
+ALLOWED_FERTILIZER_FIELDS = {
+    "cost",
+    "yield_bonus_pct",
+    "loss_chance_reduction",
+    "quality_bonus",
+    "nutrients_added",
+}
+ALLOWED_SOIL_FIELDS = {"initial", "regen_per_day", "dynamics"}
+ALLOWED_WEATHER_FIELDS = {"season_length_days", "seasons"}
+ALLOWED_SEASON_FIELDS = {
+    "temperature_range",
+    "rain_chance",
+    "rainfall_range",
+    "evaporation",
+}
+ALLOWED_STORAGE_FIELDS = {"capacity", "shelf_life_multiplier", "daily_cost"}
+ALLOWED_MARKET_FIELDS = {
+    "default_variation",
+    "minimum_supply_multiplier",
+    "supply_decay",
+    "channels",
+}
+ALLOWED_CHANNEL_FIELDS = {
+    "id",
+    "name",
+    "price_multiplier",
+    "min_quality",
+    "daily_capacity",
+    "fee_rate",
+    "flat_fee",
+    "min_reputation",
+    "reputation_bonus",
+}
+ALLOWED_CONTRACT_FIELDS = {
+    "offer_interval_days",
+    "default_penalty_rate",
+    "production_safety_factor",
+    "offer_expiry_days",
+    "fallback_price_multiplier",
+}
+ALLOWED_BUYER_FIELDS = {
+    "id",
+    "name",
+    "items",
+    "quantity_range",
+    "min_quality",
+    "contract_price_multiplier",
+    "deadline_days",
+    "penalty_rate",
+    "min_reputation",
+}
+
 
 def validate(crops: list, upgrades: list, world: dict) -> None:
     """Validate crop, upgrade, and world configuration or raise ``ValueError``."""
     _require_list(crops, "crops")
     _require_list(upgrades, "upgrades")
     _require_mapping(world, "world")
+    _only(world, ALLOWED_WORLD_SECTIONS, "world")
 
     crop_ids = _validate_crops(crops)
     upgrade_ids = _validate_upgrades(upgrades)
@@ -74,6 +214,7 @@ def validate(crops: list, upgrades: list, world: dict) -> None:
         if requirement is None:
             continue
         _require_mapping(requirement, f"crop '{crop['id']}'.unlock_requirement")
+        _only(requirement, ALLOWED_UNLOCK_FIELDS, f"crop '{crop['id']}'.unlock_requirement")
         requirement_type = _required_value(
             requirement, "type", f"crop '{crop['id']}'.unlock_requirement"
         )
@@ -121,6 +262,7 @@ def _validate_crops(crops: list) -> set:
     )
     for crop in crops:
         path = f"crop '{crop['id']}'"
+        _only(crop, ALLOWED_CROP_FIELDS, path)
         for field in required:
             _required_value(crop, field, path)
         _string(crop["name"], f"{path}.name")
@@ -160,6 +302,7 @@ def _validate_upgrades(upgrades: list) -> set:
     upgrade_ids = _unique_ids(upgrades, "upgrade")
     for upgrade in upgrades:
         path = f"upgrade '{upgrade['id']}'"
+        _only(upgrade, ALLOWED_UPGRADE_FIELDS, path)
         _required_value(upgrade, "name", path)
         _required_value(upgrade, "cost", path)
         effect = _required_value(upgrade, "effect", path)
@@ -168,6 +311,7 @@ def _validate_upgrades(upgrades: list) -> set:
         _require_mapping(effect, f"{path}.effect")
         effect_type = _required_value(effect, "type", f"{path}.effect")
         _enum(effect_type, EFFECT_TYPES, f"{path}.effect.type")
+        _only(effect, ALLOWED_EFFECT_FIELDS[effect_type], f"{path}.effect")
         if effect_type in {"capacity", "processing_capacity"}:
             _integer(effect, "amount", f"{path}.effect", minimum=1)
         elif effect_type == "growth_time_reduction":
@@ -186,6 +330,7 @@ def _validate_products(products: list) -> set:
     product_ids = _unique_ids(products, "processing product")
     for product in products:
         path = f"processing product '{product['id']}'"
+        _only(product, ALLOWED_PRODUCT_FIELDS, path)
         _required_value(product, "name", path)
         _required_value(product, "processed_base_price", path)
         _string(product["name"], f"{path}.name")
@@ -200,10 +345,12 @@ def _validate_products(products: list) -> set:
 
 
 def _validate_processing(processing: dict, recipes: list, item_ids: set) -> None:
+    _only(processing, ALLOWED_PROCESSING_FIELDS, "processing")
     _integer(processing, "base_capacity", "processing", minimum=0)
     _unique_ids(recipes, "processing recipe")
     for recipe in recipes:
         path = f"processing recipe '{recipe['id']}'"
+        _only(recipe, ALLOWED_RECIPE_FIELDS, path)
         for field in ("input_item_id", "output_item_id", "input_quantity", "output_quantity"):
             _required_value(recipe, field, path)
         if (
@@ -224,6 +371,7 @@ def _validate_processing(processing: dict, recipes: list, item_ids: set) -> None
 
 def _validate_watering(config: dict) -> None:
     path = "watering"
+    _only(config, ALLOWED_WATERING_FIELDS, path)
     for field in ("neglect_loss_chance_penalty_per_day", "neglect_yield_penalty_per_day"):
         _number(config, field, path, minimum=0, maximum=1)
     _number(config, "max_neglect_loss_chance_bonus", path, minimum=0, maximum=1)
@@ -234,6 +382,7 @@ def _validate_watering(config: dict) -> None:
 
 def _validate_fertilizer(config: dict) -> None:
     path = "fertilizer"
+    _only(config, ALLOWED_FERTILIZER_FIELDS, path)
     _number(config, "cost", path, minimum=0)
     _number(config, "yield_bonus_pct", path, minimum=0)
     _number(config, "loss_chance_reduction", path, minimum=0, maximum=1)
@@ -248,6 +397,7 @@ def _validate_fertilizer(config: dict) -> None:
 
 
 def _validate_soil(config: dict) -> None:
+    _only(config, ALLOWED_SOIL_FIELDS, "soil")
     initial = config.get("initial", {})
     _require_mapping(initial, "soil.initial")
     unknown = set(initial) - SOIL_LEVELS
@@ -283,12 +433,18 @@ def _validate_soil_dynamics(dynamics) -> None:
 
 
 def _validate_weather(config: dict) -> None:
+    _only(config, ALLOWED_WEATHER_FIELDS, "weather")
     _integer(config, "season_length_days", "weather", minimum=1)
     seasons = _required_value(config, "seasons", "weather")
     _require_mapping(seasons, "weather.seasons")
+    # A fifth season is never consulted -- simulation/weather.py indexes the
+    # four in SEASONS by day -- so it would be config that reads as active and
+    # is not.
+    _only(seasons, set(SEASONS), "weather.seasons")
     for season in SEASONS:
         values = _required_mapping(seasons, season, "weather.seasons")
         path = f"weather.seasons.{season}"
+        _only(values, ALLOWED_SEASON_FIELDS, path)
         _ordered_range(
             _required_value(values, "temperature_range", path), f"{path}.temperature_range"
         )
@@ -303,12 +459,14 @@ def _validate_weather(config: dict) -> None:
 
 
 def _validate_storage(config: dict) -> None:
+    _only(config, ALLOWED_STORAGE_FIELDS, "storage")
     _integer(config, "capacity", "storage", minimum=0)
     _number(config, "shelf_life_multiplier", "storage", minimum=0, exclusive_minimum=0)
     _number(config, "daily_cost", "storage", minimum=0)
 
 
 def _validate_markets(config: dict) -> None:
+    _only(config, ALLOWED_MARKET_FIELDS, "markets")
     _number(config, "default_variation", "markets", minimum=0, maximum=1)
     _number(config, "minimum_supply_multiplier", "markets", minimum=0, maximum=1)
     _number(config, "supply_decay", "markets", minimum=0, maximum=1)
@@ -318,6 +476,7 @@ def _validate_markets(config: dict) -> None:
         raise ValueError("markets must define a 'spot' channel")
     for channel in channels:
         path = f"market channel '{channel['id']}'"
+        _only(channel, ALLOWED_CHANNEL_FIELDS, path)
         _number(channel, "price_multiplier", path, minimum=0)
         _enum(channel.get("min_quality", "rejected"), QUALITY_LEVELS, f"{path}.min_quality")
         _integer(channel, "daily_capacity", path, minimum=1)
@@ -332,6 +491,7 @@ def _validate_markets(config: dict) -> None:
 
 
 def _validate_contracts(config: dict) -> None:
+    _only(config, ALLOWED_CONTRACT_FIELDS, "contracts")
     _integer(config, "offer_interval_days", "contracts", minimum=1)
     _number(config, "default_penalty_rate", "contracts", minimum=0, maximum=1)
     _number(config, "production_safety_factor", "contracts", minimum=0, maximum=1)
@@ -345,6 +505,7 @@ def _validate_buyers(buyers: list, item_ids: set) -> None:
     _unique_ids(buyers, "buyer")
     for buyer in buyers:
         path = f"buyer '{buyer['id']}'"
+        _only(buyer, ALLOWED_BUYER_FIELDS, path)
         items = _required_value(buyer, "items", path)
         _require_list(items, f"{path}.items")
         if any(not isinstance(item_id, str) for item_id in items):
@@ -390,6 +551,20 @@ def _require_mapping(value, path: str) -> None:
 def _require_list(value, path: str) -> None:
     if not isinstance(value, list):
         raise ValueError(f"{path} must be a list")
+
+
+def _only(mapping: Mapping, allowed: set, path: str) -> None:
+    """Reject keys the runtime does not read.
+
+    The allowed set is named in the message on purpose: the overwhelmingly
+    likely cause is a misspelling, and seeing the real spelling next to yours
+    is the whole fix.
+    """
+    unknown = sorted(set(mapping) - allowed)
+    if unknown:
+        raise ValueError(
+            f"{path} contains unknown fields: {unknown}. Allowed fields: {sorted(allowed)}"
+        )
 
 
 def _unique_ids(values: list, label: str) -> set:

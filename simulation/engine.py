@@ -152,8 +152,20 @@ def run_day(
     for decision in agent.choose_sales(player, channels, items_by_id):
         channel = channels_by_id.get(decision["channel_id"])
         if channel:
+            # The routing in Agent.route_sales_by_best_price prices and
+            # capacity-plans each route for one exact grade, so executing
+            # without that grade let the sale consume a different lot than
+            # the one it was quoted against -- a premium lot could be spent
+            # filling a route priced for standard stock. markets.sell
+            # already supports exact-quality execution; `None` (the default
+            # choose_sales, which does not pick a grade) keeps the old
+            # "anything at or above the channel minimum" behavior.
             _revenue, sold = markets.sell(
-                player, decision["item_id"], decision["quantity"], channel
+                player,
+                decision["item_id"],
+                decision["quantity"],
+                channel,
+                quality=decision.get("quality"),
             )
             acted = sold > 0 or acted
 

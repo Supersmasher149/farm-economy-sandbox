@@ -58,6 +58,14 @@ def _init_worker(config, crops, upgrades, watering_settings, fertilizer_config, 
 
 
 def _execute(agent, run_seed, config, crops, upgrades, watering_settings, fertilizer_config, world):
+    # Every run gets its own agent instance, on both the sequential and the
+    # pooled path. Relying on the process boundary for this was not sound:
+    # ProcessPoolExecutor.map pickles a whole *chunk* as one message, so
+    # repeated references to one agent inside a chunk survive as a single
+    # shared object in the worker, and consecutive jobs in that chunk would
+    # then mutate and reuse it. That only shows up at chunksize > 1, which
+    # the shipped stateless agents never made visible.
+    agent = copy.deepcopy(agent)
     try:
         player, used_seed, _history = run_single(
             config,
@@ -154,18 +162,11 @@ def _iter_batch(
     workers = max(1, min(workers, total_jobs))
 
     if workers <= 1:
-        # The process-pool path below gets per-job agent isolation for free:
-        # each task is pickled across a process boundary, so a worker never
-        # sees the same Python object another task mutated. This sequential
-        # path runs every job in-process against the literal same `agent`
-        # object the generator yields (num_runs times per strategy) -- fine
-        # for the stateless agents this repo ships, but a deep copy per job
-        # is what actually delivers the "each run gets an independent agent"
-        # contract this module's docstring promises, rather than relying on
-        # every future agent staying accidentally stateless.
+        # Both paths isolate the agent inside _execute, so this runs every
+        # job against its own copy exactly as a pool worker does.
         for agent, run_seed in jobs:
             yield _execute(
-                copy.deepcopy(agent),
+                agent,
                 run_seed,
                 config,
                 crops,
@@ -189,5 +190,16 @@ def _iter_batch(
             window = list(itertools.islice(jobs, window_size))
             if not window:
                 break
-            chunksize = max(1, len(window) // (workers * 4))
-            yield from executor.map(_run_in_worker, window, chunksize=chunksize)
+            yield from executor.map(
+                _run_in_worker, window, chunksize=chunk_size(len(window), workers)
+            )
+
+
+def chunk_size(window_length: int, workers: int) -> int:
+    """Jobs dispatched to a pool worker per message.
+
+    Exposed so tests can build a workload that genuinely exercises
+    chunksize > 1 -- the condition under which several jobs share one
+    pickled agent object -- instead of silently degrading to 1.
+    """
+    return max(1, window_length // (workers * 4))

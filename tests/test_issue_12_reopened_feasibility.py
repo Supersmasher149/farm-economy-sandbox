@@ -208,13 +208,15 @@ def test_future_production_is_capped_at_total_days_not_contract_deadline():
     }
     # Deadline is far beyond the run itself (total_days=5): without capping,
     # 50 days of runway lets one open slot cycle through a 3-day crop
-    # roughly 16 times; the run only actually has 5 days to give it.
+    # roughly 16 times; the run only actually has 4 days to give it -- days
+    # 0..4 inclusive are executed, so day 4 is the last harvest that can
+    # happen (see economy_rules.last_executable_day).
     player = base_player(day=0, total_days=5, slots_total=1, money=1000)
     player.crop_catalog = {"crop": crop}
     contract = offer("crop", quantity=1, deadline_day=50)
 
     uncapped_days_available = 50
-    capped_days_available = 5
+    capped_days_available = 4
     expected_yield = (2 + 2) / 2 * 1.0 * contracts.PRODUCTION_SAFETY_FACTOR
     uncapped_cycles = uncapped_days_available // 3
     capped_cycles = capped_days_available // 3

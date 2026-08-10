@@ -23,6 +23,47 @@ def effective_growth_days(crop: dict, player, upgrades_by_id: dict) -> int:
     return derived.effective_growth_days(crop, player.upgrades_owned, upgrades_by_id)
 
 
+def last_executable_day(player):
+    """The highest value `player.day` ever takes inside a simulated day, or
+    None for an open-ended run.
+
+    `runner.single_run` calls `engine.run_day` exactly `total_days` times
+    starting from `player.day == 0`, so the final day the run ever processes
+    is `total_days - 1`. Nothing at all happens after it: no harvest, no
+    processing completion, no contract delivery, no planting -- whatever a
+    contract's own `deadline_day` claims.
+
+    This is the single authority for that boundary. It used to be re-derived
+    independently at four call sites and two of them were off by one day,
+    forecasting a day of production the simulator never runs.
+    """
+    total_days = getattr(player, "total_days", None)
+    return None if total_days is None else total_days - 1
+
+
+def effective_deadline(player, deadline: int) -> int:
+    """Clamp a contract deadline to the run's own last executable day.
+
+    Every production forecast must go through this, not the raw
+    `deadline_day`: a deadline past the end of the run is not reachable, so
+    counting output "due" on those days inflates supply that can never exist.
+    """
+    last_day = last_executable_day(player)
+    return deadline if last_day is None else min(deadline, last_day)
+
+
+def matures_within_run(growth_days: int, player) -> bool:
+    """True if a crop planted today can still be harvested before the run ends.
+
+    Harvest runs before planting each day (see `engine.run_day`), so a crop
+    planted on day `d` is first eligible on `d + growth_days` and only ever
+    harvested if that day is one the run actually executes. An open-ended run
+    (`total_days is None`) never blocks a planting.
+    """
+    last_day = last_executable_day(player)
+    return last_day is None or player.day + growth_days <= last_day
+
+
 def expected_profit_per_day(crop: dict, player, upgrades_by_id: dict) -> float:
     """Nominal expected profit per growing slot per day, used to rank crops.
 

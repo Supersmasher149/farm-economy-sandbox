@@ -13,15 +13,42 @@ Neither builder uses setuptools -- it is not a dependency of this project, and
 adding one just to build *optional* accelerators would defeat the point. Only
 a C compiler and the CPython headers are required, both of which ship with any
 normal CPython install.
+
+The flag list itself is defined in simulation/_compiled.py, not here: that
+module verifies at *load* time that artifacts were built with these flags, so
+it needs the list anyway, and a second copy here could drift from the one
+being enforced.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
 import sysconfig
+from pathlib import Path
 
-REQUIRED_FLAGS = ["-ffp-contract=off", "-fno-fast-math"]
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+_helper = None
+
+
+def compiled_helper():
+    """simulation/_compiled.py, loaded without importing the `simulation`
+    package -- whose __init__ activates the shim, which would leave a builder
+    running against the very artifacts it is in the middle of replacing."""
+    global _helper
+    if _helper is None:
+        spec = importlib.util.spec_from_file_location(
+            "_compiled_helper", REPO_ROOT / "simulation" / "_compiled.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _helper = module
+    return _helper
+
+
+REQUIRED_FLAGS = list(compiled_helper().REQUIRED_CFLAGS)
 
 # Cython emits code that assumes the same aliasing rules CPython itself is
 # built with. Harmless for the hand-written kernel, required for the generated

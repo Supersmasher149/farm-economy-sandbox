@@ -74,7 +74,8 @@ Two properties are load-bearing and easy to break by "simplifying":
 
 Baselines are portable across CPython 3.12–3.14 (verified). They are **not**
 portable to 3.11, which lacks compensated summation in `sum()` and moves one
-combo; that is why `pyproject.toml` sets `requires-python = ">=3.12"`.
+combo; that is why the project requires 3.12+ (README's Requirements section,
+and the CI matrix floor).
 
 Capture from the **pure-Python reference**, i.e. with the optional C kernel
 removed (`python3 tools/build_fastplot.py --clean`), then rebuild and `check`
