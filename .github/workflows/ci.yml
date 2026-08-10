@@ -11,7 +11,7 @@ jobs:
       matrix:
         # 3.12 is the floor: simulation/crop_growth.py depends on sum()
         # applying Neumaier compensated summation to floats, which CPython
-        # only does from 3.12. See requires-python in pyproject.toml.
+        # only does from 3.12. See README's Requirements section.
         python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
@@ -43,13 +43,19 @@ jobs:
         # macOS included because the darwin `-undefined dynamic_lookup` branch
         # in tools/build_fastplot.py is otherwise only exercised by hand.
         os: [ubuntu-latest, macos-latest]
+        # Both ends of the supported range, not just the newest: the accelerator
+        # is compiled against whichever CPython headers are present, and the
+        # floor is the version most likely to be running in an old environment.
+        # 3.13 is left to the pure-Python matrix -- four compiled jobs is
+        # already the expensive half of this workflow.
+        python-version: ["3.12", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dev dependencies
         run: pip install -r requirements-dev.txt
@@ -75,12 +81,19 @@ jobs:
   # than a silent fall back to pure Python.
   cython:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Cython's generated C is ABI-specific, and the manifest's build tag
+        # is what keeps artifacts for one interpreter from loading under
+        # another -- worth exercising on more than one.
+        python-version: ["3.12", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dev dependencies
         # Cython is pinned: a minor bump that changes a codegen default is
@@ -109,15 +122,46 @@ jobs:
 
   # Determinism is a property of the reference implementation too, and the
   # committed baseline is portable across 3.12+ (verified). A divergence here
-  # is a real regression, not a platform artifact.
+  # is a real regression, not a platform artifact -- so this runs on *every*
+  # supported interpreter. It needs no dependencies and takes under a second,
+  # which is why it gets the full matrix where the compiled jobs do not.
   replay:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Golden replay check (pure Python reference)
+        run: python3 .claude/skills/replay-guard/scripts/golden_replay.py check
+
+  # tests/test_visualize.py skips itself when matplotlib is absent, which is
+  # every job above. Without this one, the chart tests would be present in the
+  # repo and never actually run anywhere.
+  charts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: "3.12"
 
-      - name: Golden replay check (pure Python reference)
-        run: python3 .claude/skills/replay-guard/scripts/golden_replay.py check
+      - name: Install dev and visualization dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -r requirements-viz.txt
+
+      - name: Fail loudly if matplotlib is missing
+        # Otherwise the import guard in tests/test_visualize.py turns a broken
+        # install into a green run with every chart test skipped.
+        run: python3 -c "import matplotlib; print(matplotlib.__version__)"
+
+      - name: Render every chart
+        run: python3 -m pytest tests/test_visualize.py

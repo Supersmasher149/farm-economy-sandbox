@@ -362,3 +362,131 @@ def test_search_is_reproducible_for_a_fixed_tuner_and_eval_seed(baseline):
     result1 = run_once()
     result2 = run_once()
     assert result1 == result2
+
+
+# --- CQ-05: the report must describe the winning configuration -------------
+#
+# The proposed-diffs table used to be the accepted-move list, sorted by
+# individual score delta and truncated. A hill climb revisits knobs, so that
+# list holds stale intermediate values for a path tuned more than once, and
+# still lists a path that was moved and later moved back. Applying the
+# survivors of a sorted, truncated version of it produced a configuration
+# that was never evaluated.
+
+
+def _knob_for(knobs, file, display):
+    return next(k for k in knobs if k.file == file and k.display == display)
+
+
+def _move(knob, old_value, new_value, iteration=1, score_before=1.0, score_after=0.5):
+    return ab.Move(iteration, knob, old_value, new_value, score_before, score_after)
+
+
+def test_config_diff_reports_one_final_value_for_a_revisited_path(baseline, knobs):
+    knob = knobs[0]
+    original = ab.get_at(ab.get_root(baseline, knob.root), knob.path)
+    final_value = original + 7
+
+    best = ab.make_candidate(baseline, knob, final_value)
+    # Three sequential moves toward the final value; only the last is current.
+    moves = [
+        _move(knob, original, original + 3, iteration=1),
+        _move(knob, original + 3, original + 5, iteration=2),
+        _move(knob, original + 5, final_value, iteration=3),
+    ]
+
+    diffs = ab.build_config_diff(baseline, best, knobs, moves)
+
+    assert len(diffs) == 1
+    assert diffs[0]["old_value"] == ab._round_val(original)
+    assert diffs[0]["new_value"] == ab._round_val(final_value)
+    assert diffs[0]["moves_applied"] == 3
+
+
+def test_config_diff_omits_a_path_the_search_moved_and_moved_back(baseline, knobs):
+    knob = knobs[0]
+    original = ab.get_at(ab.get_root(baseline, knob.root), knob.path)
+
+    # Ends exactly where it started: nothing to apply, however many moves
+    # were accepted along the way.
+    best = ab.make_candidate(baseline, knob, original)
+    moves = [
+        _move(knob, original, original + 4, iteration=1),
+        _move(knob, original + 4, original, iteration=2),
+    ]
+
+    assert ab.build_config_diff(baseline, best, knobs, moves) == []
+
+
+def test_config_diff_covers_every_changed_path_without_truncation(baseline, knobs):
+    changed = knobs[:5]
+    best = copy.deepcopy(baseline)
+    for index, knob in enumerate(changed, start=1):
+        ab.set_at(
+            ab.get_root(best, knob.root),
+            knob.path,
+            ab.get_at(ab.get_root(baseline, knob.root), knob.path) + index,
+        )
+
+    diffs = ab.build_config_diff(baseline, best, knobs, moves=[])
+
+    assert len(diffs) == len(changed)
+    assert {(d["file"], d["path"]) for d in diffs} == {(k.file, k.display) for k in changed}
+
+
+def test_applying_the_reported_diffs_reproduces_the_scored_config(baseline, knobs):
+    """The property the whole finding is about: hand-applying the table to
+    the checked-in config must land on the configuration that was scored."""
+    changed = knobs[:4]
+    best = copy.deepcopy(baseline)
+    for index, knob in enumerate(changed, start=1):
+        ab.set_at(
+            ab.get_root(best, knob.root),
+            knob.path,
+            ab.get_at(ab.get_root(baseline, knob.root), knob.path) + index,
+        )
+
+    diffs = ab.build_config_diff(baseline, best, knobs, moves=[])
+
+    # Apply the report by path, in the order it is printed.
+    rebuilt = copy.deepcopy(baseline)
+    by_display = {(k.file, k.display): k for k in knobs}
+    for diff in diffs:
+        knob = by_display[(diff["file"], diff["path"])]
+        ab.set_at(ab.get_root(rebuilt, knob.root), knob.path, diff["new_value"])
+
+    for knob in knobs:
+        assert ab.get_at(ab.get_root(rebuilt, knob.root), knob.path) == ab.get_at(
+            ab.get_root(best, knob.root), knob.path
+        )
+
+
+def test_move_history_is_separate_from_the_proposed_diffs(tmp_path):
+    exit_code = ab.main(
+        [
+            "--iterations",
+            "2",
+            "--runs-per-candidate",
+            "3",
+            "--restarts",
+            "0",
+            "--final-runs",
+            "5",
+            "--strategies",
+            "fast_seller",
+            "--output-dir",
+            str(tmp_path),
+        ]
+    )
+    assert exit_code == 0
+
+    payload = json.loads((tmp_path / "proposed_diffs.json").read_text())
+    assert "move_history" in payload
+    # One entry per changed path at most -- never one per accepted move.
+    paths = [(d["file"], d["path"]) for d in payload["diffs"]]
+    assert len(paths) == len(set(paths))
+
+    report = (tmp_path / "report.md").read_text()
+    assert "## Proposed Diffs" in report
+    assert "## Search Diagnostics" in report
+    assert "apply all of it or none of it" in report

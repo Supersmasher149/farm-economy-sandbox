@@ -1755,36 +1755,36 @@
       "contracts_failed": 1,
       "crop_inventory": {},
       "crop_plant_counts": {
-        "greenleaf": 582,
-        "purplehaze": 69,
+        "greenleaf": 584,
+        "purplehaze": 68,
         "quickweed": 85
       },
       "expenses_by_category": {
         "contract_penalties": "0x1.147ae147ae148p+6",
-        "fertilizer": "0x1.02c0000000000p+10",
-        "seeds": "0x1.7980000000000p+13",
+        "fertilizer": "0x1.fe00000000000p+9",
+        "seeds": "0x1.7840000000000p+13",
         "upgrades": "0x1.0400000000000p+9",
-        "watering": "0x1.46e6666666684p+8"
+        "watering": "0x1.4633333333350p+8"
       },
       "highest_money": "0x1.4a69f041a176ap+13",
-      "idle_days": 34,
+      "idle_days": 35,
       "losses_by_cause": {
         "crop_loss_events": 211,
         "rejected_quality_units": 67
       },
       "lowest_money": "0x1.d6daac037ae4cp+0",
-      "money": "0x1.3b0ad965636e8p+13",
+      "money": "0x1.3e2a2bfeeea93p+13",
       "occupied_slot_days": 3881,
       "processing_revenue": "0x0.0p+0",
       "quality_harvested": {
         "premium": 425,
         "processing": 327,
-        "standard": 1193
+        "standard": 1197
       },
       "reputation": "0x1.9000000000000p+6",
       "revenue_by_channel": {
         "contract": "0x1.a3b8000000000p+12",
-        "farm_stand": "0x1.ec0c9ce591b3cp+12",
+        "farm_stand": "0x1.eed00ee574f5dp+12",
         "specialty": "0x1.0e5f1ed127989p+12",
         "spot": "0x1.37bdbffdf10a4p+12",
         "wholesale": "0x1.62912034367ecp+7"
@@ -1796,18 +1796,18 @@
       },
       "slot_days": 3887,
       "total_crops_lost": 227,
-      "total_expenses": "0x1.b67828f5c2975p+13",
-      "total_fertilizer_applied": 69,
-      "total_fertilizer_bought": 69,
-      "total_harvest_events": 725,
-      "total_harvested": 1945,
-      "total_planted": 736,
+      "total_expenses": "0x1.b4ba8f5c28fdbp+13",
+      "total_fertilizer_applied": 68,
+      "total_fertilizer_bought": 68,
+      "total_harvest_events": 726,
+      "total_harvested": 1949,
+      "total_planted": 737,
       "total_processed": 0,
-      "total_revenue": "0x1.783d812d9302fp+14",
-      "total_sold": 1945,
+      "total_revenue": "0x1.78ee5dad8bd37p+14",
+      "total_sold": 1949,
       "total_spoiled": 0,
-      "total_waterings": 934,
-      "trajectory": "a74d06130aafbe0f",
+      "total_waterings": 932,
+      "trajectory": "84de3f7662ce57d7",
       "upgrades_owned": [
         "capacity_1",
         "efficiency_1",

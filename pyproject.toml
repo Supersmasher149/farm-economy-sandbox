@@ -1,15 +1,19 @@
-[project]
-name = "farm-economy-sandbox"
-version = "0.1.0"
-description = "A headless, deterministic farm-economy simulator for balance testing, not a playable game."
-readme = "README.md"
-# 3.12, not 3.11: simulation/crop_growth.py depends on sum() applying Neumaier
-# compensated summation to floats, which CPython only does from 3.12. On 3.11
-# the same seed produces a different run -- verified, it moves 1 of the 44
-# combos in .claude/skills/replay-guard/golden_baseline.json.
-requires-python = ">=3.12"
-license = { text = "MIT" }
-authors = [{ name = "Walter Gibbons" }]
+# farm-economy-sandbox -- tool configuration only.
+#
+# There is deliberately no [project] table and no [build-system]: this repo is
+# run from a checkout, not installed. `main.py` resolves `config/*.json`
+# relative to its own location, and the report/replay-baseline paths are
+# checkout-relative too, so a wheel would install code that cannot find its own
+# data. The PEP 621 metadata that used to sit here declared a name and version
+# but no backend, no package discovery and no package data -- it read as
+# "pip install this" while nothing in CI ever built or installed it.
+#
+# Python 3.12+ is required, and that is a determinism constraint rather than a
+# style preference: simulation/crop_growth.py depends on sum() applying
+# Neumaier compensated summation to floats, which CPython only does from 3.12.
+# On 3.11 the same seed produces a different run -- verified, it moves 1 of the
+# 44 combos in .claude/skills/replay-guard/golden_baseline.json. See README's
+# Requirements section.
 
 [tool.ruff]
 target-version = "py312"

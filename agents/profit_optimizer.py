@@ -29,28 +29,19 @@ class ProfitOptimizer(Agent):
             for c in crops
             if economy_rules.is_crop_unlocked(c, player) and player.money >= c["seed_cost"]
         ]
-        if player.total_days is not None:
-            # Harvest runs before planting each day (see engine.run_day), and
-            # the last day actually processed is total_days - 1 (the
-            # simulation loop runs days 0..total_days-1 inclusive) -- so a
-            # crop planted today is only ever checked for maturity again on
-            # a later day, and only gets harvested if day_planted +
-            # growth_days <= total_days - 1. `growth_days <= total_days -
-            # player.day` was one day too permissive: it let through a crop
-            # whose first eligible harvest day is total_days, one day past
-            # the last day the run ever processes, so it planted and then
-            # sat there forever, unsellable.
-            last_harvestable_growth_days = player.total_days - player.day - 1
-            # Never sink a seed cost into a crop that provably can't mature
-            # (and so can't be sold) before the run ends -- if that empties
-            # the candidate list, leaving the slot idle for the rest of the
-            # run is correct, not a bug to fall back around.
-            candidates = [
-                c
-                for c in candidates
-                if economy_rules.effective_growth_days(c, player, upgrades_by_id)
-                <= last_harvestable_growth_days
-            ]
+        # Never sink a seed cost into a crop that provably can't mature (and
+        # so can't be sold) before the run ends -- if that empties the
+        # candidate list, leaving the slot idle for the rest of the run is
+        # correct, not a bug to fall back around. The boundary itself lives
+        # in economy_rules.matures_within_run, shared with the contract
+        # forecasts and the other agents that need it.
+        candidates = [
+            c
+            for c in candidates
+            if economy_rules.matures_within_run(
+                economy_rules.effective_growth_days(c, player, upgrades_by_id), player
+            )
+        ]
         if not candidates:
             return None
         # `candidates` above already excludes anything unlocked/affordable/

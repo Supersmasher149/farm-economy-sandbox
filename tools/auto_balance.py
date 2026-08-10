@@ -4,12 +4,18 @@ warnings -- coordinate hill-climbing, using the simulator itself as the
 fitness function. No network calls, no LLM, nothing cloud-based.
 
 **Propose-only: this tool never writes to config/*.json.** It searches
-in-memory copies of the loaded config, then writes a ranked report of
-candidate diffs to --output-dir (default reports/auto_balance/) for a human
-to review and hand-apply -- the same human-in-the-loop boundary
-`.claude/skills/balance-check` already keeps for the manual workflow. There
-is no --apply flag; no code path in this file opens a config/*.json file for
-writing.
+in-memory copies of the loaded config, then writes a report to --output-dir
+(default reports/auto_balance/) for a human to review and hand-apply -- the
+same human-in-the-loop boundary `.claude/skills/balance-check` already keeps
+for the manual workflow. There is no --apply flag; no code path in this file
+opens a config/*.json file for writing.
+
+The report's "Proposed Diffs" table is a structural baseline -> final-best
+diff (one final value per path, complete, never truncated), so applying it
+reproduces exactly the configuration that was scored. The accepted-move
+history is a separate diagnostics section: those rows are sequential
+transitions through the search, and reconstructing a config from a sorted,
+truncated subset of them yields something that was never evaluated.
 
 Algorithm: pick a knob (a numeric leaf discovered by walking crops/upgrades/
 world), try current +/- a step, keep the candidate if it improves a
@@ -492,10 +498,56 @@ def _round_val(value):
     return round(value, 6) if isinstance(value, float) else value
 
 
-def build_diffs_payload(
-    args, strategy_names, tuner_seed, baseline_score, best_score, moves, confirmation
-):
-    diffs_all = sorted(
+def build_config_diff(baseline, best, knobs, moves):
+    """The actual baseline -> final-best difference, one entry per changed path.
+
+    NOT the accepted-move list. A hill-climb revisits knobs: the same path
+    can move several times (so the move list holds stale intermediate values
+    for it), and can move back to where it started (so it appears in the move
+    list while the winning config is unchanged there). Sorting those
+    transitions by individual score delta and truncating them, then telling a
+    human to apply the survivors, produced a config that was never evaluated
+    and did not have the reported final score (CQ-05).
+
+    Reading the final config back out per knob has neither failure mode: each
+    path appears at most once, with the value the confirmation run actually
+    scored. Only knobs the search could touch are compared, which is exactly
+    the set `search` can mutate.
+    """
+    moves_per_path: dict[tuple, int] = {}
+    for move in moves:
+        key = (move.knob.root, move.knob.path)
+        moves_per_path[key] = moves_per_path.get(key, 0) + 1
+
+    diffs = []
+    for knob in knobs:
+        old_value = get_at(get_root(baseline, knob.root), knob.path)
+        new_value = get_at(get_root(best, knob.root), knob.path)
+        if old_value == new_value:
+            continue
+        diffs.append(
+            {
+                "file": knob.file,
+                "path": knob.display,
+                "old_value": _round_val(old_value),
+                "new_value": _round_val(new_value),
+                # >1 means the search revisited this knob; the move history
+                # below shows the intermediate steps it took.
+                "moves_applied": moves_per_path.get((knob.root, knob.path), 0),
+            }
+        )
+    diffs.sort(key=lambda d: (d["file"], d["path"]))
+    return diffs
+
+
+def build_move_history(moves, top_n):
+    """Accepted search transitions, ranked by individual score improvement.
+
+    Diagnostics only -- see `build_config_diff` for why this must never be
+    presented as the change set to apply. Truncation is safe here precisely
+    because nothing is meant to be reconstructed from it.
+    """
+    history = sorted(
         (
             {
                 "rank": 0,
@@ -512,9 +564,24 @@ def build_diffs_payload(
         ),
         key=lambda d: d["score_delta"],
     )
-    for rank, d in enumerate(diffs_all, start=1):
-        d["rank"] = rank
+    for rank, entry in enumerate(history, start=1):
+        entry["rank"] = rank
+    return history[:top_n]
 
+
+def build_diffs_payload(
+    args,
+    strategy_names,
+    tuner_seed,
+    baseline_score,
+    best_score,
+    moves,
+    confirmation,
+    baseline,
+    best,
+    knobs,
+):
+    diffs = build_config_diff(baseline, best, knobs, moves)
     return {
         "eval_seed": args.eval_seed,
         "tuner_seed": tuner_seed,
@@ -522,8 +589,11 @@ def build_diffs_payload(
         "strategies": strategy_names,
         "baseline_score": round(baseline_score, 4),
         "final_score": round(best_score, 4),
-        "total_moves": len(diffs_all),
-        "diffs": diffs_all[: args.top_n],
+        "total_moves": len(moves),
+        # Complete and never truncated: this is the config that scored
+        # `final_score`, so applying a subset of it means something else.
+        "diffs": diffs,
+        "move_history": build_move_history(moves, args.top_n),
         "confirmation": confirmation,
     }
 
@@ -546,34 +616,64 @@ def render_report(payload: dict) -> str:
     lines.append(
         f"Search (strategies: {', '.join(payload['strategies'])}, eval_seed "
         f"{payload['eval_seed']}): baseline score {payload['baseline_score']} -> "
-        f"final score {payload['final_score']} "
-        f"(showing {len(payload['diffs'])} of {payload['total_moves']} accepted moves, "
-        "ranked by score improvement)."
+        f"final score {payload['final_score']} over {payload['total_moves']} accepted "
+        f"moves, landing on {len(payload['diffs'])} changed setting(s)."
+    )
+    lines.append("")
+    lines.append(
+        "This is the complete difference between the checked-in config and the "
+        "configuration that scored `final_score` -- one final value per path, in "
+        "file order. It is not a ranked shortlist: **apply all of it or none of "
+        "it**, since a subset is a configuration this search never evaluated."
     )
     lines.append("")
     if payload["diffs"]:
-        lines.append("| rank | file | path | old -> new | score delta |")
-        lines.append("|---|---|---|---|---|")
+        lines.append("| file | path | old -> new | times tuned |")
+        lines.append("|---|---|---|---|")
         for d in payload["diffs"]:
             lines.append(
-                f"| {d['rank']} | {d['file']} | {d['path']} | "
-                f"{d['old_value']} -> {d['new_value']} | {d['score_delta']:+.4f} |"
+                f"| {d['file']} | {d['path']} | "
+                f"{d['old_value']} -> {d['new_value']} | {d['moves_applied']} |"
             )
     else:
         lines.append("No improving moves found within the search budget.")
     lines.append("")
 
+    lines.append("## Search Diagnostics")
+    lines.append(
+        f"The {len(payload['move_history'])} highest-scoring of "
+        f"{payload['total_moves']} accepted moves, as *sequential transitions* "
+        "during the hill climb. A path can appear more than once here, and an "
+        "`old -> new` pair may be an intermediate step the final config has since "
+        "moved past. Use this to see where the score came from -- never as a "
+        "change set to apply; that is the table above."
+    )
+    lines.append("")
+    if payload["move_history"]:
+        lines.append("| rank | iteration | file | path | old -> new | score delta |")
+        lines.append("|---|---|---|---|---|---|")
+        for d in payload["move_history"]:
+            lines.append(
+                f"| {d['rank']} | {d['iteration']} | {d['file']} | {d['path']} | "
+                f"{d['old_value']} -> {d['new_value']} | {d['score_delta']:+.4f} |"
+            )
+    else:
+        lines.append("(no accepted moves)")
+    lines.append("")
+
     lines.append("## How to apply")
     lines.append(
-        "This tool never writes to config/*.json. Copy the accepted old_value -> "
-        "new_value changes above into the corresponding config/*.json file by hand, "
-        "then re-run the balance-check workflow "
+        "This tool never writes to config/*.json. Copy every row of the Proposed "
+        "Diffs table into the corresponding config/*.json file by hand, then "
+        "re-run the balance-check workflow "
         "(`python3 main.py batch --runs 1000 --seed <fixed-seed>`) to confirm the "
         "effect under the standard workflow.\n\n"
         "Apply and re-check any `soil.json` diffs one at a time rather than all "
         "together: `docs/design/2026-08-04-balance-fix-design.md` and "
         "`2026-08-05-soil-regen-and-reserve-fix.md` document that block as "
-        "historically under-constrained, with nonobvious interaction effects."
+        "historically under-constrained, with nonobvious interaction effects. "
+        "Note that partial application means the reported `final_score` no longer "
+        "applies -- re-check whatever subset you land on."
     )
     return "\n".join(lines)
 
@@ -681,7 +781,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--top-n",
         type=int,
         default=15,
-        help="how many ranked diffs to include in the report (default 15)",
+        help=(
+            "how many accepted moves to list in the report's Search Diagnostics "
+            "section (default 15); the Proposed Diffs table is always complete"
+        ),
     )
     return parser
 
@@ -731,7 +834,16 @@ def main(argv=None) -> int:
     confirmation = confirm(best, all_agents, args, thresholds)
 
     payload = build_diffs_payload(
-        args, strategy_names, tuner_seed, baseline_score, best_score, moves, confirmation
+        args,
+        strategy_names,
+        tuner_seed,
+        baseline_score,
+        best_score,
+        moves,
+        confirmation,
+        baseline=baseline,
+        best=best,
+        knobs=knobs,
     )
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -745,8 +857,8 @@ def main(argv=None) -> int:
     print(f"\nWrote {diffs_path}")
     print(f"Wrote {report_path}")
     print(
-        "\nconfig/*.json was not modified -- copy the diffs above by hand, then "
-        "re-run the balance-check workflow to confirm."
+        "\nconfig/*.json was not modified -- hand-apply the full Proposed Diffs "
+        "table from the report, then re-run the balance-check workflow to confirm."
     )
     if confirmation["warnings"]:
         print("\nConfirmation warnings:")

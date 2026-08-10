@@ -1,0 +1,8 @@
+# Charts only (`python3 -m metrics.visualize`). The simulator, the batch
+# runner and the markdown report all run without this -- see README's
+# "no third-party dependencies to run the simulator".
+#
+# A separate file rather than a pyproject extra: this project is run from a
+# checkout, not installed, so an extras group would be a packaging signal
+# with nothing behind it.
+matplotlib==3.11.1

@@ -34,13 +34,22 @@ def isolated(monkeypatch, tmp_path):
 
 
 def _manifest(**overrides):
+    recipe = _compiled.build_recipe()
     manifest = {
         "manifest_version": _compiled.MANIFEST_VERSION,
         "build_tag": _compiled.build_tag(),
+        "build_recipe": recipe,
+        "build_recipe_sha256": _compiled.recipe_hash(recipe),
         "modules": {},
     }
     manifest.update(overrides)
     return manifest
+
+
+def _manifest_with_recipe(**recipe_overrides):
+    """A manifest whose recipe is internally consistent but not this tree's."""
+    recipe = {**_compiled.build_recipe(), **recipe_overrides}
+    return _manifest(build_recipe=recipe, build_recipe_sha256=_compiled.recipe_hash(recipe))
 
 
 def _entry_for(fullname, artifact_name="stub.so"):
@@ -94,6 +103,147 @@ def test_manifest_from_an_older_builder_is_rejected(isolated):
     )
     assert modules == {}
     assert "manifest_version" in problems[0]
+
+
+def test_manifest_missing_entry_keys_falls_back_instead_of_raising(isolated):
+    """A valid JSON file that is not a manifest must take the fallback path.
+
+    This used to raise KeyError straight out of `activate()`, which is not a
+    fallback at all -- it crashed the import of `simulation` itself, so the
+    one guarantee this module makes (you always get *something* that runs)
+    did not hold for a truncated or hand-edited manifest.
+    """
+    modules, problems = _compiled._verify(_manifest(modules={"simulation.markets": {}}))
+
+    assert modules == {}
+    assert sorted(problems) == [
+        "simulation.markets: manifest entry is missing 'artifact'",
+        "simulation.markets: manifest entry is missing 'source'",
+        "simulation.markets: manifest entry is missing 'source_sha256'",
+    ]
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        pytest.param("not a dict at all", id="not-an-object"),
+        pytest.param({"manifest_version": _compiled.MANIFEST_VERSION}, id="missing-everything"),
+    ],
+)
+def test_structurally_broken_manifests_are_rejected(isolated, manifest):
+    modules, problems = _compiled._verify(manifest)
+    assert modules == {}
+    assert problems
+
+
+def test_manifest_entry_of_the_wrong_type_is_rejected(isolated):
+    modules, problems = _compiled._verify(_manifest(modules={"simulation.markets": ["a", "list"]}))
+    assert modules == {}
+    assert "is not a JSON object" in problems[0]
+
+
+def test_bool_does_not_satisfy_an_int_field(isolated):
+    """`True == 1` in Python, and bool is an int subclass; neither should let
+    a garbage manifest through a version check."""
+    modules, problems = _compiled._verify(_manifest(manifest_version=True))
+    assert modules == {}
+    assert "manifest_version" in problems[0]
+
+
+def test_module_the_tree_does_not_compile_is_rejected(isolated):
+    entry = _entry_for("simulation.markets")
+    modules, problems = _compiled._verify(_manifest(modules={"simulation._compiled": entry}))
+    assert modules == {}
+    assert "not a module this tree compiles" in problems[0]
+
+
+def test_entry_pointing_at_another_modules_source_is_rejected(isolated):
+    """The hash check is only meaningful if the path it covers is the right
+    one -- otherwise a manifest can pass by naming a file nobody edited."""
+    entry = _entry_for("simulation.markets")
+    entry["source"] = "simulation/weather.py"
+    entry["source_sha256"] = _compiled.source_hash(_compiled.REPO_ROOT / "simulation/weather.py")
+    (isolated / "stub.so").write_bytes(b"")
+
+    modules, problems = _compiled._verify(_manifest(modules={"simulation.markets": entry}))
+
+    assert modules == {}
+    assert "manifest names source" in problems[0]
+
+
+@pytest.mark.parametrize("artifact", ["../escape.so", "/etc/passwd", ""])
+def test_artifact_path_escaping_the_build_dir_is_rejected(isolated, artifact):
+    entry = _entry_for("simulation.markets", artifact_name=artifact)
+    modules, problems = _compiled._verify(_manifest(modules={"simulation.markets": entry}))
+    assert modules == {}
+    assert "escapes" in problems[0]
+
+
+def test_build_with_different_directives_is_rejected(isolated):
+    """The directives are what make the compiled output bit-exact with the
+    reference implementation. Recording them without checking them is worth
+    nothing -- an artifact built with annotation_typing on would load happily.
+    """
+    recipe = _compiled.build_recipe()
+    recipe["directives"] = {**recipe["directives"], "annotation_typing": "True"}
+    modules, problems = _compiled._verify(
+        _manifest(build_recipe=recipe, build_recipe_sha256=_compiled.recipe_hash(recipe))
+    )
+
+    assert modules == {}
+    assert "different recipe" in problems[0]
+    assert "directives" in problems[0]
+
+
+def test_build_missing_a_required_float_flag_is_rejected(isolated):
+    modules, problems = _compiled._verify(_manifest_with_recipe(required_cflags=["-O2"]))
+    assert modules == {}
+    assert "required_cflags" in problems[0]
+
+
+def test_build_from_a_different_compiler_is_rejected(isolated):
+    modules, problems = _compiled._verify(_manifest_with_recipe(compiler="gcc-14"))
+    assert modules == {}
+    assert "gcc-14" in problems[0]
+
+
+def test_build_from_an_older_recipe_version_is_rejected(isolated):
+    modules, problems = _compiled._verify(
+        _manifest_with_recipe(recipe_version=_compiled.BUILD_RECIPE_VERSION - 1)
+    )
+    assert modules == {}
+    assert "recipe_version" in problems[0]
+
+
+def test_recipe_hash_must_match_its_own_recipe(isolated):
+    """Editing the recipe to match your build does not make the build valid."""
+    modules, problems = _compiled._verify(_manifest(build_recipe_sha256="0" * 64))
+    assert modules == {}
+    assert "does not match its own recorded hash" in problems[0]
+
+
+def test_matching_recipe_is_accepted(isolated):
+    """Guards the tests above: they must fail for the reason stated, not
+    because a correct recipe is rejected too."""
+    (isolated / "stub.so").write_bytes(b"")
+    modules, problems = _compiled._verify(
+        _manifest(modules={"simulation.markets": _entry_for("simulation.markets")})
+    )
+    assert problems == []
+    assert set(modules) == {"simulation.markets"}
+
+
+def test_artifact_dir_honors_the_override(monkeypatch, tmp_path):
+    """tools/build_cython.py verifies a staged build through this path before
+    publishing it, so the override has to actually redirect the loader."""
+    monkeypatch.delenv("FARM_COMPILED_DIR", raising=False)
+    assert _compiled.artifact_dir() == _compiled.BUILD_ROOT / _compiled.build_tag()
+
+    monkeypatch.setenv("FARM_COMPILED_DIR", str(tmp_path))
+    assert _compiled.artifact_dir() == tmp_path
+
+    monkeypatch.setenv("FARM_COMPILED_DIR", "   ")
+    assert _compiled.artifact_dir() == _compiled.BUILD_ROOT / _compiled.build_tag()
 
 
 def test_unset_env_var_does_nothing(isolated, monkeypatch):

@@ -49,8 +49,13 @@ class ProgressionPlayer(Agent):
                 growth_days = economy_rules.effective_growth_days(
                     contracted_crop, player, upgrades_by_id
                 )
+                # `growth_days <= total_days - player.day` was one day too
+                # permissive here (the same #33 boundary ProfitOptimizer
+                # already fixed): the last day the run executes is
+                # total_days - 1, so a crop whose first eligible harvest day
+                # is total_days got planted and then never matured.
                 matures_in_time = growth_days <= days_to_deadline and (
-                    player.total_days is None or growth_days <= player.total_days - player.day
+                    economy_rules.matures_within_run(growth_days, player)
                 )
                 still_short = contracts.forecast_committed_supply(player, active) < active.remaining
                 if matures_in_time and still_short:

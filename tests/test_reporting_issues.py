@@ -1,6 +1,9 @@
 import csv
 import json
 import os
+import pathlib
+import shutil
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -148,33 +151,122 @@ def test_batch_snapshot_and_report_include_resolved_seed(tmp_path, monkeypatch, 
     assert "Base seed: **305419896**" in (tmp_path / "summary_report.md").read_text()
 
 
-def test_report_publication_rolls_back_if_replacement_fails(tmp_path, monkeypatch):
-    staging = tmp_path / "staging"
-    reports = tmp_path / "reports"
+# --- CQ-07: artifacts are published as one immutable set -------------------
+#
+# Publication used to be three independent os.replace calls into reports/,
+# so a reader could pair a CSV from one batch with a summary from another,
+# and two concurrent batches could interleave their replacements and
+# rollbacks. It is now one atomic rename of a run directory followed by one
+# atomic symlink swap, under an inter-process lock.
+
+
+def _stage(tmp_path, label):
+    """Build a staging directory holding one batch's three artifacts."""
+    staging = tmp_path / f".batch-{label}"
     staging.mkdir()
+    for name in main.ARTIFACT_NAMES:
+        (staging / name).write_text(f"{label} {name}")
+    return staging
+
+
+def _publish(tmp_path, reports, label):
+    return main._publish_report_artifacts(str(_stage(tmp_path, label)), str(reports))
+
+
+def _read_all(reports):
+    return {name: (reports / name).read_text() for name in main.ARTIFACT_NAMES}
+
+
+def test_publication_exposes_one_consistent_artifact_set(tmp_path):
+    reports = tmp_path / "reports"
     reports.mkdir()
-    names = ("run_results.csv", "config_snapshot.json", "summary_report.md")
-    for name in names:
-        (staging / name).write_text(f"new {name}")
-        (reports / name).write_text(f"old {name}")
+
+    _publish(tmp_path, reports, "first")
+    assert _read_all(reports) == {name: f"first {name}" for name in main.ARTIFACT_NAMES}
+
+    _publish(tmp_path, reports, "second")
+    assert _read_all(reports) == {name: f"second {name}" for name in main.ARTIFACT_NAMES}
+
+    # The familiar paths are stable pointers through `latest`, so a single
+    # symlink swap moves all three together.
+    for name in main.ARTIFACT_NAMES:
+        link = reports / name
+        assert link.is_symlink()
+        assert os.readlink(link) == os.path.join(main.LATEST_LINK, name)
+
+
+def test_a_reader_holding_an_earlier_run_still_sees_that_whole_run(tmp_path):
+    """Published run directories are immutable, so resolving `latest` once
+    gives a snapshot that a later batch cannot partially overwrite."""
+    reports = tmp_path / "reports"
+    reports.mkdir()
+
+    first_run = _publish(tmp_path, reports, "first")
+    snapshot = os.path.realpath(reports / main.LATEST_LINK)
+
+    _publish(tmp_path, reports, "second")
+
+    assert snapshot == os.path.realpath(first_run)
+    for name in main.ARTIFACT_NAMES:
+        assert (pathlib.Path(snapshot) / name).read_text() == f"first {name}"
+
+
+def test_publication_failure_leaves_the_previous_run_published(tmp_path, monkeypatch):
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    _publish(tmp_path, reports, "first")
 
     original_replace = os.replace
-    failed = False
 
-    def fail_config_replacement(source, destination):
-        nonlocal failed
-        if os.path.basename(destination) == "config_snapshot.json" and not failed:
-            failed = True
+    def fail_pointer_swap(source, destination):
+        if os.path.basename(destination) == main.LATEST_LINK:
             raise OSError("injected publication failure")
         original_replace(source, destination)
 
-    monkeypatch.setattr(main.os, "replace", fail_config_replacement)
+    monkeypatch.setattr(main.os, "replace", fail_pointer_swap)
 
     with pytest.raises(OSError, match="injected publication failure"):
-        main._publish_report_artifacts(str(staging), str(reports))
+        _publish(tmp_path, reports, "second")
 
-    for name in names:
-        assert (reports / name).read_text() == f"old {name}"
+    monkeypatch.undo()
+    assert _read_all(reports) == {name: f"first {name}" for name in main.ARTIFACT_NAMES}
+    # The half-published run directory is not left lying around.
+    assert [d.name for d in (reports / main.RUNS_DIRNAME).iterdir()] == [
+        os.path.basename(os.path.realpath(reports / main.LATEST_LINK))
+    ]
+
+
+def test_old_run_directories_are_swept_but_the_live_one_is_kept(tmp_path):
+    reports = tmp_path / "reports"
+    reports.mkdir()
+
+    for index in range(main.RUNS_RETAINED + 3):
+        _publish(tmp_path, reports, f"run{index:03d}")
+
+    remaining = sorted(d.name for d in (reports / main.RUNS_DIRNAME).iterdir())
+    assert len(remaining) == main.RUNS_RETAINED
+    assert os.path.basename(os.path.realpath(reports / main.LATEST_LINK)) in remaining
+    assert _read_all(reports) == {
+        name: f"run{main.RUNS_RETAINED + 2:03d} {name}" for name in main.ARTIFACT_NAMES
+    }
+
+
+def test_stale_staging_directories_are_swept_and_fresh_ones_are_not(tmp_path):
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    stale = _stage(tmp_path / "..", "stale")  # placed below, then moved in
+    stale_dir = reports / f"{main.STAGING_PREFIX}stale"
+    fresh_dir = reports / f"{main.STAGING_PREFIX}fresh"
+    shutil.move(str(stale), str(stale_dir))
+    fresh_dir.mkdir()
+
+    old = time.time() - (main.STALE_STAGING_SECONDS + 60)
+    os.utime(stale_dir, (old, old))
+
+    main._sweep_stale_staging(str(reports))
+
+    assert not stale_dir.exists(), "an abandoned staging directory should be reclaimed"
+    assert fresh_dir.exists(), "a batch may still be writing into a recent staging directory"
 
 
 def test_worker_error_includes_strategy_and_seed(monkeypatch):

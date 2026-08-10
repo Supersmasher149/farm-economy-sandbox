@@ -80,9 +80,17 @@ python3 tools/auto_balance.py --iterations 40 --seed 42
 economics audit, automated balance warnings). Pass `--seed` to make an entire
 batch — including every agent's per-run seeds — reproducible, useful for
 A/B-testing a config or code change under identical simulated conditions.
-Report artifacts are published atomically (staged in a temp dir, then
-swapped in together, restoring the previous files if anything fails
-partway — see `_publish_report_artifacts` in `main.py`).
+Report artifacts are published atomically as a **set**, via a single pointer
+switch (`_publish_report_artifacts` in `main.py`): a batch stages into
+`reports/.batch-*/`, that directory is renamed to `reports/runs/<id>/` (one
+atomic rename), and `reports/latest` is repointed at it (one atomic symlink
+swap) under an inter-process lock. The three familiar paths above are stable
+symlinks through `latest`, so that one swap moves all three together — a
+reader can never pair a CSV from one batch with a summary from another.
+Published run directories are immutable and the last `RUNS_RETAINED` are
+kept, so resolving `reports/latest` once gives a consistent snapshot even
+while a later batch publishes. Three independent `os.replace` calls, which
+this replaced, could not offer that.
 
 `runner/progress.py` renders the batch progress line. It wraps the
 `run_batch` result stream as a lazy pass-through (counting only, stderr
@@ -115,13 +123,23 @@ with `_fastplot` built on both sides. Scope matters: five glue modules alone
 measured only 1.122x, the whole `simulation/` package 1.157x, and
 `simulation/` + `agents/` 1.174x. Zero source changes; the `.py` files stay
 the reference. Two things make it safe and neither is optional — the Cython
-directives in that script's docstring (with `annotation_typing` left at its
-`True` default it silently coerces this codebase's `float` annotations to C
-doubles) and the opt-in, out-of-tree loading in `simulation/_compiled.py`.
+directives (with `annotation_typing` left at its `True` default it silently
+coerces this codebase's `float` annotations to C doubles) and the opt-in,
+out-of-tree loading in `simulation/_compiled.py`. Both the directives and the
+float-critical compiler flags are **defined in `simulation/_compiled.py`**,
+hashed into the manifest as a build recipe, and recomputed at load time, so an
+artifact built with different ones is rejected rather than trusted — put new
+build knobs there, not in `tools/`, or they will not be verified.
 **Never build Cython output in place**: an extension module beside its own
 `.py` shadows it silently, edits stop taking effect, and it defeats the
 manifest's staleness check. `_compiled.in_tree_artifacts()` warns about this
 at import and `tests/test_compiled_shim.py` fails on it.
+
+Both accelerator builds are **transactional** — stage, verify by loading the
+result in a subprocess, then swap — so an interrupted build cannot leave a
+half-written artifact where the previous working one was. `FARM_COMPILED_DIR`
+exists for that pre-publish verification step (it points the loader at a
+staged directory); production leaves it unset.
 
 **Worker count: leave the default alone.** `batch` defaults to
 `os.cpu_count()` (`runner/batch_run.py`). Oversubscribing past the core count

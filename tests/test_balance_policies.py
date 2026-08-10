@@ -154,47 +154,94 @@ def test_full_world_optimizer_diversifies_without_trailing_fast_seller():
     # actively producing for slower, non-Quickweed crops now; zero was never
     # really guaranteed once real commitments across longer growth cycles are
     # in play.
-    assert optimizer["avg_contracts_failed"] <= 1.0
+    #
+    # The bound was 1.0 when this test was written, against the pre-71e1b78
+    # economics. That balance pass raised risk/reward across the board and cut
+    # starting cash, so the optimizer now commits to more contracts on thinner
+    # margins and misses more of them: this fixed seed/sample measures 1.79.
+    # Raised to 2.0 to leave headroom over the measured value without letting a
+    # genuine regression (a doubling, say) through unnoticed.
+    assert optimizer["avg_contracts_failed"] <= 2.0
+
+
+def _run_long_horizon(agent_cls):
+    """One 2,000-day run at seed 42 under the shipped config."""
+    crops, upgrades, config, world = load_config()
+    long_config = dict(config, days=2000)
+    player, _seed, _history = run_single(
+        long_config,
+        agent_cls(),
+        crops,
+        upgrades,
+        world["watering"],
+        world["fertilizer"],
+        seed=42,
+        world=world,
+    )
+    return player, config
 
 
 def test_long_horizon_disciplined_strategies_are_self_sustaining():
-    """At a 2,000-day horizon (~5.5x the 365-day default), a competently
-    managed strategy should not be guaranteed to go bankrupt.
+    """At a 2,000-day horizon (~5.5x the 365-day default), *disciplined* play
+    should not be guaranteed to go bankrupt.
 
-    See docs/design/2026-08-05-soil-regen-and-reserve-fix.md for
-    the full day-by-day diagnosis: `soil_health`, `pest_pressure` and
-    `disease_pressure` (alongside nitrogen/phosphorus/potassium, fixed in an
-    earlier pass) previously only recovered when a plot sat completely
-    fallow -- which no shipped strategy ever does -- so all four
-    monotonically marched to their worst value and eventually bankrupted
-    every strategy regardless of skill, including `FastSeller`'s permanent
-    single-crop monoculture (the worst case for the same-family replant
-    penalty, which never lifts). Regenerating all of them a small amount
-    every day, planted or not (`config/soil.json`'s `regen_per_day`, applied
-    in `simulation/weather.apply_weather`), fixes that -- fallow plots still
-    recover faster on top, so deliberate rest/rotation keeps paying off, it's
-    just no longer the only way to avoid guaranteed collapse. This pins the
-    validated 2,000-day outcome (`FastSeller` ends near $4,400,
-    `ProfitOptimizer` near $69,700, at seed 42) so it can't silently regress;
-    it does not re-assert those exact figures, since the goal is "does not
-    go bankrupt and ends up ahead," not bit-for-bit reproduction of one seed.
+    See docs/design/2026-08-05-soil-regen-and-reserve-fix.md for the full
+    day-by-day diagnosis of what this originally caught: `soil_health`,
+    `pest_pressure` and `disease_pressure` (alongside nitrogen/phosphorus/
+    potassium, fixed in an earlier pass) previously only recovered when a plot
+    sat completely fallow -- which no shipped strategy ever does -- so all four
+    monotonically marched to their worst value and eventually bankrupted every
+    strategy regardless of skill. Regenerating all of them a small amount every
+    day, planted or not (`config/soil.json`'s `regen_per_day`, applied in
+    `simulation/weather.apply_weather`), fixes that; fallow plots still recover
+    faster on top, so deliberate rest/rotation keeps paying off, it's just no
+    longer the only way to avoid guaranteed collapse.
+
+    **Scope changed in the 71e1b78 balance pass.** That pass raised risk/reward
+    and cut starting cash, and the ~$4,400 / ~$69,700 figures this docstring
+    used to cite are pre-tuning and no longer hold. `FastSeller` -- a permanent
+    Quickweed monoculture that reinvests everything and holds no reserve -- is
+    no longer expected to survive, and is asserted separately in
+    `test_long_horizon_naive_monoculture_goes_bankrupt`. What survival is meant
+    to prove is that skill, not luck, is what carries a farm across a long
+    horizon, so the strategies pinned here are the two that actually manage
+    cash: `ProfitOptimizer` and `ProgressionPlayer`. Neither exact figure is
+    re-asserted -- the goal is "does not go bankrupt and ends up well ahead,"
+    not bit-for-bit reproduction of one seed, which is the replay guard's job.
     """
-    crops, upgrades, config, world = load_config()
-    long_config = dict(config, days=2000)
-    for agent_cls in (FastSeller, ProfitOptimizer):
-        player, _seed, _history = run_single(
-            long_config,
-            agent_cls(),
-            crops,
-            upgrades,
-            world["watering"],
-            world["fertilizer"],
-            seed=42,
-            world=world,
-        )
+    for agent_cls in (ProfitOptimizer, ProgressionPlayer):
+        player, config = _run_long_horizon(agent_cls)
         assert not player.bankrupt, (
             f"{agent_cls.name} unexpectedly went bankrupt over a 2,000-day run"
         )
-        assert player.money > config["start_money"], (
-            f"{agent_cls.name} survived but did not grow its starting ${config['start_money']}"
+        # Not merely "> start_money": at these economics both strategies clear
+        # five figures, so a bare survival bound would pass on a farm that had
+        # quietly stopped compounding.
+        assert player.money > 100 * config["start_money"], (
+            f"{agent_cls.name} survived 2,000 days but only reached ${player.money:.2f} "
+            f"from ${config['start_money']}"
         )
+
+
+def test_long_horizon_naive_monoculture_goes_bankrupt():
+    """The counterpart to the test above: naive play is *supposed* to fail.
+
+    `FastSeller` exists to probe whether rapid reinvestment into the shortest-
+    growth crop dominates. Post-71e1b78 it does not -- with no operating
+    reserve and a permanent same-family replant penalty it runs out of cash
+    almost immediately. Pinning that outcome rather than merely tolerating it
+    means a config change that accidentally makes naive monoculture viable
+    again shows up here instead of quietly passing.
+
+    The death is currently very early (day 19 of 2,000, ending at $1.56 at
+    seed 42). The bound below is deliberately loose -- the point is "dies well
+    inside a normal 365-day run", not the exact day.
+    """
+    player, _config = _run_long_horizon(FastSeller)
+
+    assert player.bankrupt, "FastSeller unexpectedly survived a 2,000-day run"
+    assert player.bankruptcy_day is not None
+    assert player.bankruptcy_day < 365, (
+        f"FastSeller survived to day {player.bankruptcy_day}, past a full default-length run; "
+        "naive monoculture may have become viable again"
+    )

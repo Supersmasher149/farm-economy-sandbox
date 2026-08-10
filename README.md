@@ -22,8 +22,19 @@ the exact same day-by-day outcome.
   the same seed produces a measurably different run.
 - `pytest` and `ruff` for the test suite and lint checks:
   `pip install -r requirements-dev.txt`
+- `matplotlib`, only for the optional charts:
+  `pip install -r requirements-viz.txt`, then `python3 -m metrics.visualize`
+  to render `reports/charts/*.png` from the last batch. The markdown report
+  and every balance warning are produced without it.
 
 No third-party dependencies are required to run the simulator itself.
+
+**Run it from a checkout — there is nothing to install.** `main.py` resolves
+`config/*.json`, `reports/`, and the replay baseline relative to the checkout,
+so `git clone` and `python3 main.py …` is the whole setup. `pyproject.toml`
+carries tool configuration only, deliberately: it declares no package and no
+build backend, because a wheel would install code that could not find its own
+data.
 
 ### Optional: the C accelerator
 
@@ -59,8 +70,15 @@ It is **opt-in**: without `FARM_COMPILED` set, nothing loads it and you get
 the pure-Python modules. Artifacts live under `build/compiled/<tag>/`, never
 beside the sources, and the build records a SHA-256 of every source file — so
 editing a `.py` without rebuilding falls back with a warning naming the module
-rather than silently running stale code. `FARM_COMPILED=strict` turns that
-fallback into an error, which is what CI uses.
+rather than silently running stale code. The manifest also records a hash of
+the *build recipe* (Cython directives, the float-critical compiler flags, the
+compiler itself), which is recomputed at load time, so artifacts built some
+other way are rejected the same way stale ones are. `FARM_COMPILED=strict`
+turns either fallback into an error, which is what CI uses.
+
+Both builders are transactional: they compile into a staging path, load the
+result and check it, and only then swap it into place. A failed or interrupted
+build leaves whatever you had before working.
 
 The source files remain the reference implementation, and the same golden
 replay baseline is asserted against both builds, so no combination of
@@ -88,6 +106,11 @@ python3 main.py batch --runs 100 --days 30 --start-money 300
 - `config_snapshot.json` -- the exact config the batch ran with
 - `summary_report.md` -- per-strategy stats, cash-flow diagnostics, economics
   audit, and automated balance warnings
+
+Each of those three is a symlink through `reports/latest` into an immutable
+`reports/runs/<id>/` directory holding one batch's output. Publishing a new
+batch swaps that single `latest` pointer, so the three artifacts always come
+from the same run, and the last few runs stay on disk for comparison.
 
 Pass `--seed` to `batch` to make an entire batch (including every agent's
 per-run seeds) reproducible, which is useful for A/B-testing a config or

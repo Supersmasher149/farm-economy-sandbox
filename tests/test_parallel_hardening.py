@@ -28,6 +28,7 @@ import sys
 import pytest
 
 from main import AGENT_REGISTRY
+from runner import batch_run
 from runner.batch_run import run_batch
 from runner.single_run import run_single
 from simulation import derived
@@ -197,6 +198,33 @@ def test_sequential_and_parallel_agree_for_a_stateful_agent():
     sequential = _batch([_PlantsOnceAgent()], workers=1, num_runs=4)
     parallel = _batch([_PlantsOnceAgent()], workers=3, num_runs=4)
     assert sequential == parallel
+
+
+def test_stateful_agent_is_isolated_when_a_chunk_carries_several_jobs():
+    """The case the test above cannot reach (CQ-06).
+
+    `ProcessPoolExecutor.map` pickles a whole chunk as one message, so
+    repeated references to a single agent within one chunk are restored in
+    the worker as one shared object -- consecutive jobs in that chunk then
+    mutate and reuse it. Every existing stateful-agent test runs a workload
+    small enough that `chunksize` stays 1, where each job is pickled
+    separately and the bug is invisible.
+    """
+    workers, num_runs = 2, 16
+    assert batch_run.chunk_size(num_runs, workers) > 1, (
+        "workload no longer produces chunksize > 1; this test would silently stop "
+        "covering shared-agent reuse"
+    )
+
+    parallel = _batch([_PlantsOnceAgent()], workers=workers, num_runs=num_runs)
+
+    # With one agent shared across a chunk, only the first job in each chunk
+    # would ever see already_planted == False.
+    planted_counts = [row[4] for row in parallel]
+    assert all(count >= 1 for count in planted_counts), (
+        f"jobs sharing a chunk reused one agent instance, got {planted_counts}"
+    )
+    assert parallel == _batch([_PlantsOnceAgent()], workers=1, num_runs=num_runs)
 
 
 # --- worker-count invariance ----------------------------------------------

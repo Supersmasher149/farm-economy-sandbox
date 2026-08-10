@@ -411,6 +411,20 @@ def chart_contract_completion_rate(plt, grouped, out_dir, dpi):
     return _save(fig, out_dir, "contract_completion_rate.png", dpi)
 
 
+def _watering_loss_points(rows):
+    """(x, y) pairs for runs where both rates are defined.
+
+    Both are legitimately None: `crop_loss_rate` when nothing matured (no
+    denominator), `occupied_watering_rate` when no slot was ever occupied.
+    Neither is 0% -- a run that never harvested did not lose 0% of its crop,
+    it has no loss rate at all -- so those runs are dropped rather than
+    plotted at the origin, where they would read as flawless play. Short runs
+    and strategies that bankrupt on day one produce them in quantity.
+    """
+    points = [(r["occupied_watering_rate"], r["crop_loss_rate"]) for r in rows]
+    return [(x, y) for x, y in points if x is not None and y is not None]
+
+
 def chart_watering_vs_crop_loss(plt, grouped, out_dir, dpi):
     """Small multiples: watering coverage vs. crop loss rate, one scatter
     panel per strategy, each run as a point. Eleven strategies is too many
@@ -418,24 +432,32 @@ def chart_watering_vs_crop_loss(plt, grouped, out_dir, dpi):
     validated categorical palette caps identity at 8, fewer still once
     points overlap across all pairs), so this facets by strategy on a
     single shared hue instead of color-coding by strategy.
+
+    The x axis is `occupied_watering_rate`, not `watering_rate`: watering an
+    empty plot is not a choice the agent gets to make, so coverage of *plot-
+    days that had something growing* is the only version of this number that
+    relates to crop loss at all. The two fields differ by however much of the
+    farm sat idle.
     """
     order = sorted(grouped)
     n = len(order)
     cols = min(4, n)
     rows_n = -(-n // cols)
 
-    all_watering = [r["watering_rate"] for rows in grouped.values() for r in rows]
-    all_loss = [r["crop_loss_rate"] for rows in grouped.values() for r in rows]
-    xlim = (0, max(all_watering) * 1.05 + 1)
-    ylim = (0, max(all_loss) * 1.05 + 1)
+    points_by_strategy = {s: _watering_loss_points(grouped[s]) for s in order}
+    all_points = [p for points in points_by_strategy.values() for p in points]
+    # Every run may be undefined (a batch where nothing ever matured), so the
+    # limits need a fallback -- max() of an empty sequence raises.
+    xlim = (0, max((x for x, _ in all_points), default=0) * 1.05 + 1)
+    ylim = (0, max((y for _, y in all_points), default=0) * 1.05 + 1)
 
     fig, axes = plt.subplots(rows_n, cols, figsize=(3.1 * cols, 2.6 * rows_n), squeeze=False)
     for i, s in enumerate(order):
         ax = axes[i // cols][i % cols]
-        rows = grouped[s]
+        points = points_by_strategy[s]
         ax.scatter(
-            [r["watering_rate"] for r in rows],
-            [r["crop_loss_rate"] for r in rows],
+            [x for x, _ in points],
+            [y for _, y in points],
             s=18,
             color=SEQUENTIAL_BLUE,
             alpha=0.5,
@@ -447,6 +469,19 @@ def chart_watering_vs_crop_loss(plt, grouped, out_dir, dpi):
         ax.set_ylim(*ylim)
         _style_axes(ax, horizontal_grid=False)
         ax.tick_params(labelsize=7)
+        if not points:
+            # An empty panel is indistinguishable from a strategy that scored
+            # zero on both axes. Say which it is.
+            ax.text(
+                0.5,
+                0.5,
+                "no run harvested",
+                transform=ax.transAxes,
+                ha="center",
+                va="center",
+                fontsize=8,
+                color=INK_MUTED,
+            )
     for i in range(n, rows_n * cols):
         axes[i // cols][i % cols].set_visible(False)
 
