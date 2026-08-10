@@ -141,7 +141,15 @@ def test_batch_snapshot_and_report_include_resolved_seed(tmp_path, monkeypatch, 
     )
 
     main.cmd_batch(
-        SimpleNamespace(runs=1, seed=None, workers=1, days=None, start_money=None, progress=False)
+        SimpleNamespace(
+            runs=1,
+            seed=None,
+            workers=1,
+            days=None,
+            start_money=None,
+            progress=False,
+            charts=False,
+        )
     )
     capsys.readouterr()
 

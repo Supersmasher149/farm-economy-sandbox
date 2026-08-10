@@ -41,6 +41,17 @@ python3 main.py batch --runs 1000 --workers 14
 python3 main.py batch --runs 1000 --progress
 python3 main.py batch --runs 1000 --no-progress
 
+# batch also renders reports/dashboard.html (needs matplotlib, see
+# requirements-viz.txt) by default; skip it for a faster/dependency-free run
+python3 main.py batch --runs 1000 --no-charts
+
+# Quick strategy-comparison table for the latest batch, in the terminal --
+# no third-party deps, reads reports/summary.json
+python3 main.py view
+python3 main.py view --sort bankruptcy_rate --top 5
+python3 main.py view --diff latest-1 latest    # what changed since the last batch
+python3 main.py view --list                    # published runs available to reference
+
 # Full test suite
 python3 -m pytest
 
@@ -75,22 +86,39 @@ python3 tools/sample_profile.py --runs 200
 python3 tools/auto_balance.py --iterations 40 --seed 42
 ```
 
-`batch` writes `reports/run_results.csv`, `reports/config_snapshot.json`, and
+`batch` writes `reports/run_results.csv`, `reports/config_snapshot.json`,
 `reports/summary_report.md` (per-strategy stats, cash-flow diagnostics,
-economics audit, automated balance warnings). Pass `--seed` to make an entire
-batch — including every agent's per-run seeds — reproducible, useful for
-A/B-testing a config or code change under identical simulated conditions.
+economics audit, automated balance warnings), `reports/summary.json` (the
+same per-strategy stats, machine-readable — what `main.py view` reads, so
+there is exactly one source of truth for a number's value independent of how
+it gets displayed), and `reports/dashboard.html` (every chart from
+`metrics.visualize`, bundled into one self-contained page via
+`metrics/dashboard.py`; a short placeholder page if matplotlib isn't
+installed or `--no-charts` was passed, so the artifact always exists and is
+never a broken symlink). Pass `--seed` to make an entire batch — including
+every agent's per-run seeds — reproducible, useful for A/B-testing a config
+or code change under identical simulated conditions.
 Report artifacts are published atomically as a **set**, via a single pointer
 switch (`_publish_report_artifacts` in `main.py`): a batch stages into
 `reports/.batch-*/`, that directory is renamed to `reports/runs/<id>/` (one
 atomic rename), and `reports/latest` is repointed at it (one atomic symlink
-swap) under an inter-process lock. The three familiar paths above are stable
-symlinks through `latest`, so that one swap moves all three together — a
+swap) under an inter-process lock. The five familiar paths above are stable
+symlinks through `latest`, so that one swap moves all five together — a
 reader can never pair a CSV from one batch with a summary from another.
 Published run directories are immutable and the last `RUNS_RETAINED` are
 kept, so resolving `reports/latest` once gives a consistent snapshot even
-while a later batch publishes. Three independent `os.replace` calls, which
-this replaced, could not offer that.
+while a later batch publishes, and `main.py view --run <id>` /
+`--diff <a> <b>` can reference any of the retained ones by id or by
+`latest-N`. Three independent `os.replace` calls, which this replaced, could
+not offer that.
+
+`metrics/view.py` is the stdlib-only counterpart to `summary_report.md`: it
+reads `summary.json` (never the CSV or the markdown — one source of truth)
+and renders a sortable/filterable table or a before/after diff between two
+published runs, entirely in the terminal. It has no third-party
+dependencies, matching the rest of the simulator; `metrics/dashboard.py`
+(the chart bundling) is the one piece of the reporting path that still needs
+matplotlib, same as `metrics/visualize.py` always has.
 
 `runner/progress.py` renders the batch progress line. It wraps the
 `run_batch` result stream as a lazy pass-through (counting only, stderr
@@ -251,11 +279,15 @@ eyeballing every strategy's numbers.
 ## Balance-testing workflow
 
 1. `python3 main.py batch --runs 1000 --seed <fixed-seed>`
-2. Read `reports/summary_report.md`, starting with `## Warnings`.
+2. Read `reports/summary_report.md`, starting with `## Warnings` — or
+   `python3 main.py view` for the same warnings plus a sortable table,
+   without scrolling a ~500-line report.
 3. Adjust `config/*.json` (or fix the agent, if a warning traces back to its
    decision logic contradicting its own documented behavior).
 4. Re-run with the **same seed** to isolate the effect of the change from
-   run-to-run noise, then drop `--seed` for the final report.
+   run-to-run noise — `python3 main.py view --diff latest-1 latest` shows
+   exactly what moved, per strategy per field, sorted by size of change —
+   then drop `--seed` for the final report.
 
 `tools/auto_balance.py` automates the search step of this workflow (step 3)
 by hill-climbing over config knobs locally, but keeps the same human-in-

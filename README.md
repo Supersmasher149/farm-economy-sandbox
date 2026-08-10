@@ -22,10 +22,13 @@ the exact same day-by-day outcome.
   the same seed produces a measurably different run.
 - `pytest` and `ruff` for the test suite and lint checks:
   `pip install -r requirements-dev.txt`
-- `matplotlib`, only for the optional charts:
-  `pip install -r requirements-viz.txt`, then `python3 -m metrics.visualize`
-  to render `reports/charts/*.png` from the last batch. The markdown report
-  and every balance warning are produced without it.
+- `matplotlib`, only for charts: `pip install -r requirements-viz.txt`.
+  `batch` renders `reports/dashboard.html` (every chart, embedded in one
+  self-contained page) automatically when it's installed, and writes a
+  placeholder page explaining how to get it when it isn't. The markdown
+  report, `reports/summary.json`, and every balance warning are produced
+  without it either way. `python3 -m metrics.visualize` still works
+  standalone if you just want `reports/charts/*.png`.
 
 No third-party dependencies are required to run the simulator itself.
 
@@ -98,6 +101,9 @@ python3 main.py batch --runs 1000
 
 # Run a short/high-cash diagnostic scenario without editing config files
 python3 main.py batch --runs 100 --days 30 --start-money 300
+
+# Quick strategy-comparison table from the last batch, in the terminal
+python3 main.py view --sort bankruptcy_rate --top 5
 ```
 
 `batch` writes to `reports/`:
@@ -106,11 +112,21 @@ python3 main.py batch --runs 100 --days 30 --start-money 300
 - `config_snapshot.json` -- the exact config the batch ran with
 - `summary_report.md` -- per-strategy stats, cash-flow diagnostics, economics
   audit, and automated balance warnings
+- `summary.json` -- the same per-strategy stats, machine-readable; what
+  `python3 main.py view` reads
+- `dashboard.html` -- every chart from `metrics.visualize`, bundled into one
+  self-contained page (needs matplotlib; skipped with `--no-charts`)
 
-Each of those three is a symlink through `reports/latest` into an immutable
+Each of those five is a symlink through `reports/latest` into an immutable
 `reports/runs/<id>/` directory holding one batch's output. Publishing a new
-batch swaps that single `latest` pointer, so the three artifacts always come
+batch swaps that single `latest` pointer, so the five artifacts always come
 from the same run, and the last few runs stay on disk for comparison.
+
+`python3 main.py view` reads that comparison table straight from the
+terminal -- sort/filter/pick columns, or `--diff latest-1 latest` to see what
+changed since the previous batch (see the balance-testing workflow below).
+`--list` shows which published runs are available to reference. It's a quick
+glance, not a replacement for `summary_report.md`'s full detail.
 
 Pass `--seed` to `batch` to make an entire batch (including every agent's
 per-run seeds) reproducible, which is useful for A/B-testing a config or
@@ -142,12 +158,13 @@ recorded in the config snapshot and report.
 ## Project layout
 
 ```
-main.py                 CLI entry point (single / replay / batch)
+main.py                 CLI entry point (single / replay / batch / view)
 config/                 All tunable game data (crops, upgrades, markets, ...)
 simulation/             Pure rules + the deterministic daily engine
 agents/                 Scripted strategies used as balance-testing probes
 runner/                 Drives one run / a batch of runs
-metrics/                Aggregation, warnings, CSV + Markdown reporting
+metrics/                Aggregation, warnings, CSV + Markdown + JSON reporting,
+                        the `view` table/diff renderer, and the HTML dashboard
 tests/                  pytest suite for the simulation and engine
 docs/design/            Design notes for the simulation architecture
 ```
@@ -212,12 +229,14 @@ ruff format --check
 
 1. `python3 main.py batch --runs 1000 --seed <fixed-seed>`
 2. Read `reports/summary_report.md`, starting with the `## Warnings`
-   section.
+   section -- or `python3 main.py view` for the same warnings plus a quick
+   comparison table, without scrolling.
 3. Adjust `config/*.json` (or, if a warning traces back to an agent's
    decision logic contradicting its own documented behavior, fix the
    agent).
 4. Re-run with the **same seed** to isolate the effect of the change from
-   run-to-run noise, then drop `--seed` for the final report.
+   run-to-run noise, then check `python3 main.py view --diff latest-1 latest`
+   to see exactly what moved before dropping `--seed` for the final report.
 
 ### Example output
 

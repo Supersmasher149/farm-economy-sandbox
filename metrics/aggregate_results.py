@@ -126,6 +126,7 @@ _SIMPLE_MEAN_FIELDS = (
     ("gross_profit", "gross_profit"),
     ("operating_profit", "operating_profit"),
     ("net_cash_change", "net_cash_change"),
+    ("avg_profit_per_day", "avg_profit_per_day"),
 )
 
 # Mean fields that are conditional (only some runs contribute) and so need
@@ -307,6 +308,10 @@ class _StrategyAccumulator:
             "avg_gross_profit": _round_or_none(means["gross_profit"].mean()),
             "avg_operating_profit": _round_or_none(means["operating_profit"].mean()),
             "avg_net_cash_change": _round_or_none(means["net_cash_change"].mean()),
+            # Mean of each run's own avg_profit_per_day (net_profit /
+            # that run's days_simulated) -- not avg_net_cash_change / config
+            # days, which would understate bankrupt runs that ended early.
+            "avg_profit_per_day": _round_or_none(means["avg_profit_per_day"].mean()),
             "avg_expenses_by_category": {
                 key: round(value / self.count, 2) for key, value in self.expense_totals.items()
             },

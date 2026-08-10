@@ -5,6 +5,7 @@ Examples:
     python main.py single --strategy profit_optimizer --seed 42 --verbose
     python main.py batch --runs 1000
     python main.py replay --strategy fast_seller --seed 123456789
+    python main.py view --sort bankruptcy_rate --top 5
 """
 
 import argparse
@@ -16,6 +17,7 @@ import shutil
 import tempfile
 import textwrap
 import time
+import webbrowser
 
 from agents.diversifier import Diversifier
 from agents.fast_seller import FastSeller
@@ -28,7 +30,9 @@ from agents.random_agent import RandomAgent
 from agents.reckless_spender import RecklessSpender
 from agents.risk_averse_grower import RiskAverseGrower
 from agents.upgrade_rusher import UpgradeRusher
+from metrics import view
 from metrics.aggregate_results import BatchAggregator
+from metrics.dashboard import render_dashboard_html, write_no_charts_placeholder
 from metrics.economics_audit import build_economics_audit
 from metrics.report import generate_markdown_report
 from metrics.run_results import write_csv
@@ -251,6 +255,35 @@ def cmd_batch(args):
         with open(staged_snapshot_path, "w") as f:
             json.dump(snapshot, f, indent=2)
 
+        # Machine-readable counterpart to summary_report.md -- exactly the
+        # aggregator's own dict, so `main.py view` and any other consumer
+        # never re-derive a number the report already computed.
+        summary_doc = {
+            "base_seed": base_seed,
+            "num_runs": args.runs,
+            "days": config["days"],
+            "start_money": config["start_money"],
+            "warnings": warning_list,
+            "strategies": summary,
+        }
+        staged_summary_json_path = os.path.join(staging_dir, "summary.json")
+        with open(staged_summary_json_path, "w") as f:
+            json.dump(summary_doc, f, indent=2)
+
+        staged_dashboard_path = os.path.join(staging_dir, "dashboard.html")
+        if args.charts:
+            render_dashboard_html(
+                staged_csv_path,
+                staged_dashboard_path,
+                title="Farm Economy Batch Report",
+                subtitle=(
+                    f"{args.runs} runs x {len(agents)} strategies, "
+                    f"{config['days']} days, base seed {base_seed}"
+                ),
+            )
+        else:
+            write_no_charts_placeholder(staged_dashboard_path)
+
         report_text = generate_markdown_report(
             config,
             args.runs,
@@ -274,20 +307,100 @@ def cmd_batch(args):
     csv_path = os.path.join(REPORTS_DIR, "run_results.csv")
     config_snapshot_path = os.path.join(REPORTS_DIR, "config_snapshot.json")
     report_path = os.path.join(REPORTS_DIR, "summary_report.md")
+    summary_json_path = os.path.join(REPORTS_DIR, "summary.json")
+    dashboard_path = os.path.join(REPORTS_DIR, "dashboard.html")
 
     print(f"Ran {args.runs} simulations x {len(agents)} strategies = {total_runs} total runs.")
     print(
-        f"Time:   {format_duration(progress.elapsed)} elapsed ({format_rate(progress.rate)} sim/s)"
+        f"Time:      {format_duration(progress.elapsed)} elapsed ({format_rate(progress.rate)} sim/s)"
     )
-    print(f"CSV:    {csv_path}")
-    print(f"Config: {config_snapshot_path}")
-    print(f"Report: {report_path}")
-    print(f"Run:    {run_dir}")
+    print(f"CSV:       {csv_path}")
+    print(f"Config:    {config_snapshot_path}")
+    print(f"Report:    {report_path}")
+    print(f"Summary:   {summary_json_path}  (python3 main.py view)")
+    print(f"Dashboard: {dashboard_path}" + ("" if args.charts else "  (--no-charts: placeholder)"))
+    print(f"Run:       {run_dir}")
     print()
     print(report_text)
 
 
-ARTIFACT_NAMES = ("run_results.csv", "config_snapshot.json", "summary_report.md")
+def cmd_view(args):
+    if args.list:
+        run_ids = view.list_runs(REPORTS_DIR)
+        if not run_ids:
+            raise SystemExit(
+                f"No published runs found in {REPORTS_DIR}. Run `python3 main.py batch` first."
+            )
+        latest_link = os.path.join(REPORTS_DIR, "latest")
+        latest_target = (
+            os.path.basename(os.readlink(latest_link)) if os.path.islink(latest_link) else None
+        )
+        for i, run_id in enumerate(reversed(run_ids)):
+            marker = "  (latest)" if run_id == latest_target else ""
+            print(f"latest-{i}\t{run_id}{marker}")
+        return
+
+    fields = args.fields.split(",") if args.fields and args.fields != "all" else None
+
+    if args.diff:
+        ref_a, ref_b = args.diff
+        doc_a = view.load_run(view.resolve_run_dir(REPORTS_DIR, ref_a))
+        doc_b = view.load_run(view.resolve_run_dir(REPORTS_DIR, ref_b))
+        diff_fields = fields
+        if args.fields == "all":
+            diff_fields = sorted(
+                set(view.scalar_fields(doc_a["strategies"]))
+                & set(view.scalar_fields(doc_b["strategies"]))
+            )
+        print(
+            view.render_diff(
+                ref_a,
+                doc_a["strategies"],
+                ref_b,
+                doc_b["strategies"],
+                diff_fields,
+                args.only_changed,
+            )
+        )
+        return
+
+    run_dir = view.resolve_run_dir(REPORTS_DIR, args.run)
+    doc = view.load_run(run_dir)
+
+    if args.open:
+        webbrowser.open("file://" + os.path.abspath(os.path.join(run_dir, "dashboard.html")))
+
+    if args.fields == "all":
+        fields = view.scalar_fields(doc["strategies"])
+    strategy_filter = args.strategy.split(",") if args.strategy else None
+
+    print(f"Run: {run_dir}")
+    print(
+        f"{doc['num_runs']} runs x {len(doc['strategies'])} strategies, "
+        f"{doc['days']} days, base seed {doc['base_seed']}"
+    )
+    print()
+    print(view.render_warnings(doc["warnings"]))
+    print()
+    print(
+        view.render_table(
+            doc["strategies"],
+            fields,
+            sort_by=args.sort,
+            ascending=args.asc,
+            top=args.top,
+            strategy_filter=strategy_filter,
+        )
+    )
+
+
+ARTIFACT_NAMES = (
+    "run_results.csv",
+    "config_snapshot.json",
+    "summary_report.md",
+    "summary.json",
+    "dashboard.html",
+)
 STAGING_PREFIX = ".batch-"
 # Age past which a leftover staging directory is assumed to be from an
 # interrupted run rather than a batch still writing into it. Generous
@@ -527,7 +640,7 @@ def build_parser():
         dest="command",
         required=True,
         title="commands",
-        metavar="{single,replay,batch}",
+        metavar="{single,replay,batch,view}",
     )
 
     single = subparsers.add_parser(
@@ -618,17 +731,23 @@ def build_parser():
         "batch",
         help="Run every strategy many times and generate a report.",
         description=(
-            "Run every registered strategy --runs times each and write three\n"
+            "Run every registered strategy --runs times each and write five\n"
             "artifacts to reports/:\n\n"
             "  run_results.csv      one row per run, with the seed that produced it\n"
             "  config_snapshot.json the exact config and base seed used\n"
             "  summary_report.md    per-strategy stats, cash-flow diagnostics,\n"
-            "                       economics audit, and automated balance warnings\n\n"
-            "All three are symlinks through reports/latest into an immutable\n"
+            "                       economics audit, and automated balance warnings\n"
+            "  summary.json         the same per-strategy stats, machine-readable --\n"
+            "                       what `python3 main.py view` reads\n"
+            "  dashboard.html       every chart from `metrics.visualize`, bundled into\n"
+            "                       one self-contained page (needs matplotlib; a\n"
+            "                       placeholder page is written otherwise)\n\n"
+            "All five are symlinks through reports/latest into an immutable\n"
             "reports/runs/<id>/ directory. Publishing swaps that one pointer, so\n"
             "reports/ never holds a half-updated set and past runs stay readable.\n\n"
-            "Start with the 'Warnings' section of summary_report.md -- that is where\n"
-            "a balance regression shows up without eyeballing every strategy."
+            "Start with `python3 main.py view` for a quick table, or the 'Warnings'\n"
+            "section of summary_report.md -- that is where a balance regression\n"
+            "shows up without eyeballing every strategy."
         ),
         epilog=(
             "examples:\n"
@@ -643,6 +762,8 @@ def build_parser():
             "  python3 main.py batch --runs 1000 --workers 1\n\n"
             "  # Force the progress line on when stderr is not a terminal\n"
             "  python3 main.py batch --runs 100000 --progress\n\n"
+            "  # Skip chart rendering for a fast/CI batch\n"
+            "  python3 main.py batch --runs 1000 --no-charts\n\n"
             f"Runs all {len(AGENT_REGISTRY)} registered strategies. See "
             "`python3 main.py single --help`\nfor what each one probes.\n"
         ),
@@ -714,7 +835,110 @@ def build_parser():
             "upgrades are reachable at all."
         ),
     )
+    batch.add_argument(
+        "--charts",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Render reports/dashboard.html from this batch's results (default: "
+            "on). Needs matplotlib (pip install -r requirements-viz.txt) -- "
+            "skipped automatically with a placeholder page if it isn't "
+            "installed. --no-charts skips rendering outright, for a faster or "
+            "dependency-free batch."
+        ),
+    )
     batch.set_defaults(func=cmd_batch)
+
+    view_parser = subparsers.add_parser(
+        "view",
+        help="Print a quick strategy-comparison table from a published batch.",
+        description=(
+            "Read a published batch's reports/<run>/summary.json and print a\n"
+            "compact table -- for the 'just tell me the numbers' question that\n"
+            "scrolling summary_report.md doesn't answer quickly.\n\n"
+            "Defaults to reports/latest. Use --run to pick another published run\n"
+            "(--list shows what's available), or --diff to compare two runs\n"
+            "side by side -- the isolate-the-change step of the balance-testing\n"
+            "workflow in CLAUDE.md."
+        ),
+        epilog=(
+            "examples:\n"
+            "  # Quick glance at the latest batch\n"
+            "  python3 main.py view\n\n"
+            "  # Which strategies are riskiest, top 5\n"
+            "  python3 main.py view --sort bankruptcy_rate --top 5\n\n"
+            "  # Just two strategies, custom columns\n"
+            "  python3 main.py view --strategy fast_seller,profit_optimizer \\\n"
+            "      --fields avg_final_money,avg_watering_rate\n\n"
+            "  # What changed since the previous batch\n"
+            "  python3 main.py view --diff latest-1 latest\n\n"
+            "  # List published runs (for --run/--diff references)\n"
+            "  python3 main.py view --list\n\n"
+            "  # Open this run's chart dashboard in the browser\n"
+            "  python3 main.py view --open\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    view_parser.add_argument(
+        "--run",
+        default=None,
+        metavar="REF",
+        help="Which published run to show (default: latest). 'latest', 'latest-N', or a run id -- see --list.",
+    )
+    view_parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List published runs (most recent first) instead of showing a table.",
+    )
+    view_parser.add_argument(
+        "--diff",
+        nargs=2,
+        metavar=("RUN_A", "RUN_B"),
+        default=None,
+        help="Compare two runs field by field (e.g. --diff latest-1 latest), sorted by size of change.",
+    )
+    view_parser.add_argument(
+        "--only-changed",
+        action="store_true",
+        help="With --diff, hide strategies whose value didn't change.",
+    )
+    view_parser.add_argument(
+        "--fields",
+        default=None,
+        metavar="F1,F2,...",
+        help=(
+            "Comma-separated stat fields to show (default: avg_final_money,"
+            "bankruptcy_rate,avg_profit_per_day). 'all' shows every scalar field."
+        ),
+    )
+    view_parser.add_argument(
+        "--sort",
+        default=None,
+        metavar="FIELD",
+        help="Field to sort by (default: the first --fields column). Descending unless --asc.",
+    )
+    view_parser.add_argument(
+        "--asc", action="store_true", help="Sort ascending instead of the default descending."
+    )
+    view_parser.add_argument(
+        "--top",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help="Show only the top N strategies.",
+    )
+    view_parser.add_argument(
+        "--strategy",
+        default=None,
+        metavar="NAME,...",
+        help="Comma-separated strategy names to include (default: all).",
+    )
+    view_parser.add_argument(
+        "--open",
+        action="store_true",
+        help="Also open this run's dashboard.html in the default browser.",
+    )
+    view_parser.set_defaults(func=cmd_view)
 
     return parser
 

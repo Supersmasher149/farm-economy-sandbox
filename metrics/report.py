@@ -159,6 +159,7 @@ def generate_markdown_report(
         lines.append(
             f"- Average gross / operating / net cash change: {stats['avg_gross_profit']} / {stats['avg_operating_profit']} / {stats['avg_net_cash_change']}"
         )
+        lines.append(f"- Average profit per day: {stats['avg_profit_per_day']}")
         lines.append(f"- Average costs by category: {stats['avg_expenses_by_category'] or 'None'}")
         lines.append(f"- Average revenue by channel: {stats['revenue_by_channel'] or 'None'}")
         lines.append(f"- Harvest quality mix: {stats['quality_harvested']}")

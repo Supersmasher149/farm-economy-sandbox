@@ -155,6 +155,25 @@ def test_aggregate_matches_hand_computed_stats_for_mixed_cohort():
     assert stats["avg_gross_profit"] == 40.0
     assert stats["avg_operating_profit"] == 35.0
     assert stats["avg_net_cash_change"] == 50.0
+    # Mean of each run's own avg_profit_per_day; every _make_run_result here
+    # uses the fixture default (5.0), so the cohort mean is 5.0 too.
+    assert stats["avg_profit_per_day"] == 5.0
+
+
+def test_avg_profit_per_day_averages_each_runs_own_ratio():
+    """Regression guard for aggregating avg_profit_per_day as a mean of
+    per-run ratios, not net_cash_change / a shared day count -- bankrupt
+    runs end on their own day, so the two are not interchangeable.
+    """
+    results = [
+        _make_run_result(avg_profit_per_day=2.0),
+        _make_run_result(avg_profit_per_day=4.0),
+        _make_run_result(avg_profit_per_day=-6.0, bankrupt=True, bankruptcy_day=3),
+    ]
+
+    stats = aggregate(results)["test"]
+
+    assert stats["avg_profit_per_day"] == 0.0
 
 
 def test_aggregate_handles_zero_bankrupt_runs():

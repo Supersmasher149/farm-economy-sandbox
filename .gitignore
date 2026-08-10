@@ -12,7 +12,7 @@ build/
 .ruff_cache/
 .DS_Store
 
-# Batch output. The three top-level names are symlinks through reports/latest
+# Batch output. The five top-level names are symlinks through reports/latest
 # into an immutable reports/runs/<id>/ directory -- see _publish_report_artifacts
 # in main.py. reports/.batch-*/ is publication staging: normally renamed into
 # runs/ on success, but an interrupted batch can leave one behind (they hold a
@@ -20,6 +20,7 @@ build/
 reports/*.csv
 reports/*.json
 reports/*.md
+reports/*.html
 reports/charts/
 reports/auto_balance/
 reports/runs/
