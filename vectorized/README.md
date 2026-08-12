@@ -9,17 +9,20 @@ Read this before touching `vectorized/config_arrays.py` or comparing this
 module's numbers to `simulation/`'s — they are not meant to agree, for
 reasons below.
 
-**Status: Phase 1 ("crop/soil physics parity") and Phase 2 ("storage &
-spoilage") complete.** Crop growth, soil chemistry, weather, watering,
-fertilizer, and crop unlocking are ported from the real config-driven
-mechanics. Storage/spoilage is ported as *shadow accounting*: harvested
-lots age, downgrade quality, fully spoil, and get capacity-trimmed exactly
-like `simulation/inventory.py`, but since markets/agent-selling (Phase 3)
-don't exist yet, harvest still credits `money` instantly and the storage
-stats (`total_spoiled`/`total_storage_cost`) are informational only — see
-`kernel.py`'s module docstring. Markets, contracts, processing, upgrades,
-and the real 11-strategy agent roster are **not** ported — see Roadmap
-below.
+**Status: Phase 1 ("crop/soil physics parity"), Phase 2 ("storage &
+spoilage"), and Phase 3 ("markets", single-channel scope) complete.** Crop
+growth, soil chemistry, weather, watering, fertilizer, and crop unlocking
+are ported from the real config-driven mechanics. Storage/spoilage: lots
+age, downgrade quality, fully spoil, and get capacity-trimmed exactly like
+`simulation/inventory.py`. Markets: every crop gets a fresh supply/demand
+price roll each day (single effective channel, not the real engine's
+5-channel/fee/reputation system) and every lot still standing after that
+day's aging/spoilage/trim is sold in full at that price, crediting `money`/
+`total_revenue`/`total_harvest` for real — Phase 2's "shadow accounting"
+(money credited instantly at harvest, storage stats informational-only) is
+gone; see `kernel.py`'s module docstring for exactly what's simplified and
+why. Contracts, processing, upgrades, and the real 11-strategy agent roster
+are **not** ported — see Roadmap below.
 
 ## Why this is a separate tool, not a faster main engine
 
@@ -41,9 +44,10 @@ expect (or try to make) this module reproduce a `simulation/` seed's output.
 A third row used to be here — "full config-driven economy vs. 3 illustrative
 crops" — and it's now further closed: crop/soil physics *does* read the real
 `config/crops.json` + `config/soil.json` + `config/watering_settings.json` +
-`config/fertilizer.json` + `config/weather.json`, and storage/spoilage reads
-`config/storage.json` (see `config_arrays.py`). Contracts, processing,
-markets, and upgrades are still absent — see Roadmap.
+`config/fertilizer.json` + `config/weather.json`, storage/spoilage reads
+`config/storage.json`, and markets reads `config/markets.json` (see
+`config_arrays.py`). Contracts, processing, and upgrades are still absent —
+see Roadmap.
 
 If you need bit-exact, config-driven, full-economy runs: use `main.py batch`.
 If you need aggregate statistics — mean/variance/distribution of outcomes —
@@ -78,27 +82,31 @@ print(result.summary())
 ```
 
 ```
-1,000,000 runs x 10 plots x 365 days in 25.91s (38,594 runs/s)
-  overall money:   mean=     5.43  stddev=    6.10  min=     0.00  max=   238.58
-  overall harvest: mean=   414.69  stddev=  638.19
-  overall spoiled: mean=   409.27  stddev=  628.00  (storage cost mean= 26.97, shadow accounting -- not deducted from money)
-  greedy       (n= 333,330): money mean=     4.93 stddev=    2.26  harvest mean=   67.22
-  conservative (n= 333,340): money mean=     4.94 stddev=    2.26  harvest mean=   53.57
-  random       (n= 333,330): money mean=     6.41 stddev=   10.00  harvest mean= 1123.29
+1,000,000 runs x 10 plots x 365 days in 13.86s (72,150 runs/s)
+  overall money:   mean=     4.98  stddev=    7.68  min=     0.00  max=   939.98
+  overall harvest: mean=   158.10  stddev=  280.64
+  overall spoiled: mean=     0.00  stddev=    0.00  (storage cost mean=  0.00, shadow accounting -- not deducted from money)
+  greedy       (n= 333,330): money mean=     4.78 stddev=    2.29  harvest mean=   40.77
+  conservative (n= 333,340): money mean=     4.93 stddev=    2.25  harvest mean=   32.74
+  random       (n= 333,330): money mean=     5.21 stddev=   12.91  harvest mean=  400.80
 ```
 
-`overall_spoiled` tracking `overall_harvest` this closely is expected, not a
-bug: with no market/sell logic yet (Phase 3), nothing ever consumes a lot,
-so almost everything harvested eventually ages out or gets capacity-trimmed
--- see "Deviations from the prompt" below.
+`overall_spoiled` reading ~0 here is expected, not a bug: since every lot
+still standing gets sold in full at the end of each day (Phase 3), almost
+nothing survives long enough to age out or need capacity-trimming under the
+default `storage_capacity` -- see "Deviations from the prompt" below for
+when it still matters. `overall_storage_cost` still reads `0` too: the
+liability *charge* itself is still shadow accounting (never subtracted from
+`money`), independent of whether harvest revenue is.
 
 Measured on a single CPU core's worth of `numba(parallel=True)` work (see
-Performance below): **1,000,000 runs in ~25.9s, peak RSS ~479MB** — inside
-the prompt's <60s CPU / 2GB targets (2.3x and 4.3x margin respectively).
-Each phase's added physics costs real throughput against the previous one
-(Phase 0 toy model: ~3.0s; Phase 1 physics parity: ~22.3s; Phase 2 storage:
-~25.9s) — see Performance below for the shape of that cost — but both
-targets still clear.
+Performance below): **1,000,000 runs in ~13.9s, peak RSS ~462MB** — inside
+the prompt's <60s CPU / 2GB targets (4.3x and 4.4x margin respectively).
+Phase 3 is
+actually *faster* than Phase 2 despite adding the daily market-pricing
+loop: it removes more per-plot work (no more per-harvest price roll/lot
+survives-to-be-aged-repeatedly bookkeeping) than it adds (see Performance
+below for the full shape across phases).
 
 ```bash
 # validate the numba kernel against the pure-Python sequential reference
@@ -120,7 +128,8 @@ version: physics *parity* means tracking the real balance numbers, so
 - `config/crops.json` — per-crop economics, growth, stress inputs, nutrient
   demand, family, unlock requirements (only `type: "total_revenue"` is
   understood; anything else fails to load loudly rather than silently
-  treating the crop as always-unlocked), and (Phase 2) `shelf_life_days`
+  treating the crop as always-unlocked), (Phase 2) `shelf_life_days`, and
+  (Phase 3) `seasonal_demand`
 - `config/soil.json` — initial plot values, regen-per-day, rotation/
   soil-health dynamics
 - `config/watering_settings.json`, `config/fertilizer.json`
@@ -128,6 +137,10 @@ version: physics *parity* means tracking the real balance numbers, so
 - `config/storage.json` (Phase 2) — `capacity`, `daily_cost`,
   `shelf_life_multiplier`; also derives `lots_per_plot`, the provably-safe
   per-plot lot-slot bound (see `VectorConfig`'s docstring comment)
+- `config/markets.json` (Phase 3) — `minimum_supply_multiplier`,
+  `supply_decay`; NOT the 5-channel `channels` list (`price_multiplier`/
+  `min_quality`/`daily_capacity`/fees per channel) or reputation, since
+  this phase models one effective channel, not the real 5-channel system
 
 into a single frozen `VectorConfig` of numpy arrays, loaded once and passed
 through `state.init_runs` / `kernel.simulate_chunk` rather than read per-day
@@ -136,11 +149,11 @@ through `state.init_runs` / `kernel.simulate_chunk` rather than read per-day
 needs `array[crop_idx]`.
 
 **Not yet read**: `config/contracts.json`, `config/buyers.json`,
-`config/processing.json`, `config/markets.json`, `config/upgrades.json`
-(including upgrades' storage `capacity_bonus`/`shelf_life_multiplier`
-effects — Phase 2 uses only the base `config/storage.json` values). Loading
-those now would be dead weight that silently goes stale until the
-subsystems that need them exist — see Roadmap.
+`config/processing.json`, `config/upgrades.json` (including upgrades'
+storage `capacity_bonus`/`shelf_life_multiplier` effects — Phase 2 uses
+only the base `config/storage.json` values). Loading those now would be
+dead weight that silently goes stale until the subsystems that need them
+exist — see Roadmap.
 
 ## Data contract (`state.py`)
 
@@ -203,11 +216,20 @@ without changing what a given run's outcome is.
 Draw counts per plot per day are no longer fixed (Phase 1 branches on real
 plot state rather than always drawing a fixed sequence): an empty plot draws
 1 value (crop pick), a still-growing plot draws 2 (watering, fertilizing),
-and a plot that matures today draws 3 more (loss check, yield roll, price
-roll) before immediately trying to replant in the same day, same as
-`simulation/engine.py`'s real daily order. This is fine for determinism —
-kernel.py and reference.py both branch on identical state, so both draw
-identically — see kernel.py's docstring.
+and a plot that matures today draws 2 more (loss check, yield roll) before
+immediately trying to replant in the same day. This is fine for
+determinism — kernel.py and reference.py both branch on identical state, so
+both draw identically — see kernel.py's docstring.
+
+Phase 3 added a separate **run-level, once-per-day** draw: `num_crops`
+values (one price roll per crop) from the `run_state` stream, not
+`rng_plot_state` — market pricing is a daily, run-wide event, not a
+per-plot one, the same reasoning that already put weather on `run_state`.
+This replaced the harvest-time `price roll` draw the paragraph above used
+to describe (Phase 1/2 rolled a price per harvest event, on `plot_state`;
+Phase 3 rolls a price per crop per day, on `run_state`, once, used by every
+plot and every lot that transacts that crop that day) — see kernel.py's
+module docstring for the full before/after.
 
 ## Memory strategy
 
@@ -264,25 +286,29 @@ comparison isn't meaningful.
   constants.** Reversed from the first build's choice, once physics parity
   was the explicit goal — see `config_arrays.py`'s docstring. Still not
   coupled to `config/contracts.json`/`buyers.json`/`processing.json`/
-  `markets.json`/`upgrades.json` — those subsystems aren't ported, so
-  reading their config now would be silently-stale dead weight.
-- **Storage is shadow accounting, not a real sell-blocker (yet).** Harvest
-  still credits `money` instantly, same `roll_price`-style draw as Phase 1,
-  because Phase 3 (markets/agent-selling) doesn't exist to convert a lot to
-  cash any other way. Phase 2's lots age/spoil/capacity-trim for real and
-  produce real `total_spoiled`/`total_storage_cost` stats, but those don't
-  feed back into `money` this phase — see `kernel.py`'s module docstring for
-  the full rationale and what Phase 3 will need to change.
+  `upgrades.json` — those subsystems aren't ported, so reading their config
+  now would be silently-stale dead weight.
+- **Markets are single-channel, not the real 5-channel system.** No
+  `spot`/`wholesale`/`farm_stand`/`processor`/`specialty` price
+  multipliers, quality gates, daily capacities, or fees; no reputation
+  (doesn't exist anywhere in `vectorized/` state). One effective channel:
+  a daily per-crop supply/demand price, sold at in full every day. Also no
+  per-strategy `choose_sales` logic — every lot still standing after a
+  day's aging/spoilage/trim is sold in full, for all 3 fixed strategies,
+  the simplest real strategy's behavior (`fast_seller.choose_sales` dumps
+  all inventory the same way) — see `kernel.py`'s module docstring for the
+  two behavioral consequences worth knowing (storage/spoilage gets rarer
+  but stays real; a plot's same-day spend decisions still use yesterday's
+  cash, not today's just-credited sale revenue).
 - **3 fixed strategies, not the real 11-agent roster.** `agents/*.py`'s
   strategies have real config-driven decision trees (`profit_optimizer`,
   `progression_player`); this module's greedy/conservative/random are
   threshold masks over the (now-real) physics, not ports of those agents.
   Porting the real roster is its own future phase — see Roadmap.
-- **No JAX migration was needed to hit the target.** Even with Phase 2's
-  storage/spoilage on top of Phase 1's physics, this clears <60s CPU by
-  ~2.3x margin at 1M runs (see Performance below), so JAX wasn't pursued.
-  Migration notes below in case GPU throughput becomes the actual
-  constraint later.
+- **No JAX migration was needed to hit the target.** This clears <60s CPU
+  by ~4.3x margin at 1M runs with all three phases' physics/storage/markets
+  in place (see Performance below), so JAX wasn't pursued. Migration notes
+  below in case GPU throughput becomes the actual constraint later.
 
 ## Risks: the "isolate what can't be vectorized" escape hatch
 
@@ -307,16 +333,15 @@ high-water mark across multiple sizes in one process):
 
 | Runs | Plots × Days | Wall time | Throughput | Peak RSS | vs. targets |
 |---:|---:|---:|---:|---:|---|
-| 1,000 | 10 × 365 | 0.040 s | ~24,000 runs/s | 104 MB | — |
-| 10,000 | 10 × 365 | 0.280 s | ~36,200 runs/s | 117 MB | — |
-| 100,000 | 10 × 365 | 2.670 s | ~37,400 runs/s | 227 MB | — |
-| 500,000 | 10 × 365 | 13.03 s | ~38,400 runs/s | 320 MB | — |
-| **1,000,000** | **10 × 365** | **25.91 s** | **~38,600 runs/s** | **479 MB** | **2.3x under 60s · 4.3x under 2GB** |
+| 1,000 | 10 × 365 | 0.03 s | ~40,000 runs/s | 105 MB | — |
+| 10,000 | 10 × 365 | 0.14 s | ~69,100 runs/s | 115 MB | — |
+| 100,000 | 10 × 365 | 1.36 s | ~73,500 runs/s | 230 MB | — |
+| 500,000 | 10 × 365 | 7.13 s | ~70,100 runs/s | 452 MB | — |
+| **1,000,000** | **10 × 365** | **13.64 s** | **~73,300 runs/s** | **462 MB** | **4.4x under 60s · 4.4x under 2GB** |
 
-(Phase 1's numbers, for comparison: 22.28s, ~44,900 runs/s, 523MB at 1M —
-Phase 2's storage/spoilage bookkeeping adds ~16% wall time. Phase 2's peak
-RSS is actually *lower* than Phase 1's despite the added lot-slot arrays:
-run-to-run allocator noise, per the caveat below, not a real improvement.)
+(Phase 2's numbers, for comparison: 25.91s, ~38,600 runs/s, 479MB at 1M —
+Phase 3 is **faster than Phase 2**, not slower, despite adding the daily
+market-pricing loop: see below for why.)
 
 (numba JIT compilation of `simulate_chunk` happens once per process on first
 call and is excluded from these figures, same as the main engine's
@@ -327,44 +352,45 @@ wall-clock reference point — see that script's docstring for why it's not an
 apples-to-apples comparison of the same economic model.
 
 **Phase 1 cost ~7.5x throughput against the Phase 0 toy kernel; Phase 2 cost
-another ~1.16x on top of that** (Phase 0: ~335,000 runs/s at scale, Phase 1:
-~44,900, Phase 2: ~38,600). Phase 1's hit was the real price of real
-physics: multi-nutrient soil (N/P/K instead of one nitrogen scalar), 5
-separate stress accumulators instead of 1, family-rotation and soil-health
-multipliers, fertilizer state, and 3–6 RNG draws per plot per day instead of
-a fixed 1–4. Phase 2's smaller additional hit is the lot-slot bookkeeping —
-liability capture, aging/downgrade/full-spoil, and (rarely, since it's
-gated behind an `overflow > 0` check) FEFO capacity-trim — run once per
-run per day, no RNG draws added (storage has no randomness of its own).
-Both throughput and memory still clear the prompt's targets with room
-(2.3x, 4.3x) — there's headroom left before either budget would force
-revisiting the `prange` design or reaching for JAX/GPU, but meaningfully
-less than Phase 0 had.
+another ~1.16x on top of that; Phase 3 got most of Phase 2's cost back** (Phase
+0: ~335,000 runs/s at scale, Phase 1: ~44,900, Phase 2: ~38,600, Phase 3:
+~73,300). Phase 1's hit was the real price of real physics: multi-nutrient
+soil (N/P/K instead of one nitrogen scalar), 5 separate stress accumulators
+instead of 1, family-rotation and soil-health multipliers, fertilizer
+state, and 3–6 RNG draws per plot per day instead of a fixed 1–4. Phase 3
+removed more per-plot work than it added: the harvest block no longer rolls
+a price or credits revenue (2 draws instead of 3, no `m`/`tr`/`th` writes
+at harvest), and because lots essentially never survive past the day
+they're created (see "Deviations from the prompt"), the aging/downgrade
+loop's per-slot work collapses to a cheap `continue` on almost every slot
+on almost every day, instead of Phase 2's steadily-growing pile of never-
+consumed lots. That savings outweighs the new daily per-crop price-roll
+loop (`num_crops` draws, small) and the new sell-all-lots pass. Both
+throughput and memory clear the prompt's targets with more room than any
+phase since Phase 0 (4.4x, 4.4x) — there's real headroom again before
+either budget would force revisiting the `prange` design or reaching for
+JAX/GPU.
 
 Two shapes worth reading, not just the headline row:
 
-- **Throughput ramps then plateaus, it doesn't keep climbing.** 1k→10k
+- **Throughput ramps then plateaus, it doesn't keep climbing.** 1k→10k→100k
   runs/sec rises sharply (per-call dispatch/allocation overhead amortizing
-  over more runs), then flattens around ~38,000-38,600 runs/s from 100,000
+  over more runs), then flattens around ~70,000-73,500 runs/s from 100,000
   runs onward — same shape as the main engine's straggler-effect writeup for
-  worker count in `CLAUDE.md`'s Performance section, just saturating at a
-  smaller chunk size than Phase 0 did (more per-run work means per-call
-  overhead amortizes away sooner).
-- **Peak RSS grows with `total_runs` but noisily, not cleanly linearly** --
-  unlike Phase 1's cleaner-looking curve, re-measuring the same sizes can
-  reorder neighboring rows by tens of MB (500k measured both above and
-  below 1M's figure across repeated runs). This is allocator arena
-  retention between chunks (same mechanism Phase 0/1 both flagged), now
-  with one more array shape's worth of chunks being allocated and freed per
-  run; still well inside the 2GB budget at 1M runs, but treat any single
-  row as a noisy estimate, not an exact figure, and don't read small
-  deltas between adjacent rows as meaningful.
+  worker count in `CLAUDE.md`'s Performance section.
+- **Peak RSS scales roughly linearly with `total_runs` once above one
+  chunk**, back to Phase 1's cleaner shape rather than Phase 2's noisier
+  one: 115MB at 10k → 230MB at 100k → 452MB at 500k → 462MB at 1M. The
+  500k→1M step being small (not ~2x) reflects `DEFAULT_MAX_CHUNK=100_000`:
+  500k is 5 chunks, 1M is 10, but peak RSS is bounded by *one* chunk's
+  arrays plus whatever the allocator hasn't returned to the OS yet between
+  chunks, not by total chunk count — still well inside the 2GB budget.
 
 ## Roadmap: closing the gap with the real engine
 
-Phases 1–2 cover crop/soil physics and storage/spoilage. Remaining
-subsystems, roughly in order of vectorization difficulty (see the
-difficulty table this was scoped from):
+Phases 1–3 cover crop/soil physics, storage/spoilage, and single-channel
+markets. Remaining subsystems, roughly in order of vectorization difficulty
+(see the difficulty table this was scoped from):
 
 1. ~~Crop/soil physics parity~~ — **done**: multi-stress growth, N/P/K/pH,
    family rotation, quality grading, fertilizer, revenue-gated unlocks,
@@ -372,16 +398,21 @@ difficulty table this was scoped from):
 2. ~~Storage & spoilage~~ — **done**: fixed-size lot-slot arrays
    (`state.py`'s `(B, L)` dimension), age-tracking + decay + FEFO
    capacity-trim ported from `simulation/inventory.py`, config-driven from
-   `config/storage.json`. Shadow accounting — see "Deviations from the
-   prompt" above — until Phase 3 lands.
-3. **Markets** (`simulation/markets.py`, `config/markets.json`): per-crop
-   supply/demand price arrays updated by formula each day, replacing the
-   current single `roll_price`-style draw at harvest. Also where Phase 2's
-   shadow accounting gets resolved: harvest stops crediting `money`
-   directly, real lots get created there instead, and agent-selling
-   consumes lots FEFO before spoilage/capacity can bite them — at which
-   point Phase 2's instant-sale block gets replaced, not extended. Medium
-   difficulty.
+   `config/storage.json`.
+3. ~~Markets~~ — **done, single-channel scope**: per-crop supply/demand
+   price roll + decay each day, replacing the old harvest-time
+   `roll_price`-style draw; every lot standing after aging/spoilage/trim is
+   sold in full at that price. This is what resolved Phase 2's shadow
+   accounting (harvest stopped crediting `money` directly). NOT ported: the
+   real 5-channel system (`simulation/markets.py`'s `spot`/`wholesale`/
+   `farm_stand`/`processor`/`specialty`, each with its own price
+   multiplier, quality gate, daily capacity, fee structure), reputation, or
+   per-strategy `choose_sales` logic — see "Deviations from the prompt"
+   above. A future sub-phase could add multi-channel capacity/fees/
+   reputation without redoing the daily-price-roll mechanics this phase
+   built; it would mainly need per-channel capacity tracking (another
+   per-run array, same shape as the lot-slot pattern) and a real per-
+   strategy sell decision instead of "sell everything."
 4. **Processing** (`simulation/processing.py`, `config/processing.json`):
    fixed-size job-slot arrays with countdown timers, another dimension on
    the state arrays. Medium-high difficulty.
@@ -393,7 +424,10 @@ difficulty table this was scoped from):
    vectorization.
 6. **Full agent roster** (`agents/*.py`, 11 strategies): port real decision
    logic (e.g. `profit_optimizer`, `progression_player`) instead of the 3
-   threshold-mask strategies here. Variable difficulty per agent.
+   threshold-mask strategies here — this is also where a real
+   `choose_sales` (hold vs. sell, channel selection) would land, since the
+   3 fixed strategies don't have per-strategy sale logic to port yet.
+   Variable difficulty per agent.
 7. **Upgrades** (`config/upgrades.json`): including storage's own
    `capacity_bonus`/`shelf_life_multiplier` effects (`derived.py`'s
    `effective_storage`), not folded in during Phase 2 since no upgrades
@@ -402,11 +436,13 @@ difficulty table this was scoped from):
 Each phase should get its own `scripts/vectorized_validate.py`-style check
 before the next one starts, the same way Phase 1's 144 kernel-vs-reference
 comparisons and Phase 2's 27 forced-capacity-trim comparisons gate them.
+Phase 3 needed no new check function: its logic runs on every simulated
+day, so the existing 174 checks already exercise it.
 
 ## Migration notes: swapping in JAX later
 
-Not needed to hit this prompt's target (2.3x margin above target already, on
-CPU, single process, even with Phase 1 + 2's added physics/bookkeeping) —
+Not needed to hit this prompt's target (4.4x margin above target already, on
+CPU, single process, with Phase 1-3's physics/storage/markets all in place) —
 recorded here since the prompt asked for it. Re-evaluate if a later phase
 (contracts, especially) pushes throughput below the target rather than just
 eating margin.
