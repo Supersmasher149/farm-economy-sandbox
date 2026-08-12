@@ -13,12 +13,15 @@ simulation and the validation script stops meaning anything.
 
 This does *not* validate against `simulation/`'s real crop-growth model --
 see vectorized/README.md for why that comparison isn't meaningful (different
-RNG scheme, still-simplified economy: no storage/markets/contracts/
-processing/upgrades). It validates that the numba kernel is a faithful
-parallelization of *this* module's sequential algorithm, which is itself a
-config-driven port of simulation/crop_growth.py + simulation/weather.py's
-per-plot mechanics -- see kernel.py's per-block comments for which real
-function each block mirrors.
+RNG scheme, still-simplified economy: no markets/contracts/processing/
+upgrades, and storage is shadow accounting -- see kernel.py's module
+docstring). It validates that the numba kernel is a faithful parallelization
+of *this* module's sequential algorithm, which is itself a config-driven
+port of simulation/crop_growth.py + simulation/weather.py's per-plot
+mechanics, plus a Phase 2 storage/spoilage mirror of
+simulation/inventory.py's age-and-spoil/capacity-trim/liability logic --
+see kernel.py's per-block comments for which real function each block
+mirrors.
 """
 
 from __future__ import annotations
@@ -48,6 +51,8 @@ def simulate_run_reference(
     money = _f32(config.start_money)
     total_harvest = _f32(0.0)
     total_revenue = _f32(0.0)
+    total_spoiled = _f32(0.0)
+    total_storage_cost = _f32(0.0)
 
     moisture = [_f32(config.initial_moisture) for _ in range(num_plots)]
     nitrogen = [_f32(config.initial_nitrogen) for _ in range(num_plots)]
@@ -73,6 +78,13 @@ def simulate_run_reference(
     neglect_days = [0] * num_plots
     last_watered_day = [0] * num_plots
 
+    # -- storage lots (Phase 2), fixed-size list mirroring kernel.py's (B, L) array --
+    num_lot_slots = num_plots * config.lots_per_plot
+    lot_item_id = [-1] * num_lot_slots
+    lot_quantity = [0] * num_lot_slots
+    lot_quality = [0] * num_lot_slots
+    lot_age_days = [0] * num_lot_slots
+
     num_seasons = len(config.season_rain_chance)
 
     for day in range(num_days):
@@ -90,6 +102,11 @@ def simulate_run_reference(
         else:
             rainfall = 0.0
         evaporation = config.season_evaporation[season] + max(0.0, temperature - 25.0) * 0.005
+
+        # -- storage liability capture (simulation/inventory.py:capture_storage_liability)
+        # -- once/day, before today's harvests are added -- see kernel.py's mirror --
+        has_inventory = any(q > 0 for q in lot_quantity)
+        liability = float(config.storage_daily_cost) if has_inventory else 0.0
 
         for p in range(num_plots):
             ps = plot_state[p]
@@ -248,6 +265,24 @@ def simulate_run_reference(
                             total_revenue = _f32(total_revenue + revenue)
                             total_harvest = _f32(total_harvest + amount_units)
 
+                            # -- storage: shadow lot (simulation/actions.py:harvest_mature)
+                            # -- shadow accounting, see kernel.py's module docstring --
+                            if quality_mult >= 0.9:
+                                grade = 3  # premium
+                            elif quality_mult >= 0.62:
+                                grade = 2  # standard
+                            else:
+                                grade = 1  # processing (>= 0.3 guaranteed by the outer gate)
+                            for s in range(num_lot_slots):
+                                if lot_item_id[s] < 0:
+                                    lot_item_id[s] = ct
+                                    lot_quantity[s] = amount_units
+                                    lot_quality[s] = grade
+                                    lot_age_days[s] = -1  # becomes 0 on today's aging pass
+                                    break
+                            # if no empty slot: silently dropped, matching kernel.py's
+                            # overflow_events counter path (checked kernel-side only)
+
                     previous_crop_family[p] = fam
                     soil_health[p] = _f32(
                         max(
@@ -341,4 +376,64 @@ def simulate_run_reference(
 
             plot_state[p] = ps
 
-    return {"money": money, "total_harvest": total_harvest, "total_revenue": total_revenue}
+        # -- storage: aging, quality downgrade, full-spoil
+        # (simulation/inventory.py:age_and_spoil) -- once/day, after today's harvests
+        # are in so same-day lots can be correctly skipped -- see kernel.py's mirror --
+        for s in range(num_lot_slots):
+            if lot_item_id[s] < 0:
+                continue
+            if lot_age_days[s] < 0:
+                # produced today -- becomes 0 this pass, not aged further today
+                lot_age_days[s] = 0
+                continue
+            lot_age_days[s] += 1
+            item = lot_item_id[s]
+            eff_life = int(config.effective_shelf_life_days[item])
+            age_ratio = lot_age_days[s] / eff_life
+            if age_ratio >= 1.0:
+                total_spoiled = _f32(total_spoiled + lot_quantity[s])
+                lot_quantity[s] = 0
+                lot_item_id[s] = -1
+            elif age_ratio >= 0.5 and lot_quality[s] == 3:
+                lot_quality[s] = 2
+            elif age_ratio >= 0.8 and lot_quality[s] == 2:
+                lot_quality[s] = 1
+
+        # -- storage: capacity trim, FEFO (simulation/inventory.py:_trim_to_capacity)
+        # -- only sorts/mutates when something actually has to be trimmed --
+        total_qty = sum(lot_quantity[s] for s in range(num_lot_slots) if lot_item_id[s] >= 0)
+        overflow_units = total_qty - int(config.storage_capacity)
+        while overflow_units > 0:
+            chosen = -1
+            chosen_remaining = 0.0
+            for s in range(num_lot_slots):
+                if lot_item_id[s] < 0:
+                    continue
+                item = lot_item_id[s]
+                remaining = float(config.effective_shelf_life_days[item]) - float(lot_age_days[s])
+                if chosen < 0 or remaining < chosen_remaining:
+                    chosen = s
+                    chosen_remaining = remaining
+            if chosen < 0:
+                break  # no occupied slots left -- shouldn't happen if overflow_units > 0
+            remove = min(overflow_units, lot_quantity[chosen])
+            lot_quantity[chosen] -= remove
+            overflow_units -= remove
+            total_spoiled = _f32(total_spoiled + remove)
+            if lot_quantity[chosen] == 0:
+                lot_item_id[chosen] = -1
+
+        # -- storage: liability collect (simulation/inventory.py:collect_storage_liability)
+        # -- end of day, using the amount captured before today's harvests; shadow
+        # accounting: capped by (and reported against) `money`, but never subtracted
+        # from it -- see kernel.py's module docstring for why. --
+        charged = min(max(0.0, money), max(0.0, liability))
+        total_storage_cost = _f32(total_storage_cost + charged)
+
+    return {
+        "money": money,
+        "total_harvest": total_harvest,
+        "total_revenue": total_revenue,
+        "total_spoiled": total_spoiled,
+        "total_storage_cost": total_storage_cost,
+    }

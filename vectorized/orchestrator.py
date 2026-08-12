@@ -32,6 +32,10 @@ class BatchResult:
     wall_seconds: float
     overall_money: StreamingStats
     overall_harvest: StreamingStats
+    # Phase 2 ("storage & spoilage"): informational only -- shadow accounting,
+    # doesn't affect overall_money -- see kernel.py's module docstring.
+    overall_spoiled: StreamingStats
+    overall_storage_cost: StreamingStats
     by_strategy_money: dict = field(default_factory=dict)
     by_strategy_harvest: dict = field(default_factory=dict)
 
@@ -44,6 +48,10 @@ class BatchResult:
             f"min={self.overall_money.minimum:9.2f}  max={self.overall_money.maximum:9.2f}",
             f"  overall harvest: mean={self.overall_harvest.mean:9.2f}  "
             f"stddev={self.overall_harvest.stddev:8.2f}",
+            f"  overall spoiled: mean={self.overall_spoiled.mean:9.2f}  "
+            f"stddev={self.overall_spoiled.stddev:8.2f}  "
+            f"(storage cost mean={self.overall_storage_cost.mean:6.2f}, shadow accounting -- "
+            f"not deducted from money)",
         ]
         for sid, name in enumerate(crops.STRATEGY_NAMES):
             m = self.by_strategy_money.get(sid)
@@ -102,6 +110,8 @@ def run_millions(
 
     overall_money = StreamingStats()
     overall_harvest = StreamingStats()
+    overall_spoiled = StreamingStats()
+    overall_storage_cost = StreamingStats()
     by_money = {sid: StreamingStats() for sid in range(len(crops.STRATEGY_NAMES))}
     by_harvest = {sid: StreamingStats() for sid in range(len(crops.STRATEGY_NAMES))}
 
@@ -124,6 +134,8 @@ def run_millions(
 
         overall_money.update(state.money)
         overall_harvest.update(state.total_harvest)
+        overall_spoiled.update(state.total_spoiled)
+        overall_storage_cost.update(state.total_storage_cost)
         for sid in by_money:
             mask = strategy_of_run == sid
             if mask.any():
@@ -150,6 +162,8 @@ def run_millions(
         wall_seconds=wall,
         overall_money=overall_money,
         overall_harvest=overall_harvest,
+        overall_spoiled=overall_spoiled,
+        overall_storage_cost=overall_storage_cost,
         by_strategy_money=by_money,
         by_strategy_harvest=by_harvest,
     )

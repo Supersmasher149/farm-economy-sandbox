@@ -19,9 +19,24 @@ Phase 1 ("crop/soil physics parity") ported `simulation/crop_growth.py` +
 each block's comment for the source function it mirrors): multi-nutrient soil
 (N/P/K), pH stress, temperature stress, pest/disease pressure and
 susceptibility, family-rotation and soil-health yield/quality multipliers,
-neglect tracking, fertilizer, and revenue-gated crop unlocks. Still NOT
-ported: storage/spoilage, markets (price is a single roll_price-style draw at
-harvest, not a supply/demand system), contracts, processing, upgrades. See
+neglect tracking, fertilizer, and revenue-gated crop unlocks.
+
+Phase 2 ("storage & spoilage") ported `simulation/inventory.py`'s
+age-and-spoil/capacity-trim/liability mechanics as a *shadow accounting*
+system: harvest still credits `money`/`total_revenue` instantly at the same
+`roll_price`-style draw as Phase 1 (real markets/agent-selling is Phase 3,
+not built yet), but every non-rejected harvest ALSO inserts a lot into a
+fixed-size per-run lot-slot array (see `state.py`'s docstring for the
+`(B, L)` shape). Those lots age, downgrade quality, fully spoil, and get
+capacity-trimmed once per run per day, producing `total_spoiled`/
+`total_storage_cost` -- informational stats that do not feed back into
+`money` this phase. See `vectorized/README.md`'s roadmap for why: Phase 3
+(markets) has to exist before spoilage can meaningfully block a sale.
+
+Still NOT ported: markets (price is a single roll_price-style draw at
+harvest, not a supply/demand system), contracts, processing, upgrades
+(including upgrades' storage `capacity_bonus`/`shelf_life_multiplier`
+effects -- Phase 2 uses only the base `config/storage.json` values). See
 vectorized/README.md's roadmap.
 
 Kept in lockstep with reference.py: same branch order, same draw order, same
@@ -76,6 +91,8 @@ def _simulate_chunk_core(
     total_harvest,
     total_revenue,
     strategy_id,
+    total_spoiled,
+    total_storage_cost,
     moisture,
     nitrogen,
     phosphorus,
@@ -98,6 +115,12 @@ def _simulate_chunk_core(
     last_watered_day,
     rng_run_state,
     rng_plot_state,
+    # storage lots (Phase 2), shape (B, L), L = num_plots * config.lots_per_plot
+    lot_item_id,
+    lot_quantity,
+    lot_quality,
+    lot_age_days,
+    overflow_events,
     num_days,
     # crop arrays (component: config_arrays.VectorConfig)
     num_crops,
@@ -121,6 +144,7 @@ def _simulate_chunk_core(
     potassium_demand,
     family_id,
     unlock_total_revenue,
+    effective_shelf_life_days,
     greedy_rank,
     conservative_rank,
     # soil dynamics
@@ -167,15 +191,21 @@ def _simulate_chunk_core(
     season_rain_low,
     season_rain_high,
     season_evaporation,
+    # storage
+    storage_capacity,
+    storage_daily_cost,
 ):
     num_runs = money.shape[0]
     num_plots = moisture.shape[1]
     num_seasons = season_rain_chance.shape[0]
+    num_lot_slots = lot_item_id.shape[1]
 
     for r in prange(num_runs):
         m = np.float64(money[r])
         th = np.float64(total_harvest[r])
         tr = np.float64(total_revenue[r])
+        ts = np.float64(total_spoiled[r])
+        tc = np.float64(total_storage_cost[r])
         strat = strategy_id[r]
         run_state = rng_run_state[r]
 
@@ -195,6 +225,15 @@ def _simulate_chunk_core(
             else:
                 rainfall = 0.0
             evaporation = season_evaporation[season] + max(0.0, temperature - 25.0) * 0.005
+
+            # -- storage liability capture (simulation/inventory.py:capture_storage_liability)
+            # -- run-level, once/day, before today's harvests are added --
+            has_inventory = False
+            for s in range(num_lot_slots):
+                if lot_quantity[r, s] > 0:
+                    has_inventory = True
+                    break
+            liability = storage_daily_cost if has_inventory else 0.0
 
             for p in range(num_plots):
                 plot_state = rng_plot_state[r, p]
@@ -369,6 +408,28 @@ def _simulate_chunk_core(
                                 tr += revenue
                                 th += amount_units
 
+                                # -- storage: shadow lot (simulation/actions.py:harvest_mature)
+                                # -- shadow accounting: money is already credited above (Phase
+                                # 3/markets doesn't exist yet); this lot exists only to age/
+                                # spoil/capacity-trim for total_spoiled/total_storage_cost. --
+                                if quality_mult >= 0.9:
+                                    grade = 3  # premium
+                                elif quality_mult >= 0.62:
+                                    grade = 2  # standard
+                                else:
+                                    grade = 1  # processing (>= 0.3 guaranteed by the outer gate)
+                                inserted = False
+                                for s in range(num_lot_slots):
+                                    if lot_item_id[r, s] < 0:
+                                        lot_item_id[r, s] = ct
+                                        lot_quantity[r, s] = amount_units
+                                        lot_quality[r, s] = grade
+                                        lot_age_days[r, s] = -1  # becomes 0 on today's aging pass
+                                        inserted = True
+                                        break
+                                if not inserted:
+                                    overflow_events[r] += 1
+
                         previous_crop_family[r, p] = fam
                         soil_health[r, p] = np.float32(
                             max(
@@ -466,9 +527,72 @@ def _simulate_chunk_core(
 
                 rng_plot_state[r, p] = plot_state
 
+            # -- storage: aging, quality downgrade, full-spoil
+            # (simulation/inventory.py:age_and_spoil) -- run-level, once/day, after
+            # today's harvests are in so same-day lots can be correctly skipped --
+            for s in range(num_lot_slots):
+                if lot_item_id[r, s] < 0:
+                    continue
+                if lot_age_days[r, s] < 0:
+                    # produced today -- becomes 0 this pass, not aged further today
+                    lot_age_days[r, s] = 0
+                    continue
+                lot_age_days[r, s] += 1
+                item = lot_item_id[r, s]
+                eff_life = effective_shelf_life_days[item]
+                age_ratio = np.float64(lot_age_days[r, s]) / np.float64(eff_life)
+                if age_ratio >= 1.0:
+                    ts += lot_quantity[r, s]
+                    lot_quantity[r, s] = 0
+                    lot_item_id[r, s] = -1
+                elif age_ratio >= 0.5 and lot_quality[r, s] == 3:
+                    lot_quality[r, s] = 2
+                elif age_ratio >= 0.8 and lot_quality[r, s] == 2:
+                    lot_quality[r, s] = 1
+
+            # -- storage: capacity trim, FEFO (simulation/inventory.py:_trim_to_capacity)
+            # -- only sorts/mutates when something actually has to be trimmed, same
+            # optimization the real engine documents: storage sits under capacity on
+            # the overwhelming majority of days --
+            total_qty = 0
+            for s in range(num_lot_slots):
+                if lot_item_id[r, s] >= 0:
+                    total_qty += lot_quantity[r, s]
+            overflow_units = total_qty - storage_capacity
+            while overflow_units > 0:
+                chosen = -1
+                chosen_remaining = 0.0
+                for s in range(num_lot_slots):
+                    if lot_item_id[r, s] < 0:
+                        continue
+                    item = lot_item_id[r, s]
+                    remaining = np.float64(effective_shelf_life_days[item]) - np.float64(
+                        lot_age_days[r, s]
+                    )
+                    if chosen < 0 or remaining < chosen_remaining:
+                        chosen = s
+                        chosen_remaining = remaining
+                if chosen < 0:
+                    break  # no occupied slots left -- shouldn't happen if overflow_units > 0
+                remove = min(overflow_units, lot_quantity[r, chosen])
+                lot_quantity[r, chosen] -= remove
+                overflow_units -= remove
+                ts += remove
+                if lot_quantity[r, chosen] == 0:
+                    lot_item_id[r, chosen] = -1
+
+            # -- storage: liability collect (simulation/inventory.py:collect_storage_liability)
+            # -- end of day, using the amount captured before today's harvests; shadow
+            # accounting: capped by (and reported against) `m`, but never subtracted
+            # from it -- see kernel.py's module docstring for why. --
+            charged = min(max(0.0, m), max(0.0, liability))
+            tc += charged
+
         money[r] = np.float32(m)
         total_harvest[r] = np.float32(th)
         total_revenue[r] = np.float32(tr)
+        total_spoiled[r] = np.float32(ts)
+        total_storage_cost[r] = np.float32(tc)
         rng_run_state[r] = run_state
 
 
@@ -494,11 +618,15 @@ def simulate_chunk(
             strategy_of_run=state.strategy_id,
         )
 
+    overflow_events = np.zeros(state.num_runs, dtype=np.int32)
+
     _simulate_chunk_core(
         state.money,
         state.total_harvest,
         state.total_revenue,
         state.strategy_id,
+        state.total_spoiled,
+        state.total_storage_cost,
         state.moisture,
         state.nitrogen,
         state.phosphorus,
@@ -521,6 +649,11 @@ def simulate_chunk(
         state.last_watered_day,
         state.rng_run_state,
         state.rng_plot_state,
+        state.lot_item_id,
+        state.lot_quantity,
+        state.lot_quality,
+        state.lot_age_days,
+        overflow_events,
         num_days,
         config.num_crops,
         config.seed_cost,
@@ -543,6 +676,7 @@ def simulate_chunk(
         config.potassium_demand,
         config.family_id,
         config.unlock_total_revenue,
+        config.effective_shelf_life_days,
         config.greedy_rank,
         config.conservative_rank,
         float(config.regen_moisture),
@@ -585,4 +719,16 @@ def simulate_chunk(
         config.season_rain_low,
         config.season_rain_high,
         config.season_evaporation,
+        int(config.storage_capacity),
+        float(config.storage_daily_cost),
     )
+
+    if np.any(overflow_events):
+        raise RuntimeError(
+            "vectorized/kernel.py: lot-slot overflow -- a plot needed more concurrent "
+            "storage lots than config_arrays.py's lots_per_plot bound provides for. "
+            f"overflow_events={overflow_events[overflow_events > 0]!r} at run indices "
+            f"{np.nonzero(overflow_events)[0]!r}. This means config/crops.json's "
+            "shelf_life_days/growth_days ratio drifted past the assumption "
+            "lots_per_plot was sized for -- see config_arrays.py's VectorConfig."
+        )

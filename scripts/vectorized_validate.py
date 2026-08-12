@@ -6,7 +6,10 @@ runs a size-1 chunk through the numba kernel and one run through the pure-
 Python sequential reference, and asserts they agree to float32 precision.
 It also checks the chunk-size-independence property rng.py's docstring
 promises: the same global run index produces the same result whether it's
-run alone or embedded at various offsets inside a larger chunk.
+run alone or embedded at various offsets inside a larger chunk. A third
+check (Phase 2) forces the storage FEFO capacity-trim and full age-out
+spoilage branches to actually fire, via a tiny-capacity config variant, and
+confirms kernel vs. reference still agree there too.
 
 This does NOT compare against simulation/'s real engine -- see
 vectorized/README.md for why. It validates internal consistency of this
@@ -21,6 +24,7 @@ Needs requirements-fast.txt (numpy, numba) installed.
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -39,26 +43,34 @@ ATOL = 1e-3  # absolute floor for values that round to ~0
 
 CONFIG = load_vector_config()
 
+# A config variant with a deliberately tiny storage capacity, so
+# check_storage_capacity_trim() exercises the FEFO capacity-trim branch (not
+# just age-out spoilage) on every check without touching config/storage.json
+# -- that file is real balance data, not a test fixture.
+TINY_CAPACITY_CONFIG = dataclasses.replace(CONFIG, storage_capacity=np.int32(3))
 
-def _num_lot_slots(num_plots: int) -> int:
-    return num_plots * CONFIG.lots_per_plot
+
+def _num_lot_slots(num_plots: int, config=CONFIG) -> int:
+    return num_plots * config.lots_per_plot
 
 
 def _kernel_single_run(
-    master_seed: int, run_index: int, strategy: int, num_plots: int, num_days: int
+    master_seed: int, run_index: int, strategy: int, num_plots: int, num_days: int, config=CONFIG
 ) -> dict:
-    state = allocate(1, num_plots, _num_lot_slots(num_plots))
-    init_runs(state, CONFIG, master_seed, run_index, np.array([strategy], dtype=np.int8))
-    simulate_chunk(state, num_days, CONFIG)
+    state = allocate(1, num_plots, _num_lot_slots(num_plots, config))
+    init_runs(state, config, master_seed, run_index, np.array([strategy], dtype=np.int8))
+    simulate_chunk(state, num_days, config)
     return {
         "money": float(state.money[0]),
         "total_harvest": float(state.total_harvest[0]),
         "total_revenue": float(state.total_revenue[0]),
+        "total_spoiled": float(state.total_spoiled[0]),
+        "total_storage_cost": float(state.total_storage_cost[0]),
     }
 
 
 def _assert_close(label: str, a: dict, b: dict) -> None:
-    for key in ("money", "total_harvest", "total_revenue"):
+    for key in ("money", "total_harvest", "total_revenue", "total_spoiled", "total_storage_cost"):
         if not np.isclose(a[key], b[key], rtol=RTOL, atol=ATOL):
             raise AssertionError(
                 f"{label}: kernel {key}={a[key]!r} != reference {key}={b[key]!r} "
@@ -118,6 +130,8 @@ def check_chunk_size_independence(num_days: int) -> int:
         "money": float(baseline_state.money[0]),
         "total_harvest": float(baseline_state.total_harvest[0]),
         "total_revenue": float(baseline_state.total_revenue[0]),
+        "total_spoiled": float(baseline_state.total_spoiled[0]),
+        "total_storage_cost": float(baseline_state.total_storage_cost[0]),
     }
 
     checks = 0
@@ -132,12 +146,61 @@ def check_chunk_size_independence(num_days: int) -> int:
             "money": float(state.money[local_index]),
             "total_harvest": float(state.total_harvest[local_index]),
             "total_revenue": float(state.total_revenue[local_index]),
+            "total_spoiled": float(state.total_spoiled[local_index]),
+            "total_storage_cost": float(state.total_storage_cost[local_index]),
         }
         _assert_close(f"chunk_size={chunk_size} offset={offset}", result, baseline)
         checks += 1
     if checks == 0:
         raise AssertionError(
             "no chunk configuration covered the target run index -- test is broken"
+        )
+    return checks
+
+
+def check_storage_capacity_trim(num_days: int) -> int:
+    """Phase 2: force both the FEFO capacity-trim branch and full age-out
+    spoilage to actually execute (not just be numerically dormant), and
+    check kernel vs. reference agree on the resulting counters.
+
+    `simulate_chunk` itself raises loudly if any run overflows its
+    lot-slot bound (see kernel.py's overflow_events check) -- reaching the
+    assertions below without an exception already proves that invariant
+    held for every one of these runs, on top of the storage_capacity=3
+    config forcing trims well before the default capacity=100 would.
+
+    Individual (seed, strategy, plot-count) combinations can still
+    legitimately harvest nothing over the run (a genuinely unlucky loss-roll
+    streak, or an unaffordable strategy on a single plot) -- that's not a
+    storage bug, just variance, so the "the branch actually fired" check is
+    an OR across the whole grid rather than a per-combination requirement.
+    """
+    checks = 0
+    any_spoiled = False
+    seeds = [1, 42, 12345]
+    plots = [1, 3, 10]
+    for master_seed in seeds:
+        for num_plots in plots:
+            for strategy in (
+                crops.STRATEGY_GREEDY,
+                crops.STRATEGY_CONSERVATIVE,
+                crops.STRATEGY_RANDOM,
+            ):
+                kernel_result = _kernel_single_run(
+                    master_seed, 0, strategy, num_plots, num_days, config=TINY_CAPACITY_CONFIG
+                )
+                reference_result = simulate_run_reference(
+                    TINY_CAPACITY_CONFIG, master_seed, 0, strategy, num_plots, num_days
+                )
+                label = f"seed={master_seed} strat={strategy} plots={num_plots} (tiny capacity)"
+                _assert_close(label, kernel_result, reference_result)
+                any_spoiled = any_spoiled or kernel_result["total_spoiled"] > 0.0
+                checks += 1
+    if not any_spoiled:
+        raise AssertionError(
+            "check_storage_capacity_trim: total_spoiled was 0 across the entire grid -- "
+            "the capacity-trim/age-out branch never actually fired, this check isn't "
+            "exercising the code path it claims to"
         )
     return checks
 
@@ -152,7 +215,11 @@ def main() -> int:
     n2 = check_chunk_size_independence(num_days)
     print(f"  {n2} chunk configurations agreed on the same global run index")
 
-    print(f"\nOK: {n1 + n2} checks passed.")
+    print("Checking storage capacity trim + spoilage...")
+    n3 = check_storage_capacity_trim(num_days)
+    print(f"  {n3} (seed, strategy, plot-count) combinations matched with spoilage confirmed")
+
+    print(f"\nOK: {n1 + n2 + n3} checks passed.")
     return 0
 
 
