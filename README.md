@@ -92,11 +92,14 @@ accelerators changes what a seed replays to.
 `vectorized/` is a **separate, experimental** module for a different
 question than the simulator above answers: aggregate outcomes across
 millions of runs, when you don't need per-day history or bit-exact replay of
-a specific seed. It uses a simplified 3-crop model and a different
-(splitmix64) RNG scheme — not a faster path through `simulation/`, and not
-expected to agree with it numerically. Needs `numpy`/`numba`
-(`pip install -r requirements-fast.txt`); nothing else in the repo imports it
-or is affected by its absence. See `vectorized/README.md`.
+a specific seed. Crop growth, soil chemistry, and weather are ported from the
+real `config/*.json`-driven mechanics (see `vectorized/config_arrays.py`);
+storage, markets, contracts, processing, and upgrades aren't yet (see that
+module's Roadmap). It uses a different (splitmix64) RNG scheme throughout —
+not a faster path through `simulation/`, and not expected to agree with it
+numerically. Needs `numpy`/`numba` (`pip install -r requirements-fast.txt`);
+nothing else in the repo imports it or is affected by its absence. See
+`vectorized/README.md`.
 
 ```bash
 python3 scripts/vectorized_validate.py    # kernel vs. reference agreement
