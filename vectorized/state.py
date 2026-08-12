@@ -12,8 +12,17 @@ toy layout to the fields below, mirroring `simulation/state.py`'s
 stress accumulators, neglect tracking, fertilizer state, family rotation) --
 see `config_arrays.py` and `kernel.py` for how those fields are used, and
 vectorized/README.md for what's still simplified relative to the real
-engine (no storage/inventory lots, no markets, no contracts, no processing,
-no upgrades).
+engine (no markets, no contracts, no processing, no upgrades).
+
+Phase 2 ("storage & spoilage") added a fixed-size per-run lot-slot
+dimension `(B, L)`, `L = num_plots * config.lots_per_plot`, mirroring
+`simulation/state.py`'s `InventoryLot` list with a bounded array instead of
+a dynamic list (see `config_arrays.py`'s `lots_per_plot` docstring for why
+that bound is provably safe). This is *shadow accounting*: harvests still
+credit `money` instantly (Phase 3/markets hasn't landed), lots exist purely
+to age/spoil/capacity-trim and produce `total_spoiled`/`total_storage_cost`
+-- informational stats that don't feed back into `money` yet. See
+`kernel.py`'s docstring for the full rationale.
 """
 
 from __future__ import annotations
@@ -32,6 +41,9 @@ class BatchState:
     total_harvest: np.ndarray  # float32 (B,) -- units actually sold (non-rejected grade)
     total_revenue: np.ndarray  # float32 (B,) -- cumulative gross sales, gates crop unlocks
     strategy_id: np.ndarray  # int8 (B,)
+    total_spoiled: np.ndarray  # float32 (B,) -- cumulative units lost to age-out + capacity trim
+    # float32 (B,) -- cumulative storage liability charged (shadow: not subtracted from money)
+    total_storage_cost: np.ndarray
 
     # -- plot-level: soil --
     moisture: np.ndarray  # float32 (B, P)
@@ -65,6 +77,14 @@ class BatchState:
     rng_run_state: np.ndarray  # uint64 (B,)
     rng_plot_state: np.ndarray  # uint64 (B, P)
 
+    # -- lot-level: storage (Phase 2), shape (B, L), L = num_plots * lots_per_plot --
+    lot_item_id: np.ndarray  # int8 (B, L), -1 == empty slot (same convention as crop_type)
+    lot_quantity: np.ndarray  # int32 (B, L)
+    # int8 (B, L) -- QUALITY_ORDER: 1=processing, 2=standard, 3=premium (0/"rejected"
+    # never appears -- a rejected harvest never becomes a lot)
+    lot_quality: np.ndarray
+    lot_age_days: np.ndarray  # int16 (B, L)
+
     @property
     def num_runs(self) -> int:
         return self.money.shape[0]
@@ -73,15 +93,22 @@ class BatchState:
     def num_plots(self) -> int:
         return self.moisture.shape[1]
 
+    @property
+    def num_lot_slots(self) -> int:
+        return self.lot_item_id.shape[1]
 
-def bytes_per_run(num_plots: int) -> int:
+
+def bytes_per_run(num_plots: int, num_lot_slots: int) -> int:
     """Bytes/run this layout costs, for `run_millions`' memory-budget chunking.
 
     Closed-form sum kept in sync with the dataclass fields above by hand --
     exact because it's small and reviewed alongside the fields, not because
-    it's introspected.
+    it's introspected. `num_lot_slots` is normally `num_plots *
+    config.lots_per_plot` (see `config_arrays.py`), passed explicitly here
+    rather than derived so this module doesn't need a `VectorConfig` import.
     """
-    per_run = 4 + 4 + 4 + 1 + 8  # money, total_harvest, total_revenue, strategy_id, rng_run
+    # money, total_harvest, total_revenue, strategy_id, rng_run, total_spoiled, total_storage_cost
+    per_run = 4 + 4 + 4 + 1 + 8 + 4 + 4
     per_plot = (
         4 * 8  # moisture, nitrogen, phosphorus, potassium, ph, soil_health, pest, disease (f4)
         + 1 * 4  # crop_type, growth_stage, previous_crop_family, fertilized (i1)
@@ -90,10 +117,13 @@ def bytes_per_run(num_plots: int) -> int:
         + 4 * 2  # neglect_days, last_watered_day (i4)
         + 8  # rng_plot_state (u8)
     )
-    return per_run + num_plots * per_plot
+    per_lot_slot = (
+        1 + 4 + 1 + 2
+    )  # lot_item_id(i1) + lot_quantity(i4) + lot_quality(i1) + lot_age_days(i2)
+    return per_run + num_plots * per_plot + num_lot_slots * per_lot_slot
 
 
-def allocate(num_runs: int, num_plots: int) -> BatchState:
+def allocate(num_runs: int, num_plots: int, num_lot_slots: int) -> BatchState:
     """Allocate an uninitialized chunk. Call `init_runs` before simulating."""
     f4 = lambda: np.empty((num_runs, num_plots), dtype=np.float32)  # noqa: E731
     i1 = lambda: np.empty((num_runs, num_plots), dtype=np.int8)  # noqa: E731
@@ -103,6 +133,8 @@ def allocate(num_runs: int, num_plots: int) -> BatchState:
         total_harvest=np.empty(num_runs, dtype=np.float32),
         total_revenue=np.empty(num_runs, dtype=np.float32),
         strategy_id=np.empty(num_runs, dtype=np.int8),
+        total_spoiled=np.empty(num_runs, dtype=np.float32),
+        total_storage_cost=np.empty(num_runs, dtype=np.float32),
         moisture=f4(),
         nitrogen=f4(),
         phosphorus=f4(),
@@ -125,6 +157,10 @@ def allocate(num_runs: int, num_plots: int) -> BatchState:
         last_watered_day=i4(),
         rng_run_state=np.empty(num_runs, dtype=np.uint64),
         rng_plot_state=np.empty((num_runs, num_plots), dtype=np.uint64),
+        lot_item_id=np.empty((num_runs, num_lot_slots), dtype=np.int8),
+        lot_quantity=np.empty((num_runs, num_lot_slots), dtype=np.int32),
+        lot_quality=np.empty((num_runs, num_lot_slots), dtype=np.int8),
+        lot_age_days=np.empty((num_runs, num_lot_slots), dtype=np.int16),
     )
 
 
@@ -172,6 +208,8 @@ def init_runs(
     state.total_harvest[:] = 0.0
     state.total_revenue[:] = 0.0
     state.strategy_id[:] = strategy_of_run
+    state.total_spoiled[:] = 0.0
+    state.total_storage_cost[:] = 0.0
 
     state.moisture[:, :] = config.initial_moisture
     state.nitrogen[:, :] = config.initial_nitrogen
@@ -196,3 +234,8 @@ def init_runs(
 
     state.neglect_days[:, :] = 0
     state.last_watered_day[:, :] = 0
+
+    state.lot_item_id[:, :] = -1
+    state.lot_quantity[:, :] = 0
+    state.lot_quality[:, :] = 0
+    state.lot_age_days[:, :] = 0

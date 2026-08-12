@@ -59,11 +59,11 @@ class BatchResult:
 
 
 def choose_chunk_size(
-    num_plots: int, max_memory_gb: float, max_chunk: int = DEFAULT_MAX_CHUNK
+    num_plots: int, max_memory_gb: float, max_chunk: int = DEFAULT_MAX_CHUNK, lots_per_plot: int = 1
 ) -> int:
     """Chunk size ≤ max_chunk, and small enough that one chunk's arrays fit
     the memory budget (component D step 1)."""
-    per_run = bytes_per_run(num_plots)
+    per_run = bytes_per_run(num_plots, num_plots * lots_per_plot)
     budget_bound = int((max_memory_gb * (1024**3)) // per_run)
     return max(1, min(max_chunk, budget_bound))
 
@@ -95,7 +95,8 @@ def run_millions(
     if config is None:
         config = load_vector_config()
 
-    chunk_size = choose_chunk_size(num_plots, max_memory_gb, max_chunk)
+    chunk_size = choose_chunk_size(num_plots, max_memory_gb, max_chunk, config.lots_per_plot)
+    num_lot_slots = num_plots * config.lots_per_plot
     weights = np.asarray(strategy_weights, dtype=np.float64)
     weights = weights / weights.sum()
 
@@ -109,7 +110,7 @@ def run_millions(
     while run_offset < total_runs:
         this_chunk = min(chunk_size, total_runs - run_offset)
 
-        state = allocate(this_chunk, num_plots)
+        state = allocate(this_chunk, num_plots, num_lot_slots)
         # Deterministic strategy assignment: cumulative-weight bucketing of
         # each row's fractional position in [0, 1), not per-row RNG draws --
         # keeps the mix exact and independent of chunk boundaries.

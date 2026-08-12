@@ -11,11 +11,13 @@ resolves for the real engine -- just into numpy arrays instead of per-crop
 `CropProfile` objects, because the kernel needs `array[crop_idx]`, not
 `dict[crop_id]`.
 
+Phase 2 ("storage & spoilage") added `config/storage.json` and each crop's
+`shelf_life_days` from `config/crops.json` on top of that.
+
 Still NOT read here: `config/contracts.json`, `config/buyers.json`,
-`config/processing.json`, `config/markets.json`, `config/upgrades.json`,
-`config/storage.json`. Those subsystems aren't ported yet -- see
-vectorized/README.md's roadmap -- so loading their config now would be dead
-weight that silently goes stale.
+`config/processing.json`, `config/markets.json`, `config/upgrades.json`.
+Those subsystems aren't ported yet -- see vectorized/README.md's roadmap --
+so loading their config now would be dead weight that silently goes stale.
 
 Only `unlock_requirement.type == "total_revenue"` is understood (the only
 type any shipped crop uses). A crop with a different unlock type fails to
@@ -67,6 +69,9 @@ class VectorConfig:
     family_id: np.ndarray  # int8, index into `families`
     unlock_total_revenue: np.ndarray  # float32, NO_UNLOCK_REQUIREMENT if none
     families: tuple
+    shelf_life_days: np.ndarray  # int16, c.get("shelf_life_days", 7)
+    # int16, derived: max(1, round(shelf_life_days * storage_shelf_life_multiplier))
+    effective_shelf_life_days: np.ndarray
 
     # Preference rankings for the 3 fixed strategies (component C): crop
     # indices ordered by that strategy's preference, best first. The kernel
@@ -133,6 +138,19 @@ class VectorConfig:
     season_rain_high: np.ndarray  # float32[4]
     season_evaporation: np.ndarray  # float32[4]
 
+    # -- storage (config/storage.json) --
+    storage_capacity: np.int32
+    storage_daily_cost: np.float32
+    storage_shelf_life_multiplier: np.float32
+    # Upper bound on concurrent live lots per plot: a plot harvests at most
+    # once every `growth_days`, and any lot older than
+    # `effective_shelf_life_days` is guaranteed fully spoiled regardless of
+    # capacity trim, so `ceil(effective_shelf_life_days / growth_days) + 1`
+    # (max over crops, +1 buffer) is a provable per-plot bound, not a guess.
+    # Plain int, not an array -- it's a shape parameter for the lot-slot
+    # dimension, not a per-crop value.
+    lots_per_plot: int
+
     # -- top-level (config/simulation_settings.json) --
     start_money: np.float32
 
@@ -149,6 +167,7 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     fertilizer = _load_json(config_dir, "fertilizer.json")
     weather = _load_json(config_dir, "weather.json")
     settings = _load_json(config_dir, "simulation_settings.json")
+    storage = _load_json(config_dir, "storage.json")
 
     crop_ids = tuple(c["id"] for c in crops)
     num_crops = len(crop_ids)
@@ -202,6 +221,7 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     nitrogen_demand = np.array([d.get("nitrogen", 0.0) for d in demands], dtype=np.float32)
     phosphorus_demand = np.array([d.get("phosphorus", 0.0) for d in demands], dtype=np.float32)
     potassium_demand = np.array([d.get("potassium", 0.0) for d in demands], dtype=np.float32)
+    shelf_life_days = np.array([c.get("shelf_life_days", 7) for c in crops], dtype=np.int16)
 
     expected_value_per_day = base_price * (min_yield + max_yield) / 2.0 / growth_days
     greedy_rank = np.argsort(-expected_value_per_day).astype(np.int8)
@@ -221,6 +241,23 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
 
     temp_ranges = [seasons_cfg.get(s, {}).get("temperature_range", [12, 24]) for s in season_names]
     rain_ranges = [seasons_cfg.get(s, {}).get("rainfall_range", [0.08, 0.25]) for s in season_names]
+
+    storage_capacity = np.int32(storage.get("capacity", 100))
+    storage_daily_cost = np.float32(storage.get("daily_cost", 0.0))
+    storage_shelf_life_multiplier = np.float32(storage.get("shelf_life_multiplier", 1.0))
+    effective_shelf_life_days = np.maximum(
+        1, np.round(shelf_life_days.astype(np.float64) * float(storage_shelf_life_multiplier))
+    ).astype(np.int16)
+    lots_per_plot = (
+        int(
+            np.max(
+                np.ceil(
+                    effective_shelf_life_days.astype(np.float64) / growth_days.astype(np.float64)
+                )
+            )
+        )
+        + 1
+    )
 
     return VectorConfig(
         crop_ids=crop_ids,
@@ -246,6 +283,8 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
         family_id=family_id,
         unlock_total_revenue=unlock_total_revenue,
         families=families,
+        shelf_life_days=shelf_life_days,
+        effective_shelf_life_days=effective_shelf_life_days,
         greedy_rank=greedy_rank,
         conservative_rank=conservative_rank,
         initial_moisture=np.float32(soil_initial.get("moisture", 0.65)),
@@ -312,5 +351,9 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
         season_rain_low=np.array([r[0] for r in rain_ranges], dtype=np.float32),
         season_rain_high=np.array([r[1] for r in rain_ranges], dtype=np.float32),
         season_evaporation=season_field("evaporation", 0.08),
+        storage_capacity=storage_capacity,
+        storage_daily_cost=storage_daily_cost,
+        storage_shelf_life_multiplier=storage_shelf_life_multiplier,
+        lots_per_plot=lots_per_plot,
         start_money=np.float32(settings.get("start_money", 100)),
     )

@@ -40,10 +40,14 @@ ATOL = 1e-3  # absolute floor for values that round to ~0
 CONFIG = load_vector_config()
 
 
+def _num_lot_slots(num_plots: int) -> int:
+    return num_plots * CONFIG.lots_per_plot
+
+
 def _kernel_single_run(
     master_seed: int, run_index: int, strategy: int, num_plots: int, num_days: int
 ) -> dict:
-    state = allocate(1, num_plots)
+    state = allocate(1, num_plots, _num_lot_slots(num_plots))
     init_runs(state, CONFIG, master_seed, run_index, np.array([strategy], dtype=np.int8))
     simulate_chunk(state, num_days, CONFIG)
     return {
@@ -101,7 +105,7 @@ def check_chunk_size_independence(num_days: int) -> int:
     target_global_index = 37  # picked to land in the middle of a chunk below
 
     # Baseline: alone, in a size-1 chunk at its own global offset.
-    baseline_state = allocate(1, num_plots)
+    baseline_state = allocate(1, num_plots, _num_lot_slots(num_plots))
     init_runs(
         baseline_state,
         CONFIG,
@@ -120,7 +124,7 @@ def check_chunk_size_independence(num_days: int) -> int:
     for chunk_size, offset in [(60, 0), (40, 0), (10, 30)]:
         if not (offset <= target_global_index < offset + chunk_size):
             continue
-        state = allocate(chunk_size, num_plots)
+        state = allocate(chunk_size, num_plots, _num_lot_slots(num_plots))
         init_runs(state, CONFIG, master_seed, offset, strategies[offset : offset + chunk_size])
         simulate_chunk(state, num_days, CONFIG)
         local_index = target_global_index - offset
