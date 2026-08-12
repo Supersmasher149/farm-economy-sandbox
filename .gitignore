@@ -28,5 +28,21 @@ reports/latest
 reports/.batch-*/
 reports/.publish.lock
 
+# Scratch output from `make sim`/`charts`/`balance` (tools/scratch_run.py) --
+# same REPORTS_DIR layout as above, isolated under its own root so it never
+# touches the real reports/ tree.
+reports/_scratch/
+
+# Batch output tree is fully generated (the specific globs above predate
+# this and are kept for clarity/history); ignore the whole directory so
+# nothing under it -- including reports/.DS_Store and reports/.publish.lock
+# -- is ever a candidate for a commit.
+reports/
+
 # Local Claude Code permission grants -- machine-specific, not shared.
 .claude/settings.local.json
+
+# uv lockfile: incidental residue from running `uv run` locally. pyproject.toml
+# has no [project] table (see its own header comment) and the Makefile drives
+# everything through python3, not uv, so there's nothing for this to lock.
+uv.lock
