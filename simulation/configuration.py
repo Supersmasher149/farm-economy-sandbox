@@ -165,6 +165,9 @@ ALLOWED_CONTRACT_FIELDS = {
     "production_safety_factor",
     "offer_expiry_days",
     "fallback_price_multiplier",
+    "relationship_gain_per_delivery",
+    "relationship_loss_per_failure",
+    "relationship_bonus_cap",
 }
 ALLOWED_BUYER_FIELDS = {
     "id",
@@ -176,6 +179,7 @@ ALLOWED_BUYER_FIELDS = {
     "deadline_days",
     "penalty_rate",
     "min_reputation",
+    "relationship_bonus_rate",
 }
 
 
@@ -499,6 +503,12 @@ def _validate_contracts(config: dict) -> None:
         _integer(config, "offer_expiry_days", "contracts", minimum=1)
     if "fallback_price_multiplier" in config:
         _number(config, "fallback_price_multiplier", "contracts", minimum=0)
+    if "relationship_gain_per_delivery" in config:
+        _number(config, "relationship_gain_per_delivery", "contracts", minimum=0)
+    if "relationship_loss_per_failure" in config:
+        _number(config, "relationship_loss_per_failure", "contracts", minimum=0)
+    if "relationship_bonus_cap" in config:
+        _number(config, "relationship_bonus_cap", "contracts", minimum=0)
 
 
 def _validate_buyers(buyers: list, item_ids: set) -> None:
@@ -523,6 +533,8 @@ def _validate_buyers(buyers: list, item_ids: set) -> None:
             _number(buyer, "penalty_rate", path, minimum=0, maximum=1)
         if "min_reputation" in buyer:
             _number(buyer, "min_reputation", path, minimum=0)
+        if "relationship_bonus_rate" in buyer:
+            _number(buyer, "relationship_bonus_rate", path, minimum=0)
 
 
 def _required_mapping(mapping: Mapping, key: str, parent: str = "") -> dict:

@@ -41,6 +41,24 @@ def test_validation_rejects_invalid_market_quality_enum():
         validate(crops, upgrades, malformed)
 
 
+def test_validation_rejects_negative_buyer_relationship_bonus_rate():
+    crops, upgrades, _config, world = load_config()
+    malformed = deepcopy(world)
+    malformed["buyers"][0]["relationship_bonus_rate"] = -0.01
+
+    with pytest.raises(ValueError, match="relationship_bonus_rate"):
+        validate(crops, upgrades, malformed)
+
+
+def test_validation_rejects_negative_relationship_bonus_cap():
+    crops, upgrades, _config, world = load_config()
+    malformed = deepcopy(world)
+    malformed["contracts"]["relationship_bonus_cap"] = -0.1
+
+    with pytest.raises(ValueError, match="relationship_bonus_cap"):
+        validate(crops, upgrades, malformed)
+
+
 def test_validation_rejects_invalid_simulation_settings():
     with pytest.raises(ValueError, match="days"):
         validate_simulation_config(
