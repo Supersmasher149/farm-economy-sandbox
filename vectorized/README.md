@@ -67,9 +67,10 @@ print(result.summary())
 ```
 
 Measured on a single CPU core's worth of `numba(parallel=True)` work (see
-Performance below): **1,000,000 runs in ~3.5s, peak RSS ~130MB** — well
-inside the prompt's <60s CPU / 2GB targets, with headroom for a much bigger
-`total_runs` before either budget binds.
+Performance below): **1,000,000 runs in ~3.0s, peak RSS ~264MB** — well
+inside the prompt's <60s CPU / 2GB targets (20x and 7.8x margin
+respectively), with headroom for a much bigger `total_runs` before either
+budget binds.
 
 ```bash
 # validate the numba kernel against the pure-Python sequential reference
@@ -117,8 +118,9 @@ allocates one chunk, seeds it, runs it, folds its results into
 `StreamingStats` (Welford, batch/parallel form — see `stats.py`'s
 docstring), then `del state; gc.collect()` before the next chunk. Peak
 resident memory is therefore bounded by **one chunk's arrays**, not by
-`total_runs` — verified at 1M runs / ~130MB peak RSS above, and it stays
-flat as `total_runs` grows past that.
+`total_runs` — the Performance table below shows it plateauing once
+`total_runs` exceeds a few chunks' worth, rather than continuing to climb
+with `total_runs`.
 
 ## Validation (component E)
 
@@ -154,7 +156,7 @@ this is a separate tool" above for why that comparison isn't meaningful.
   numbers too) or require reimplementing `simulation/derived.py`'s config
   resolution — see `crops.py`'s docstring.
 - **No JAX migration was needed to hit the target.** The numpy + numba path
-  already clears <60s CPU by ~16x margin at 1M runs (see Performance below),
+  already clears <60s CPU by ~20x margin at 1M runs (see Performance below),
   so JAX wasn't pursued. Migration notes below in case GPU throughput becomes
   the actual constraint later.
 
@@ -174,14 +176,17 @@ body and docstring.
 ## Performance
 
 Measured on this machine, `.venv` (Python 3.12.9, numpy 2.5.2, numba 0.67.0),
-`P=10` plots, `num_days=365`, single process:
+`P=10` plots, `num_days=365`, one `run_millions` call per process (via
+`/usr/bin/time -l`, so each row's peak RSS is isolated rather than a running
+high-water mark across multiple sizes in one process):
 
-| runs | wall clock | runs/s | peak RSS |
-|---|---|---|---|
-| 1,000 | 0.01s | ~75,000 | ~104 MB |
-| 20,000 | 0.09s | ~227,000 | ~112 MB |
-| 100,000 | 0.33s | ~307,000 | ~169 MB |
-| 1,000,000 | 3.56s | ~281,000 | ~130 MB |
+| Runs | Plots × Days | Wall time | Throughput | Peak RSS | vs. targets |
+|---:|---:|---:|---:|---:|---|
+| 1,000 | 10 × 365 | 0.014 s | ~73,500 runs/s | 103 MB | — |
+| 10,000 | 10 × 365 | 0.041 s | ~246,300 runs/s | 108 MB | — |
+| 100,000 | 10 × 365 | 0.290 s | ~344,700 runs/s | 160 MB | — |
+| 500,000 | 10 × 365 | 1.489 s | ~335,900 runs/s | 268 MB | — |
+| **1,000,000** | **10 × 365** | **2.99 s** | **~334,500 runs/s** | **264 MB** | **20x under 60s · 7.8x under 2GB** |
 
 (numba JIT compilation of `simulate_chunk` — a few hundred ms — happens once
 per process on first call and is excluded from these figures, same as the
@@ -191,16 +196,28 @@ main engine's Cython/`_fastplot` builds are one-time costs excluded from
 wall-clock reference point — see that script's docstring for why it's not an
 apples-to-apples comparison of the same economic model.
 
-Reading `1,000 runs → 75,000 runs/s` vs. `100,000 runs → 307,000 runs/s`:
-this is per-chunk-call overhead (numba dispatch, array allocation) amortizing
-over more runs, same shape as the main engine's straggler-effect writeup for
-worker count in `CLAUDE.md`'s Performance section — it flattens out well
-before 100,000 runs/chunk, which is why `DEFAULT_MAX_CHUNK = 100_000` was a
-reasonable default rather than something to tune further.
+Two shapes worth reading, not just the headline row:
+
+- **Throughput ramps then plateaus, it doesn't keep climbing.** 1k→10k→100k
+  runs/sec rises sharply (per-call dispatch/allocation overhead amortizing
+  over more runs), then flattens around ~335,000 runs/s from 100,000 runs
+  onward — same shape as the main engine's straggler-effect writeup for
+  worker count in `CLAUDE.md`'s Performance section. It flattens out well
+  before 100,000 runs/chunk, which is why `DEFAULT_MAX_CHUNK = 100_000` was a
+  reasonable default rather than something to tune further.
+- **Peak RSS is chunk-bounded, not run-count-bounded — but not perfectly
+  flat.** It climbs 103→160MB from 1k→100k runs (still one chunk the whole
+  way, since `total_runs <= DEFAULT_MAX_CHUNK`), then steps up to ~265–270MB
+  at 500k/1M runs (5 and 10 chunks respectively) and *stays flat between
+  those two* rather than continuing to climb with `total_runs` — consistent
+  with the streaming `del state; gc.collect()` design. The step-up itself is
+  most likely allocator arena retention (macOS/glibc malloc not always
+  returning freed pages to the OS between chunks) rather than an actual
+  per-chunk leak; either way it's still 7.8x under the 2GB budget.
 
 ## Migration notes: swapping in JAX later
 
-Not needed to hit this prompt's target (16x margin above target already, on
+Not needed to hit this prompt's target (20x margin above target already, on
 CPU, single process) — recorded here since the prompt asked for it.
 
 If GPU throughput becomes the actual constraint:
