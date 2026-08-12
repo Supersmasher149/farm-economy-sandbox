@@ -117,6 +117,13 @@ class PlayerState:
     contract_offers: list[ContractState] = field(default_factory=list)
     processing_jobs: list[ProcessingJob] = field(default_factory=list)
     reputation: float = 0.0
+    # Per-buyer standing, separate from the global `reputation` gate above.
+    # `reputation` decides *whether* a buyer will deal with the farm at all
+    # (min_reputation); this decides how good the terms get with a buyer the
+    # farm keeps coming back to -- see simulation.contracts' relationship
+    # bonus applied when pricing that buyer's next offer. Keyed by buyer id,
+    # missing key means no history yet (equivalent to 0.0).
+    buyer_relationships: dict = field(default_factory=dict)
     market_prices: dict = field(default_factory=dict)
     market_supply: dict = field(default_factory=dict)
     channel_capacity_used: dict = field(default_factory=dict)

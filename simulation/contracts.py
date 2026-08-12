@@ -10,6 +10,15 @@ DEFAULT_OFFER_EXPIRY_DAYS = 3
 # sales channel can quote the item at all. Overridable via
 # contracts.fallback_price_multiplier.
 DEFAULT_FALLBACK_PRICE_MULTIPLIER = 1.15
+# Per-buyer relationship: how much a completed/failed contract with a given
+# buyer moves that buyer's standing, and how much of a price bump full
+# standing can ever earn -- separate from and additional to the global
+# `player.reputation` gate. Mirrors reputation's own +5/-4 asymmetry (harder
+# to lose than to build) and markets.py's 0.25 cap on its own reputation
+# bonus. All three are overridable via contracts.json.
+DEFAULT_RELATIONSHIP_GAIN = 6.0
+DEFAULT_RELATIONSHIP_LOSS = 5.0
+DEFAULT_RELATIONSHIP_BONUS_CAP = 0.25
 
 
 def offer_expiry_day(player, offer) -> int:
@@ -31,6 +40,19 @@ def visible_offers(player, offers=None) -> list:
     """
     source = player.contract_offers if offers is None else offers
     return [offer for offer in source if not offer.resolved and not is_offer_expired(player, offer)]
+
+
+def _relationship_price_multiplier(player, buyer: dict, contract_config: dict) -> float:
+    """Price bump this buyer's next offer earns from standing history.
+
+    `buyer_relationships` only holds entries for buyers the farm has already
+    done business with, so a buyer never dealt with yet reads as 0.0
+    (no bonus) rather than needing to be pre-seeded.
+    """
+    relationship = player.buyer_relationships.get(buyer["id"], 0.0)
+    bonus_rate = buyer.get("relationship_bonus_rate", 0.0)
+    cap = contract_config.get("relationship_bonus_cap", DEFAULT_RELATIONSHIP_BONUS_CAP)
+    return 1 + min(cap, relationship * bonus_rate)
 
 
 def generate_offers(player, contract_config: dict, buyers: list, items_by_id: dict, rng) -> list:
@@ -62,6 +84,9 @@ def generate_offers(player, contract_config: dict, buyers: list, items_by_id: di
         base = items_by_id[item_id].get(
             "base_price", items_by_id[item_id].get("processed_base_price", 1.0)
         )
+        price_multiplier = buyer.get(
+            "contract_price_multiplier", 1.2
+        ) * _relationship_price_multiplier(player, buyer, contract_config)
         offers.append(
             ContractState(
                 id=identifier,
@@ -69,7 +94,7 @@ def generate_offers(player, contract_config: dict, buyers: list, items_by_id: di
                 item_id=item_id,
                 quantity=quantity,
                 min_quality=buyer.get("min_quality", "standard"),
-                unit_price=base * buyer.get("contract_price_multiplier", 1.2),
+                unit_price=base * price_multiplier,
                 offered_day=player.day,
                 deadline_day=player.day + buyer.get("deadline_days", 10),
                 penalty_rate=buyer.get(
@@ -589,6 +614,12 @@ def deliver(player, contract_id: str, quantity: int) -> tuple[float, int]:
         contract.resolved = True
         player.contracts_completed += 1
         player.reputation = min(100.0, player.reputation + 5.0)
+        gain = getattr(player, "contract_config", {}).get(
+            "relationship_gain_per_delivery", DEFAULT_RELATIONSHIP_GAIN
+        )
+        player.buyer_relationships[contract.buyer_id] = min(
+            100.0, player.buyer_relationships.get(contract.buyer_id, 0.0) + gain
+        )
     return revenue, delivered
 
 
@@ -611,6 +642,12 @@ def resolve_expired(player) -> None:
         player.contract_penalties += penalty
         player.contracts_failed += 1
         player.reputation = max(0.0, player.reputation - 4.0)
+        loss = getattr(player, "contract_config", {}).get(
+            "relationship_loss_per_failure", DEFAULT_RELATIONSHIP_LOSS
+        )
+        player.buyer_relationships[contract.buyer_id] = max(
+            0.0, player.buyer_relationships.get(contract.buyer_id, 0.0) - loss
+        )
         contract.resolved = True
 
     # Resolved contracts (completed via deliver() or failed above) were never
