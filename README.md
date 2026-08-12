@@ -87,6 +87,22 @@ The source files remain the reference implementation, and the same golden
 replay baseline is asserted against both builds, so no combination of
 accelerators changes what a seed replays to.
 
+### Optional: the vectorized Monte Carlo sampler
+
+`vectorized/` is a **separate, experimental** module for a different
+question than the simulator above answers: aggregate outcomes across
+millions of runs, when you don't need per-day history or bit-exact replay of
+a specific seed. It uses a simplified 3-crop model and a different
+(splitmix64) RNG scheme — not a faster path through `simulation/`, and not
+expected to agree with it numerically. Needs `numpy`/`numba`
+(`pip install -r requirements-fast.txt`); nothing else in the repo imports it
+or is affected by its absence. See `vectorized/README.md`.
+
+```bash
+python3 scripts/vectorized_validate.py    # kernel vs. reference agreement
+python3 scripts/vectorized_benchmark.py   # runs/sec, projected to 1M
+```
+
 ## Quick start
 
 ```bash
@@ -167,6 +183,9 @@ metrics/                Aggregation, warnings, CSV + Markdown + JSON reporting,
                         the `view` table/diff renderer, and the HTML dashboard
 tests/                  pytest suite for the simulation and engine
 docs/design/            Design notes for the simulation architecture
+vectorized/             Separate, experimental Monte Carlo sampler (numpy/numba,
+                        optional) -- see vectorized/README.md, not part of the
+                        simulator above
 ```
 
 ## How the simulation works
