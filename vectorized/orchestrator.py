@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from vectorized import crops
+from vectorized.config_arrays import VectorConfig, load_vector_config
 from vectorized.kernel import simulate_chunk
 from vectorized.state import allocate, bytes_per_run, init_runs
 from vectorized.stats import StreamingStats
@@ -76,6 +77,7 @@ def run_millions(
     max_chunk: int = DEFAULT_MAX_CHUNK,
     strategy_weights: tuple[float, float, float] = (1.0, 1.0, 1.0),
     progress: bool = False,
+    config: VectorConfig | None = None,
 ) -> BatchResult:
     """Simulate `total_runs` runs in memory-bounded streaming chunks.
 
@@ -83,7 +85,16 @@ def run_millions(
     within each chunk round-robin the roster in that proportion so every
     chunk -- not just the whole batch -- carries a representative mix, which
     keeps `by_strategy_*` stats stable even if a run is interrupted partway.
+
+    `config` is a `config_arrays.VectorConfig` (crop economics, soil
+    dynamics, weather, watering/fertilizer settings, all read from the real
+    `config/*.json`) -- loaded once and reused by default, since it's the
+    same read-only config for every chunk; pass an explicit one (e.g. loaded
+    from a different `config_dir`, for an A/B comparison) to override.
     """
+    if config is None:
+        config = load_vector_config()
+
     chunk_size = choose_chunk_size(num_plots, max_memory_gb, max_chunk)
     weights = np.asarray(strategy_weights, dtype=np.float64)
     weights = weights / weights.sum()
@@ -107,8 +118,8 @@ def run_millions(
         strategy_of_run = np.searchsorted(cum_weights, fractions).astype(np.int8)
         strategy_of_run = np.clip(strategy_of_run, 0, len(crops.STRATEGY_NAMES) - 1)
 
-        init_runs(state, master_seed, run_offset, strategy_of_run)
-        simulate_chunk(state, num_days)
+        init_runs(state, config, master_seed, run_offset, strategy_of_run)
+        simulate_chunk(state, num_days, config)
 
         overall_money.update(state.money)
         overall_harvest.update(state.total_harvest)
@@ -149,6 +160,7 @@ def run_isolated_strategy_fallback(
     num_plots: int,
     num_days: int,
     master_seed: int,
+    config: VectorConfig | None = None,
 ) -> StreamingStats:
     """Reference pattern for the "can't be vectorized" escape hatch.
 
@@ -162,10 +174,13 @@ def run_isolated_strategy_fallback(
     """
     from vectorized.reference import simulate_run_reference
 
+    if config is None:
+        config = load_vector_config()
+
     stats = StreamingStats()
     batch: list[float] = []
     for k in range(total_runs):
-        result = simulate_run_reference(master_seed, k, strategy_id, num_plots, num_days)
+        result = simulate_run_reference(config, master_seed, k, strategy_id, num_plots, num_days)
         batch.append(result["money"])
         if len(batch) >= 1000:
             stats.update(np.array(batch, dtype=np.float64))

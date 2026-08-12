@@ -10,7 +10,10 @@ run alone or embedded at various offsets inside a larger chunk.
 
 This does NOT compare against simulation/'s real engine -- see
 vectorized/README.md for why. It validates internal consistency of this
-package's own two implementations of the same algorithm.
+package's own two implementations of the same algorithm (itself a
+config-driven port of simulation/crop_growth.py + simulation/weather.py,
+per kernel.py's per-block comments -- but still not bit-exact-comparable
+to the real engine: different RNG scheme, still-simplified economy).
 
 Usage: python3 scripts/vectorized_validate.py
 Needs requirements-fast.txt (numpy, numba) installed.
@@ -26,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 
 from vectorized import crops
+from vectorized.config_arrays import load_vector_config
 from vectorized.kernel import simulate_chunk
 from vectorized.reference import simulate_run_reference
 from vectorized.state import allocate, init_runs
@@ -33,18 +37,24 @@ from vectorized.state import allocate, init_runs
 RTOL = 1e-4  # float32 has ~7 significant decimal digits; this stays well inside that
 ATOL = 1e-3  # absolute floor for values that round to ~0
 
+CONFIG = load_vector_config()
+
 
 def _kernel_single_run(
     master_seed: int, run_index: int, strategy: int, num_plots: int, num_days: int
 ) -> dict:
     state = allocate(1, num_plots)
-    init_runs(state, master_seed, run_index, np.array([strategy], dtype=np.int8))
-    simulate_chunk(state, num_days)
-    return {"money": float(state.money[0]), "total_harvest": float(state.total_harvest[0])}
+    init_runs(state, CONFIG, master_seed, run_index, np.array([strategy], dtype=np.int8))
+    simulate_chunk(state, num_days, CONFIG)
+    return {
+        "money": float(state.money[0]),
+        "total_harvest": float(state.total_harvest[0]),
+        "total_revenue": float(state.total_revenue[0]),
+    }
 
 
 def _assert_close(label: str, a: dict, b: dict) -> None:
-    for key in ("money", "total_harvest"):
+    for key in ("money", "total_harvest", "total_revenue"):
         if not np.isclose(a[key], b[key], rtol=RTOL, atol=ATOL):
             raise AssertionError(
                 f"{label}: kernel {key}={a[key]!r} != reference {key}={b[key]!r} "
@@ -68,7 +78,7 @@ def check_kernel_matches_reference(num_days: int) -> int:
                         master_seed, run_index, strategy, num_plots, num_days
                     )
                     reference_result = simulate_run_reference(
-                        master_seed, run_index, strategy, num_plots, num_days
+                        CONFIG, master_seed, run_index, strategy, num_plots, num_days
                     )
                     _assert_close(
                         f"seed={master_seed} run={run_index} strat={strategy} plots={num_plots}",
@@ -94,14 +104,16 @@ def check_chunk_size_independence(num_days: int) -> int:
     baseline_state = allocate(1, num_plots)
     init_runs(
         baseline_state,
+        CONFIG,
         master_seed,
         target_global_index,
         strategies[target_global_index : target_global_index + 1],
     )
-    simulate_chunk(baseline_state, num_days)
+    simulate_chunk(baseline_state, num_days, CONFIG)
     baseline = {
         "money": float(baseline_state.money[0]),
         "total_harvest": float(baseline_state.total_harvest[0]),
+        "total_revenue": float(baseline_state.total_revenue[0]),
     }
 
     checks = 0
@@ -109,12 +121,13 @@ def check_chunk_size_independence(num_days: int) -> int:
         if not (offset <= target_global_index < offset + chunk_size):
             continue
         state = allocate(chunk_size, num_plots)
-        init_runs(state, master_seed, offset, strategies[offset : offset + chunk_size])
-        simulate_chunk(state, num_days)
+        init_runs(state, CONFIG, master_seed, offset, strategies[offset : offset + chunk_size])
+        simulate_chunk(state, num_days, CONFIG)
         local_index = target_global_index - offset
         result = {
             "money": float(state.money[local_index]),
             "total_harvest": float(state.total_harvest[local_index]),
+            "total_revenue": float(state.total_revenue[local_index]),
         }
         _assert_close(f"chunk_size={chunk_size} offset={offset}", result, baseline)
         checks += 1
