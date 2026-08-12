@@ -14,10 +14,20 @@ resolves for the real engine -- just into numpy arrays instead of per-crop
 Phase 2 ("storage & spoilage") added `config/storage.json` and each crop's
 `shelf_life_days` from `config/crops.json` on top of that.
 
+Phase 3 ("markets", single-channel scope -- see kernel.py's module
+docstring) added `config/markets.json` and each crop's `seasonal_demand`
+from `config/crops.json`. Not read: the 5-channel `channels` list in
+`config/markets.json` (`price_multiplier`/`min_quality`/`daily_capacity`/
+fees per channel) -- this phase models one effective channel, not
+`simulation/markets.py`'s full channel system. `price_variation` (used as
+market variation, matching `simulation/derived.py:_build_market_profiles`'s
+`item.get("price_variation", default_variation)`) was already read in
+Phase 1 for the harvest-time price roll it's replacing.
+
 Still NOT read here: `config/contracts.json`, `config/buyers.json`,
-`config/processing.json`, `config/markets.json`, `config/upgrades.json`.
-Those subsystems aren't ported yet -- see vectorized/README.md's roadmap --
-so loading their config now would be dead weight that silently goes stale.
+`config/processing.json`, `config/upgrades.json`. Those subsystems aren't
+ported yet -- see vectorized/README.md's roadmap -- so loading their config
+now would be dead weight that silently goes stale.
 
 Only `unlock_requirement.type == "total_revenue"` is understood (the only
 type any shipped crop uses). A crop with a different unlock type fails to
@@ -72,6 +82,9 @@ class VectorConfig:
     shelf_life_days: np.ndarray  # int16, c.get("shelf_life_days", 7)
     # int16, derived: max(1, round(shelf_life_days * storage_shelf_life_multiplier))
     effective_shelf_life_days: np.ndarray
+    # float32 (num_crops, 4), season order spring/summer/autumn/winter, from
+    # c.get("seasonal_demand", {}).get(season, 1.0)
+    seasonal_demand: np.ndarray
 
     # Preference rankings for the 3 fixed strategies (component C): crop
     # indices ordered by that strategy's preference, best first. The kernel
@@ -151,6 +164,12 @@ class VectorConfig:
     # dimension, not a per-crop value.
     lots_per_plot: int
 
+    # -- markets (config/markets.json), single-channel scope -- see
+    # kernel.py's module docstring for what's not ported (the 5-channel
+    # system, fees, reputation) --
+    market_minimum_supply_multiplier: np.float32
+    market_supply_decay: np.float32
+
     # -- top-level (config/simulation_settings.json) --
     start_money: np.float32
 
@@ -168,9 +187,11 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     weather = _load_json(config_dir, "weather.json")
     settings = _load_json(config_dir, "simulation_settings.json")
     storage = _load_json(config_dir, "storage.json")
+    markets = _load_json(config_dir, "markets.json")
 
     crop_ids = tuple(c["id"] for c in crops)
     num_crops = len(crop_ids)
+    season_names = ("spring", "summer", "autumn", "winter")
 
     families_seen: list = []
     family_id = np.empty(num_crops, dtype=np.int8)
@@ -222,6 +243,10 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     phosphorus_demand = np.array([d.get("phosphorus", 0.0) for d in demands], dtype=np.float32)
     potassium_demand = np.array([d.get("potassium", 0.0) for d in demands], dtype=np.float32)
     shelf_life_days = np.array([c.get("shelf_life_days", 7) for c in crops], dtype=np.int16)
+    seasonal_demand = np.array(
+        [[c.get("seasonal_demand", {}).get(s, 1.0) for s in season_names] for c in crops],
+        dtype=np.float32,
+    )
 
     expected_value_per_day = base_price * (min_yield + max_yield) / 2.0 / growth_days
     greedy_rank = np.argsort(-expected_value_per_day).astype(np.int8)
@@ -231,7 +256,6 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     soil_regen = soil.get("regen_per_day", {})
     soil_dynamics = soil.get("dynamics", {})
 
-    season_names = ("spring", "summer", "autumn", "winter")
     seasons_cfg = weather.get("seasons", {})
 
     def season_field(key, sub_default):
@@ -248,6 +272,9 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     effective_shelf_life_days = np.maximum(
         1, np.round(shelf_life_days.astype(np.float64) * float(storage_shelf_life_multiplier))
     ).astype(np.int16)
+    market_minimum_supply_multiplier = np.float32(markets.get("minimum_supply_multiplier", 0.65))
+    market_supply_decay = np.float32(markets.get("supply_decay", 0.75))
+
     lots_per_plot = (
         int(
             np.max(
@@ -285,6 +312,7 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
         families=families,
         shelf_life_days=shelf_life_days,
         effective_shelf_life_days=effective_shelf_life_days,
+        seasonal_demand=seasonal_demand,
         greedy_rank=greedy_rank,
         conservative_rank=conservative_rank,
         initial_moisture=np.float32(soil_initial.get("moisture", 0.65)),
@@ -355,5 +383,7 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
         storage_daily_cost=storage_daily_cost,
         storage_shelf_life_multiplier=storage_shelf_life_multiplier,
         lots_per_plot=lots_per_plot,
+        market_minimum_supply_multiplier=market_minimum_supply_multiplier,
+        market_supply_decay=market_supply_decay,
         start_money=np.float32(settings.get("start_money", 100)),
     )

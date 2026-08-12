@@ -13,15 +13,15 @@ simulation and the validation script stops meaning anything.
 
 This does *not* validate against `simulation/`'s real crop-growth model --
 see vectorized/README.md for why that comparison isn't meaningful (different
-RNG scheme, still-simplified economy: no markets/contracts/processing/
-upgrades, and storage is shadow accounting -- see kernel.py's module
-docstring). It validates that the numba kernel is a faithful parallelization
-of *this* module's sequential algorithm, which is itself a config-driven
-port of simulation/crop_growth.py + simulation/weather.py's per-plot
-mechanics, plus a Phase 2 storage/spoilage mirror of
-simulation/inventory.py's age-and-spoil/capacity-trim/liability logic --
-see kernel.py's per-block comments for which real function each block
-mirrors.
+RNG scheme, still-simplified economy: no contracts/processing/upgrades, and
+markets are single-channel -- see kernel.py's module docstring). It
+validates that the numba kernel is a faithful parallelization of *this*
+module's sequential algorithm, which is itself a config-driven port of
+simulation/crop_growth.py + simulation/weather.py's per-plot mechanics,
+plus a Phase 2 storage/spoilage mirror of simulation/inventory.py's
+age-and-spoil/capacity-trim/liability logic and a Phase 3 single-channel
+mirror of simulation/markets.py's daily pricing -- see kernel.py's
+per-block comments for which real function each block mirrors.
 """
 
 from __future__ import annotations
@@ -85,6 +85,11 @@ def simulate_run_reference(
     lot_quality = [0] * num_lot_slots
     lot_age_days = [0] * num_lot_slots
 
+    # -- markets (Phase 3): per-run scratch, reset fresh each run, not
+    # persisted in the returned dict -- see kernel.py's mirror --
+    market_supply = [0.0] * config.num_crops
+    today_price = [0.0] * config.num_crops
+
     num_seasons = len(config.season_rain_chance)
 
     for day in range(num_days):
@@ -102,6 +107,21 @@ def simulate_run_reference(
         else:
             rainfall = 0.0
         evaporation = config.season_evaporation[season] + max(0.0, temperature - 25.0) * 0.005
+
+        # -- markets: daily price roll + supply decay
+        # (simulation/markets.py:update_daily_prices) -- single-channel scope,
+        # see kernel.py's module docstring --
+        for c in range(config.num_crops):
+            seasonal = float(config.seasonal_demand[c, season])
+            supply = market_supply[c]
+            saturation = max(float(config.market_minimum_supply_multiplier), 1.0 - supply * 0.01)
+            run_state, u_price = rng.next_scalar(run_state)
+            variation = float(config.price_variation[c])
+            price_factor = (1.0 - variation) + u_price * (2.0 * variation)
+            today_price[c] = max(
+                0.01, float(config.base_price[c]) * seasonal * saturation * price_factor
+            )
+            market_supply[c] = supply * float(config.market_supply_decay)
 
         # -- storage liability capture (simulation/inventory.py:capture_storage_liability)
         # -- once/day, before today's harvests are added -- see kernel.py's mirror --
@@ -239,7 +259,6 @@ def simulate_run_reference(
 
                     ps, u_loss = rng.next_scalar(ps)
                     ps, u_yield = rng.next_scalar(ps)
-                    ps, u_price = rng.next_scalar(ps)
 
                     if u_loss >= lc:
                         min_y, max_y = int(config.min_yield[ct]), int(config.max_yield[ct])
@@ -256,17 +275,9 @@ def simulate_run_reference(
                         amount = base_y * yield_mult * (1.0 - neglect_penalty)
                         amount_units = int(amount + 0.5) if amount > 0.0 else 0
                         if amount_units > 0 and quality_mult >= 0.3:
-                            price_factor = 1.0 + float(config.price_variation[ct]) * (
-                                2.0 * u_price - 1.0
-                            )
-                            price = max(0.01, float(config.base_price[ct]) * price_factor)
-                            revenue = amount_units * price
-                            money = _f32(money + revenue)
-                            total_revenue = _f32(total_revenue + revenue)
-                            total_harvest = _f32(total_harvest + amount_units)
-
-                            # -- storage: shadow lot (simulation/actions.py:harvest_mature)
-                            # -- shadow accounting, see kernel.py's module docstring --
+                            # -- storage: lot (simulation/actions.py:harvest_mature) --
+                            # no money credited here -- markets: sell all matured lots,
+                            # after this day's aging/spoilage/trim, is what pays for it.
                             if quality_mult >= 0.9:
                                 grade = 3  # premium
                             elif quality_mult >= 0.62:
@@ -422,6 +433,30 @@ def simulate_run_reference(
             total_spoiled = _f32(total_spoiled + remove)
             if lot_quantity[chosen] == 0:
                 lot_item_id[chosen] = -1
+
+        # -- markets: sell all matured lots (component C's choose_sales,
+        # simplified -- see kernel.py's module docstring) -- every lot still
+        # standing after today's aging/spoilage/trim is sold in full, at
+        # today's price for its crop, scaled by its quality grade --
+        for s in range(num_lot_slots):
+            if lot_item_id[s] < 0:
+                continue
+            item = lot_item_id[s]
+            qty = lot_quantity[s]
+            grade = lot_quality[s]
+            if grade == 3:
+                quality_mult_sale = kernel.QUALITY_MULT_PREMIUM
+            elif grade == 2:
+                quality_mult_sale = kernel.QUALITY_MULT_STANDARD
+            else:
+                quality_mult_sale = kernel.QUALITY_MULT_PROCESSING
+            revenue = today_price[item] * quality_mult_sale * qty
+            money = _f32(money + revenue)
+            total_revenue = _f32(total_revenue + revenue)
+            total_harvest = _f32(total_harvest + qty)
+            market_supply[item] += qty
+            lot_item_id[s] = -1
+            lot_quantity[s] = 0
 
         # -- storage: liability collect (simulation/inventory.py:collect_storage_liability)
         # -- end of day, using the amount captured before today's harvests; shadow

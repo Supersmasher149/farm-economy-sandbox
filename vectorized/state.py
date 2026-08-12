@@ -12,17 +12,22 @@ toy layout to the fields below, mirroring `simulation/state.py`'s
 stress accumulators, neglect tracking, fertilizer state, family rotation) --
 see `config_arrays.py` and `kernel.py` for how those fields are used, and
 vectorized/README.md for what's still simplified relative to the real
-engine (no markets, no contracts, no processing, no upgrades).
+engine (no contracts, no processing, no upgrades).
 
 Phase 2 ("storage & spoilage") added a fixed-size per-run lot-slot
 dimension `(B, L)`, `L = num_plots * config.lots_per_plot`, mirroring
 `simulation/state.py`'s `InventoryLot` list with a bounded array instead of
 a dynamic list (see `config_arrays.py`'s `lots_per_plot` docstring for why
-that bound is provably safe). This is *shadow accounting*: harvests still
-credit `money` instantly (Phase 3/markets hasn't landed), lots exist purely
-to age/spoil/capacity-trim and produce `total_spoiled`/`total_storage_cost`
--- informational stats that don't feed back into `money` yet. See
-`kernel.py`'s docstring for the full rationale.
+that bound is provably safe).
+
+Phase 3 ("markets", single-channel scope) made those lots real: harvest no
+longer credits `money` at all, only `kernel.py`'s daily "sell all matured
+lots" step does, at a per-crop price that's rolled once per run per day
+(single-channel supply/demand, not persisted in `BatchState` -- it's
+per-run scratch, reset fresh each run, see `kernel.py`'s docstring). No new
+`BatchState` fields were needed for this: Phase 2's lot-slot dimension and
+`total_spoiled`/`total_storage_cost`/`total_harvest`/`total_revenue` fields
+already covered everything Phase 3 needed to report.
 """
 
 from __future__ import annotations

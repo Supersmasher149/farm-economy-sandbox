@@ -33,11 +33,56 @@ capacity-trimmed once per run per day, producing `total_spoiled`/
 `money` this phase. See `vectorized/README.md`'s roadmap for why: Phase 3
 (markets) has to exist before spoilage can meaningfully block a sale.
 
-Still NOT ported: markets (price is a single roll_price-style draw at
-harvest, not a supply/demand system), contracts, processing, upgrades
-(including upgrades' storage `capacity_bonus`/`shelf_life_multiplier`
-effects -- Phase 2 uses only the base `config/storage.json` values). See
-vectorized/README.md's roadmap.
+Phase 3 ("markets", single-channel scope) ported `simulation/markets.py`'s
+daily price formula and replaces Phase 2's shadow accounting: harvest no
+longer credits money at all -- it only creates a lot (same as Phase 2's
+lot-insertion code, unchanged) -- and once per run per day, after that
+day's aging/spoilage/capacity-trim has run, every crop gets a fresh price
+roll (`base_price * seasonal_demand[season] * saturation(market_supply) *
+uniform(1-variation, 1+variation)`, with `market_supply` decaying daily,
+mirroring `update_daily_prices`) and every occupied lot slot is sold in
+full at that price (scaled by a quality multiplier -- premium/standard/
+processing, matching `markets.QUALITY_MULTIPLIERS`), crediting `money`/
+`total_revenue`/`total_harvest` for real. `market_supply` and today's
+price array are per-run scratch (reset each run, not part of `BatchState`)
+since nothing needs them after the run completes.
+
+This is a genuine simplification of the real engine's 5-channel system
+(`spot`/`wholesale`/`farm_stand`/`processor`/`specialty`, each with its own
+price multiplier, quality gate, daily capacity, fee structure, and one
+reputation-gated) down to one effective channel with none of that: no
+capacity limits, no fees, no reputation (which doesn't exist anywhere in
+`vectorized/` state). See `config_arrays.py`'s docstring for exactly what's
+read vs. not.
+
+The "agent decides how much to sell" step (`Agent.choose_sales`, 11 real
+strategies with real per-strategy logic) is also simplified: every lot
+still standing after today's aging/spoilage/trim is sold in full, every
+day, for all 3 fixed strategies -- the simplest real strategy's behavior
+(`fast_seller.choose_sales` dumps all inventory the same way). Two
+consequences worth knowing before reading the numbers: (1) Phase 2's
+storage/spoilage mechanics become much less likely to bite in the default
+config, since inventory rarely survives past the same day it was
+created -- they're still real and still load-bearing (a heavy same-day
+harvest across many plots can still exceed `storage_capacity` before the
+sell step runs, since trim happens *before* selling, matching the real
+day-order), just rarer; `check_storage_capacity_trim`'s forced tiny-capacity
+scenario is what keeps that path exercised. (2) A plot's watering/
+fertilizing/planting decision this same day still sees *yesterday's* cash
+position, not today's just-credited sale revenue -- selling happens once,
+after the whole per-plot loop, not interleaved per-plot the way harvest and
+replanting already are. This is a known, deliberate divergence from the
+real engine's day order (harvest → age/spoil → price → sell → buy upgrades
+→ water/fertilize → plant), kept for this reason: Phase 1/2 already
+established that agent decisions happen inline, per-plot, in one pass; a
+strict day-order match would mean two full passes over plots (harvest-only,
+then water/fertilize/plant-only) instead of one, a larger restructuring
+than this phase's scope asked for.
+
+Still NOT ported: the multi-channel market system above, contracts,
+processing, upgrades (including upgrades' storage
+`capacity_bonus`/`shelf_life_multiplier` effects -- Phase 2/3 use only the
+base `config/storage.json` values). See vectorized/README.md's roadmap.
 
 Kept in lockstep with reference.py: same branch order, same draw order, same
 float32 rounding on every state write (see reference.py's docstring). That
@@ -71,6 +116,14 @@ FERTILIZE_CASH_BUFFER_CONSERVATIVE = 10.0
 WATER_THRESHOLD_GREEDY = 0.6
 WATER_THRESHOLD_CONSERVATIVE = 0.25
 COIN_FLIP = 0.5
+
+# Quality-grade sale multipliers (component: markets), matching
+# simulation/markets.py:QUALITY_MULTIPLIERS exactly. Not config-driven --
+# the real module hardcodes these too. QUALITY_MULT_REJECTED is never used:
+# a rejected-grade harvest never becomes a lot (see the harvest block).
+QUALITY_MULT_PROCESSING = 0.65  # grade 1
+QUALITY_MULT_STANDARD = 1.0  # grade 2
+QUALITY_MULT_PREMIUM = 1.35  # grade 3
 
 
 @njit(cache=True, inline="always")
@@ -145,6 +198,7 @@ def _simulate_chunk_core(
     family_id,
     unlock_total_revenue,
     effective_shelf_life_days,
+    seasonal_demand,
     greedy_rank,
     conservative_rank,
     # soil dynamics
@@ -194,6 +248,9 @@ def _simulate_chunk_core(
     # storage
     storage_capacity,
     storage_daily_cost,
+    # markets
+    market_minimum_supply_multiplier,
+    market_supply_decay,
 ):
     num_runs = money.shape[0]
     num_plots = moisture.shape[1]
@@ -208,6 +265,13 @@ def _simulate_chunk_core(
         tc = np.float64(total_storage_cost[r])
         strat = strategy_id[r]
         run_state = rng_run_state[r]
+
+        # Per-run scratch, not part of BatchState -- both reset fresh each
+        # run (matching player.market_supply starting empty each game) and
+        # unneeded after the run completes, so there's no reason to persist
+        # them across chunk/run boundaries the way lot state has to be.
+        market_supply = np.zeros(num_crops, dtype=np.float64)
+        today_price = np.zeros(num_crops, dtype=np.float64)
 
         for day in range(num_days):
             # -- weather (simulation/weather.py:generate_weather) --
@@ -225,6 +289,18 @@ def _simulate_chunk_core(
             else:
                 rainfall = 0.0
             evaporation = season_evaporation[season] + max(0.0, temperature - 25.0) * 0.005
+
+            # -- markets: daily price roll + supply decay
+            # (simulation/markets.py:update_daily_prices) -- run-level, once/day,
+            # single-channel scope (see this module's docstring) --
+            for c in range(num_crops):
+                seasonal = seasonal_demand[c, season]
+                supply = market_supply[c]
+                saturation = max(market_minimum_supply_multiplier, 1.0 - supply * 0.01)
+                run_state, u_price = _next(run_state)
+                price_factor = (1.0 - price_variation[c]) + u_price * (2.0 * price_variation[c])
+                today_price[c] = max(0.01, base_price[c] * seasonal * saturation * price_factor)
+                market_supply[c] = supply * market_supply_decay
 
             # -- storage liability capture (simulation/inventory.py:capture_storage_liability)
             # -- run-level, once/day, before today's harvests are added --
@@ -381,7 +457,6 @@ def _simulate_chunk_core(
 
                         plot_state, u_loss = _next(plot_state)
                         plot_state, u_yield = _next(plot_state)
-                        plot_state, u_price = _next(plot_state)
 
                         if u_loss >= lc:
                             yield_range = max_yield_arr[ct] - min_yield_arr[ct] + 1
@@ -399,19 +474,11 @@ def _simulate_chunk_core(
                             amount = base_y * yield_mult * (1.0 - neglect_penalty)
                             amount_units = int(amount + 0.5) if amount > 0.0 else 0
                             # quality_grade(quality_mult): only "rejected" (<0.3) blocks
-                            # the sale -- processing/standard/premium all sell here.
+                            # a lot from being created -- processing/standard/premium all do.
                             if amount_units > 0 and quality_mult >= 0.3:
-                                price_factor = 1.0 + price_variation[ct] * (2.0 * u_price - 1.0)
-                                price = max(0.01, base_price[ct] * price_factor)
-                                revenue = amount_units * price
-                                m += revenue
-                                tr += revenue
-                                th += amount_units
-
-                                # -- storage: shadow lot (simulation/actions.py:harvest_mature)
-                                # -- shadow accounting: money is already credited above (Phase
-                                # 3/markets doesn't exist yet); this lot exists only to age/
-                                # spoil/capacity-trim for total_spoiled/total_storage_cost. --
+                                # -- storage: lot (simulation/actions.py:harvest_mature) --
+                                # no money credited here -- markets: sell all matured lots,
+                                # after this day's aging/spoilage/trim, is what pays for it.
                                 if quality_mult >= 0.9:
                                     grade = 3  # premium
                                 elif quality_mult >= 0.62:
@@ -581,6 +648,30 @@ def _simulate_chunk_core(
                 if lot_quantity[r, chosen] == 0:
                     lot_item_id[r, chosen] = -1
 
+            # -- markets: sell all matured lots (component C's choose_sales,
+            # simplified -- see this module's docstring) -- every lot still
+            # standing after today's aging/spoilage/trim is sold in full, at
+            # today's price for its crop, scaled by its quality grade --
+            for s in range(num_lot_slots):
+                if lot_item_id[r, s] < 0:
+                    continue
+                item = lot_item_id[r, s]
+                qty = lot_quantity[r, s]
+                grade = lot_quality[r, s]
+                if grade == 3:
+                    quality_mult_sale = QUALITY_MULT_PREMIUM
+                elif grade == 2:
+                    quality_mult_sale = QUALITY_MULT_STANDARD
+                else:
+                    quality_mult_sale = QUALITY_MULT_PROCESSING
+                revenue = today_price[item] * quality_mult_sale * qty
+                m += revenue
+                tr += revenue
+                th += qty
+                market_supply[item] += qty
+                lot_item_id[r, s] = -1
+                lot_quantity[r, s] = 0
+
             # -- storage: liability collect (simulation/inventory.py:collect_storage_liability)
             # -- end of day, using the amount captured before today's harvests; shadow
             # accounting: capped by (and reported against) `m`, but never subtracted
@@ -677,6 +768,7 @@ def simulate_chunk(
         config.family_id,
         config.unlock_total_revenue,
         config.effective_shelf_life_days,
+        config.seasonal_demand,
         config.greedy_rank,
         config.conservative_rank,
         float(config.regen_moisture),
@@ -721,6 +813,8 @@ def simulate_chunk(
         config.season_evaporation,
         int(config.storage_capacity),
         float(config.storage_daily_cost),
+        float(config.market_minimum_supply_multiplier),
+        float(config.market_supply_decay),
     )
 
     if np.any(overflow_events):
