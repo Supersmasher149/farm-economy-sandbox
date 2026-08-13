@@ -10,11 +10,12 @@ module's numbers to `simulation/`'s — they are not meant to agree, for
 reasons below.
 
 **Status: Phase 1 ("crop/soil physics parity"), Phase 2 ("storage &
-spoilage"), Phase 3 ("markets", single-channel scope), and Phase 4
-("processing") complete.** Crop growth, soil chemistry, weather, watering,
-fertilizer, and crop unlocking are ported from the real config-driven
-mechanics. Storage/spoilage: lots age, downgrade quality, fully spoil, and
-get capacity-trimmed exactly like `simulation/inventory.py`. Markets: every
+spoilage"), Phase 3 ("markets", single-channel scope), Phase 4
+("processing"), and Phase 5 ("contracts", simplified scope) complete.**
+Crop growth, soil chemistry, weather, watering, fertilizer, and crop
+unlocking are ported from the real config-driven mechanics. Storage/
+spoilage: lots age, downgrade quality, fully spoil, and get
+capacity-trimmed exactly like `simulation/inventory.py`. Markets: every
 crop (and, as of Phase 4, every processed product) gets a fresh
 supply/demand price roll each day (single effective channel, not the real
 engine's 5-channel/fee/reputation system) and every lot still standing
@@ -27,7 +28,13 @@ consume a crop and cash to occupy one of a small number of global job
 slots, completing into a sellable processed-product lot -- a fixed policy
 (try each recipe in config order, start it if affordable) shared by all 3
 fixed strategies, same simplification style as markets' "sell everything."
-Contracts, upgrades, and the real 11-strategy agent roster are **not**
+Contracts: `config/buyers.json`'s 7 buyers each get one contract "slot" --
+offered, accepted opportunistically on any current stock, delivered
+incrementally, and either completed (reputation/relationship up) or failed
+at the deadline (real cash penalty, reputation/relationship down) -- the
+real engine's multi-day production-forecast scheduler (`is_offer_feasible`)
+is what's simplified away, not the offer/deliver/penalty mechanics
+themselves. Upgrades and the real 11-strategy agent roster are **not**
 ported — see Roadmap below.
 
 ## Why this is a separate tool, not a faster main engine
@@ -51,9 +58,10 @@ A third row used to be here — "full config-driven economy vs. 3 illustrative
 crops" — and it's now further closed: crop/soil physics *does* read the real
 `config/crops.json` + `config/soil.json` + `config/watering_settings.json` +
 `config/fertilizer.json` + `config/weather.json`, storage/spoilage reads
-`config/storage.json`, markets reads `config/markets.json`, and processing
-reads `config/processing.json` (see `config_arrays.py`). Contracts and
-upgrades are still absent — see Roadmap.
+`config/storage.json`, markets reads `config/markets.json`, processing reads
+`config/processing.json`, and contracts read `config/buyers.json` +
+`config/contracts.json` (see `config_arrays.py`). Only upgrades are still
+absent — see Roadmap.
 
 If you need bit-exact, config-driven, full-economy runs: use `main.py batch`.
 If you need aggregate statistics — mean/variance/distribution of outcomes —
@@ -88,34 +96,38 @@ print(result.summary())
 ```
 
 ```
-1,000,000 runs x 10 plots x 365 days in 20.55s (48,658 runs/s)
-  overall money:   mean=     7.43  stddev=   14.93  min=     0.00  max=  1046.51
-  overall harvest: mean=   253.85  stddev=  347.40
+1,000,000 runs x 10 plots x 365 days in 44.82s (22,313 runs/s)
+  overall money:   mean=  2259.72  stddev= 3231.43  min=     0.00  max= 15519.94
+  overall harvest: mean=  1196.69  stddev=  674.61
   overall spoiled: mean=     0.00  stddev=    0.00  (storage cost mean=  0.00, shadow accounting -- not deducted from money)
-  overall processed: mean=   23.23  stddev=   31.28
-  greedy       (n= 333,330): money mean=     5.01 stddev=    3.12  harvest mean=  110.64
-  conservative (n= 333,340): money mean=     5.96 stddev=    9.58  harvest mean=  103.87
-  random       (n= 333,330): money mean=    11.32 stddev=   23.33  harvest mean=  547.05
+  overall processed: mean=  45.22  stddev=   33.60
+  overall contracts: completed mean=63.06  failed mean= 5.87  penalties mean= 81.36
+  greedy       (n= 333,330): money mean=    15.17 stddev=   37.66  harvest mean=  454.07
+  conservative (n= 333,340): money mean=   445.44 stddev=  338.87  harvest mean= 1739.41
+  random       (n= 333,330): money mean=  6318.61 stddev= 2531.04  harvest mean= 1396.58
 ```
 
-`overall_spoiled` reading ~0 here is expected, not a bug: since every lot
-still standing gets sold in full at the end of each day (Phase 3), almost
-nothing survives long enough to age out or need capacity-trimming under the
-default `storage_capacity` -- see "Deviations from the prompt" below for
-when it still matters. `overall_storage_cost` still reads `0` too: the
-liability *charge* itself is still shadow accounting (never subtracted from
-`money`), independent of whether harvest revenue is. `overall_processed`
-being nonzero (Phase 4) confirms processing routinely fires under the
-default config, not just in the forced-nothing-required sense
-`check_processing_occurs` checks -- see Validation below.
+`overall_spoiled` reading ~0 here is still expected, not a bug -- same
+reason as Phase 3/4: inventory rarely survives past the day it's created.
+The big change from Phase 4's numbers is `overall money`/`overall harvest`
+jumping roughly 300x and 5x: contracts get first claim on inventory (ahead
+of processing and market selling, see kernel.py's day order) and pay far
+better than the market ever does -- buyer `contract_price_multiplier`s run
+1.3x-4.0x base price, vs. the market's quality-scaled 0.65x-1.35x, and a
+relationship bonus stacks on top the more a buyer's contracts get
+fulfilled. That extra cash funds far more replanting, which is why harvest
+volume rose too, not just money. `overall_contracts` shows both outcomes
+this phase's simplified accept policy produces: most offers do complete
+(mean 63 vs. mean 5.87 failed), but "accept on any current stock" instead
+of the real engine's forecast-gated accept genuinely does produce some
+un-deliverable contracts and real cash penalties -- see "Deviations from
+the prompt" below.
 
 Measured on a single CPU core's worth of `numba(parallel=True)` work (see
-Performance below): **1,000,000 runs in ~20.6s, peak RSS ~357MB** — inside
-the prompt's <60s CPU / 2GB targets (2.9x and 5.7x margin respectively).
-Phase 4 costs real throughput back (Phase 3: ~73,300 runs/s, Phase 4:
-~48,700) -- the daily recipe-start loop and the extra same-day re-trim pass
-are real per-day work, not free -- but memory actually drops (see
-Performance below for why).
+Performance below): **1,000,000 runs in ~44.8s, peak RSS ~740MB** — inside
+the prompt's <60s CPU / 2GB targets, but only just: **1.3x and 2.8x margin
+respectively** -- by far the thinnest margin of any phase so far, see
+Performance below.
 
 ```bash
 # validate the numba kernel against the pure-Python sequential reference
@@ -154,6 +166,17 @@ version: physics *parity* means tracking the real balance numbers, so
   (each becomes an item-space entry, see below), and the `recipes` list
   (input/output items and quantities, `min_quality`, `processing_days`,
   `cost`, `shelf_life_days`)
+- `config/buyers.json` + `config/contracts.json` (Phase 5) — each buyer's
+  `items` (resolved to item-space indices, loud failure on an unknown id,
+  same policy as recipes), `quantity_range`, `min_quality`,
+  `contract_price_multiplier`, `deadline_days`, `penalty_rate`,
+  `min_reputation`, `relationship_bonus_rate`; `contracts.json`'s
+  `offer_interval_days`, `offer_expiry_days` (default 3, not currently set
+  in the shipped file), `relationship_gain_per_delivery`,
+  `relationship_loss_per_failure`, `relationship_bonus_cap`. NOT
+  `production_safety_factor` or `fallback_price_multiplier` -- both only
+  feed the real engine's `is_offer_feasible` forecast scheduler, which
+  this phase doesn't port (see kernel.py's module docstring)
 
 into a single frozen `VectorConfig` of numpy arrays, loaded once and passed
 through `state.init_runs` / `kernel.simulate_chunk` rather than read per-day
@@ -172,12 +195,11 @@ so `lot_item_id` can hold either without a second lot-array system. See
 product has exactly one producing recipe, true of every shipped recipe
 today) and what happens if that stops being true.
 
-**Not yet read**: `config/contracts.json`, `config/buyers.json`,
-`config/upgrades.json` (including upgrades' storage
+**Not yet read**: `config/upgrades.json` (including upgrades' storage
 `capacity_bonus`/`shelf_life_multiplier` effects and processing-capacity
-bonuses — Phase 2-4 use only the base config values). Loading those now
-would be dead weight that silently goes stale until the subsystems that
-need them exist — see Roadmap.
+bonuses — Phase 2-4 use only the base config values). Loading it now
+would be dead weight that silently goes stale until that subsystem
+exists — see Roadmap.
 
 ## Data contract (`state.py`)
 
@@ -190,7 +212,9 @@ the original 8-field layout to mirror `simulation/state.py`'s
 money[B]                  float32     total_harvest[B]          float32
 total_revenue[B]          float32     strategy_id[B]             int8
 total_spoiled[B]           float32    total_storage_cost[B]      float32
-total_processed[B]         float32
+total_processed[B]         float32    reputation[B]              float32
+total_contracts_completed[B]  float32 total_contracts_failed[B]  float32
+total_contract_penalties[B]   float32
 
 # plot-level: soil
 moisture[B,P]              float32    nitrogen[B,P]              float32
@@ -226,14 +250,22 @@ lot_quality[B,L]                int8   lot_age_days[B,L]           int16
 # since processing capacity is a global resource
 job_output_item_id[B,J]        int8    job_output_quantity[B,J]    int32
 job_completion_day[B,J]        int32
+
+# buyer-level (Phase 5): shape (B, K), K = config.num_buyers -- exactly one
+# contract "slot" per buyer (not a derived bound -- see state.py's docstring)
+contract_state[B,K]            int8    contract_item_idx[B,K]      int8
+contract_remaining[B,K]        int32   contract_unit_price[B,K]    float32
+contract_min_quality_rank[B,K] int8    contract_deadline_day[B,K]  int32
+contract_expiry_day[B,K]       int32   contract_penalty_rate[B,K]  float32
+buyer_relationship[B,K]        float32
 ```
 
-74 bytes/plot + 8 bytes/lot-slot + 9 bytes/job-slot, 1,030 bytes/run at
-`P=10` (31 lot slots -- 30 plot-driven + 1 job-completion reserve -- and 1
-job slot, `lots_per_plot=3`, `base_capacity=1`) —
-`bytes_per_run(num_plots, num_lot_slots, num_job_slots)` in `state.py` is
-the exact closed-form sum; `DEFAULT_MAX_CHUNK = 100_000` still binds before
-the 2GB memory budget does (see Memory strategy).
+74 bytes/plot + 8 bytes/lot-slot + 9 bytes/job-slot + 20 bytes/buyer,
+1,235 bytes/run at `P=10` (31 lot slots, 1 job slot, 7 buyers,
+`lots_per_plot=3`, `base_capacity=1`) —
+`bytes_per_run(num_plots, num_lot_slots, num_job_slots, num_buyers)` in
+`state.py` is the exact closed-form sum; `DEFAULT_MAX_CHUNK = 100_000`
+still binds before the 2GB memory budget does (see Memory strategy).
 
 ## RNG strategy
 
@@ -271,6 +303,14 @@ all** — recipes are deterministic (fixed cost/output, no roll), and the
 "which recipe to start" policy is a fixed config-order preference, not a
 randomized choice, so it adds zero new draws to either stream.
 
+Phase 5 added **2 draws per buyer, only on interval days, only for a buyer
+whose slot is empty**: one to pick an eligible item (`rng.choice` mirror)
+and one to roll a quantity within the buyer's range (`rng.roll_yield`
+mirror), both from `run_state` -- contract offers are a run-wide event, not
+tied to a plot, same reasoning as market pricing. Accept/deliver/resolve
+draw nothing: the simplified accept policy ("any current stock") and the
+delivery/deadline logic are both deterministic given the day's state.
+
 ## Memory strategy
 
 `orchestrator.choose_chunk_size` picks `chunk_size = min(max_chunk,
@@ -285,7 +325,7 @@ with `total_runs`.
 
 ## Validation (component E)
 
-`scripts/vectorized_validate.py` checks four things, not one:
+`scripts/vectorized_validate.py` checks five things, not one:
 
 1. **Kernel ≡ reference**: `vectorized.kernel`'s numba `prange`-parallel core
    and `vectorized.reference`'s pure-Python scalar per-run loop are two
@@ -296,7 +336,9 @@ with `total_runs`.
    within float32 tolerance across a spread of seeds, run indices,
    strategies, and plot counts — 144 combinations, all currently passing,
    now also comparing `total_spoiled`/`total_storage_cost`/
-   `total_processed` alongside `money`/`total_harvest`/`total_revenue`.
+   `total_processed`/`reputation`/`total_contracts_completed`/
+   `total_contracts_failed`/`total_contract_penalties` alongside
+   `money`/`total_harvest`/`total_revenue`.
 2. **Chunk-size independence**: the same global run index gives the same
    result whether it's simulated alone or embedded in chunks of different
    sizes and offsets (the RNG property above, checked directly).
@@ -313,8 +355,15 @@ with `total_runs`.
    *default* config — unlike Phase 2's check, no forced config variant is
    needed, since both shipped recipes are cheap and gated by inventory
    every fixed strategy routinely harvests.
+5. **Contracts occur (Phase 5)**: confirms `total_contracts_completed > 0`
+   *and* `total_contracts_failed > 0` across the same 27-combination grid,
+   again under the default config -- both outcomes matter here, since a
+   nonzero failure count is what proves the simplified accept policy
+   ("any current stock," not the real engine's forecast-gated accept)
+   actually produces undeliverable contracts and real penalties, not just
+   an easier version of the real thing that always succeeds.
 
-201 checks currently pass. None of these validate against `simulation/`'s
+228 checks currently pass. None of these validate against `simulation/`'s
 real engine — see "Why this is a separate tool" above for why that
 comparison isn't meaningful.
 
@@ -330,22 +379,22 @@ comparison isn't meaningful.
 - **Config-driven crops (`config_arrays.py`), not `config/*.json`-agnostic
   constants.** Reversed from the first build's choice, once physics parity
   was the explicit goal — see `config_arrays.py`'s docstring. Still not
-  coupled to `config/contracts.json`/`buyers.json`/`upgrades.json` — those
-  subsystems aren't ported, so reading their config now would be
-  silently-stale dead weight.
+  coupled to `config/upgrades.json` — that subsystem isn't ported, so
+  reading its config now would be silently-stale dead weight.
 - **Markets are single-channel, not the real 5-channel system.** No
   `spot`/`wholesale`/`farm_stand`/`processor`/`specialty` price
-  multipliers, quality gates, daily capacities, or fees; no reputation
-  (doesn't exist anywhere in `vectorized/` state). One effective channel:
-  a daily per-item (crop or processed product) supply/demand price, sold
-  in full every day. Also no per-strategy `choose_sales` logic — every lot
-  still standing after a day's aging/spoilage/trim is sold in full, for
-  all 3 fixed strategies, the simplest real strategy's behavior
-  (`fast_seller.choose_sales` dumps all inventory the same way) — see
-  `kernel.py`'s module docstring for the two behavioral consequences worth
-  knowing (storage/spoilage gets rarer but stays real; a plot's same-day
-  spend decisions still use yesterday's cash, not today's just-credited
-  sale revenue).
+  multipliers, quality gates, daily capacities, or fees; the real per-
+  channel `min_reputation`/reputation-bonus gating isn't ported either
+  (Phase 5's `reputation` field gates *contract* eligibility only, not
+  market channels). One effective channel: a daily per-item (crop or
+  processed product) supply/demand price, sold in full every day. Also no
+  per-strategy `choose_sales` logic — every lot still standing after a
+  day's aging/spoilage/trim is sold in full, for all 3 fixed strategies,
+  the simplest real strategy's behavior (`fast_seller.choose_sales` dumps
+  all inventory the same way) — see `kernel.py`'s module docstring for the
+  two behavioral consequences worth knowing (storage/spoilage gets rarer
+  but stays real; a plot's same-day spend decisions still use yesterday's
+  cash, not today's just-credited sale revenue).
 - **Processing has a fixed policy, not per-strategy `choose_processing`
   logic.** Try each recipe in `config/processing.json`'s order, start it
   if a job slot is free and there's enough input inventory (at the
@@ -356,16 +405,32 @@ comparison isn't meaningful.
   docstring for the full day-order interaction with selling (processing
   gets first claim on same-day inventory, since it runs before the
   sell-all-lots step).
+- **Contracts skip the real production-forecast scheduler, and give each
+  buyer one slot instead of unlimited concurrent offers.** No
+  `is_offer_feasible` -- no multi-day scheduling of future harvests/
+  processing batches against buyer deadlines, no cash reservation across
+  competing recipes. Accept is simplified to "any current stock (>0) of
+  the item at the required quality" -- current inventory only, no
+  forecasting -- which is *more* permissive than the real engine's
+  forecast-gated accept, so contracts fail their deadline more often here
+  than they would in `simulation/`, not less; see kernel.py's module
+  docstring for the exact accept/deliver/resolve policy and why only 2 of
+  the real 11 strategies ever used the dropped scheduler anyway. Also
+  simplified: one contract slot per buyer at a time (`state.py`'s
+  docstring), instead of the real engine's unlimited concurrent offers/
+  active contracts per buyer deduplicated only by exact `buyer-item-day`.
 - **3 fixed strategies, not the real 11-agent roster.** `agents/*.py`'s
   strategies have real config-driven decision trees (`profit_optimizer`,
   `progression_player`); this module's greedy/conservative/random are
   threshold masks over the (now-real) physics, not ports of those agents.
   Porting the real roster is its own future phase — see Roadmap.
-- **No JAX migration was needed to hit the target.** This clears <60s CPU
-  by ~2.9x margin at 1M runs with all four phases' physics/storage/
-  markets/processing in place (see Performance below), so JAX wasn't
-  pursued. Migration notes below in case GPU throughput becomes the actual
-  constraint later.
+- **No JAX migration was needed to hit the target, but the margin is now
+  thin.** This clears <60s CPU by ~1.3x margin at 1M runs with all five
+  phases' physics/storage/markets/processing/contracts in place (see
+  Performance below) -- down from Phase 4's already-flagged 2.9x -- so JAX
+  still wasn't pursued, but this is the first phase where "re-evaluate
+  before the next one" (Migration notes below) is a real, not
+  theoretical, concern.
 
 ## Risks: the "isolate what can't be vectorized" escape hatch
 
@@ -390,15 +455,15 @@ high-water mark across multiple sizes in one process):
 
 | Runs | Plots × Days | Wall time | Throughput | Peak RSS | vs. targets |
 |---:|---:|---:|---:|---:|---|
-| 1,000 | 10 × 365 | 0.14 s | ~6,900 runs/s | 105 MB | — |
-| 10,000 | 10 × 365 | 0.30 s | ~33,200 runs/s | 119 MB | — |
-| 100,000 | 10 × 365 | 2.15 s | ~46,500 runs/s | 231 MB | — |
-| 500,000 | 10 × 365 | 10.27 s | ~48,700 runs/s | 352 MB | — |
-| **1,000,000** | **10 × 365** | **20.55 s** | **~48,700 runs/s** | **357 MB** | **2.9x under 60s · 5.7x under 2GB** |
+| 1,000 | 10 × 365 | 0.16 s | ~6,100 runs/s | 107 MB | — |
+| 10,000 | 10 × 365 | 0.54 s | ~18,700 runs/s | 122 MB | — |
+| 100,000 | 10 × 365 | 4.63 s | ~21,600 runs/s | 252 MB | — |
+| 500,000 | 10 × 365 | 22.82 s | ~21,900 runs/s | 489 MB | — |
+| **1,000,000** | **10 × 365** | **44.82 s** | **~22,300 runs/s** | **740 MB** | **1.3x under 60s · 2.8x under 2GB** |
 
-(Phase 3's numbers, for comparison: 13.64s, ~73,300 runs/s, 462MB at 1M —
-Phase 4 costs real throughput back, but memory actually drops: see below
-for why.)
+(Phase 4's numbers, for comparison: 20.55s, ~48,700 runs/s, 357MB at 1M —
+Phase 5 costs more than double the wall time. This is the tightest margin
+of any phase so far; see below for exactly where the cost goes and why.)
 
 (numba JIT compilation of `simulate_chunk` happens once per process on first
 call and is excluded from these figures, same as the main engine's
@@ -410,45 +475,52 @@ apples-to-apples comparison of the same economic model.
 
 **Phase 1 cost ~7.5x throughput against the Phase 0 toy kernel; Phase 2 cost
 another ~1.16x on top of that; Phase 3 got most of Phase 2's cost back; Phase
-4 gave back about a third of Phase 3's gain** (Phase 0: ~335,000 runs/s at
-scale, Phase 1: ~44,900, Phase 2: ~38,600, Phase 3: ~73,300, Phase 4:
-~48,700). Phase 1's hit was the real price of real physics; Phase 3's
-recovery came from lots no longer surviving past the day they're created,
-collapsing most of the aging/trim loop's per-slot work to a cheap
-`continue` (see "Deviations from the prompt" above). Phase 4's added cost
-is the new
-run-level, once-per-day work: the recipe-start loop (small, `num_recipes`
-iterations, but each scans lot slots twice -- once to check availability,
-once to consume) and the extra same-day `_trim_to_capacity` pass after jobs
-complete (cheap when nothing needs trimming, which is most days, but still
-an `O(num_lot_slots)` scan every day regardless). Both throughput and
-memory still clear the prompt's targets with real room (2.9x, 5.7x) —
-memory's margin actually *grew* despite `total_processed` and the job-slot
-arrays adding bytes/run, which the RSS shape below explains.
+4 gave back about a third of Phase 3's gain; Phase 5 cost more than Phase 4
+and Phase 2 combined** (Phase 0: ~335,000 runs/s at scale, Phase 1: ~44,900,
+Phase 2: ~38,600, Phase 3: ~73,300, Phase 4: ~48,700, Phase 5: ~22,300).
+Phase 1's hit was the real price of real physics; Phase 3's recovery came
+from lots no longer surviving past the day they're created, collapsing most
+of the aging/trim loop's per-slot work to a cheap `continue` (see
+"Deviations from the prompt" above). Phase 5's cost has two real drivers,
+neither of them a rounding error: (1) contracts are now the *dominant*
+economic path (see the Usage section's ~300x money jump), so the "sell all
+matured lots"/processing loops that used to often iterate over a handful of
+occupied slots now regularly iterate over the same slots *again* inside the
+contracts accept/deliver block first -- more slots are occupied for more of
+each day's work, not just one more block bolted on; (2) the offer-generation
+block runs a `num_buyers`-length loop with 2 RNG draws each, every
+`offer_interval_days`, and the accept/deliver/resolve block runs a
+`num_buyers`-length loop with an inner `num_lot_slots` scan *every single
+day* regardless of whether any buyer has an open slot. Both throughput and
+memory still clear the prompt's targets, but only just (1.3x, 2.8x) --
+this is the first phase where the margin itself, not just its shrinking
+trend, is worth treating as a real constraint on what Phase 6 (upgrades) or
+a later multi-channel-markets sub-phase can still afford to add. See
+Migration notes below.
 
 Two shapes worth reading, not just the headline row:
 
-- **Throughput ramps then plateaus, it doesn't keep climbing.** 1k→10k→100k
-  runs/sec rises sharply (per-call dispatch/allocation overhead amortizing
-  over more runs), then flattens around ~46,500-48,700 runs/s from 100,000
-  runs onward — same shape as the main engine's straggler-effect writeup for
-  worker count in `CLAUDE.md`'s Performance section.
-- **Peak RSS dropped from Phase 3's numbers at every size, not just 1M** —
-  105→105MB, 115→119MB, 230→231MB roughly flat at the small end, but
-  452→352MB and 462→357MB at 500k/1M is a real difference, not noise at
-  that scale. Bytes/run went *up* (1,030 vs. Phase 3's ~1,009), so this
-  isn't a smaller-footprint explanation — it's allocator arena behavior
-  varying run to run (flagged as a real characteristic of this measurement,
-  not a bug, back in Phase 2's numbers too): treat any single Performance
-  table as one sample of a noisy quantity, not an exact figure, and don't
-  read cross-phase RSS deltas as caused by a specific code change unless
-  the bytes/run math actually explains the direction.
+- **Throughput no longer plateaus by 100,000 runs the way every earlier
+  phase did -- it's still gently rising through 500k** (18,700 → 21,600 →
+  21,900 runs/s from 10k → 100k → 500k, vs. Phase 4's clean flatten by
+  100k). The per-call dispatch overhead this shape usually amortizes away
+  is now a smaller fraction of a much heavier per-run cost, so it takes
+  more runs per chunk to fully amortize -- not a new mechanism, just a
+  side effect of the per-run cost itself growing.
+- **Peak RSS grew roughly 2x over Phase 4's at every size** (357MB →
+  740MB at 1M) -- far more than `bytes_per_run` alone explains (~1,030 to
+  ~1,235, only +20%), so most of this growth is the same allocator-arena
+  variability flagged in Phase 2/4's numbers, not a new leak, just a
+  larger-magnitude instance of it at this run count. Still comfortably
+  under the 2GB budget, but 2.8x is the thinnest memory margin of any
+  phase measured so far (below even Phase 1's 3.9x).
 
 ## Roadmap: closing the gap with the real engine
 
-Phases 1–4 cover crop/soil physics, storage/spoilage, single-channel
-markets, and processing. Remaining subsystems, roughly in order of
-vectorization difficulty (see the difficulty table this was scoped from):
+Phases 1–5 cover crop/soil physics, storage/spoilage, single-channel
+markets, processing, and simplified contracts. Remaining subsystems,
+roughly in order of vectorization difficulty (see the difficulty table
+this was scoped from):
 
 1. ~~Crop/soil physics parity~~ — **done**: multi-stress growth, N/P/K/pH,
    family rotation, quality grading, fertilizer, revenue-gated unlocks,
@@ -480,38 +552,55 @@ vectorization difficulty (see the difficulty table this was scoped from):
    needing a second one. NOT ported: per-strategy `choose_processing`
    logic (fixed config-order recipe preference instead, same
    simplification style as markets), processing-capacity upgrades.
-5. **Contracts & buyer relationships** (`simulation/contracts.py`, 663
-   lines, `config/buyers.json`): per-buyer relationship standing, offer
-   negotiation, delivery scheduling. High difficulty — the least naturally
-   mask-shaped subsystem; likely the first real user of
-   `run_isolated_strategy_fallback`'s pattern rather than true `prange`
-   vectorization.
+5. ~~Contracts & buyer relationships~~ — **done, simplified scope**: 7
+   buyers (`config/buyers.json`), one contract slot each (`state.py`'s
+   `(B, K)` dimension), offer/accept/deliver/deadline-penalty mechanics
+   ported; `reputation` and per-buyer `buyer_relationship` are new real
+   `BatchState` fields. NOT ported: `is_offer_feasible`'s multi-day
+   production-forecast scheduler (greedy batch scheduling, sorted
+   future-harvest arrivals, cash reservation across competing recipes) --
+   the roadmap's own "least naturally mask-shaped subsystem" flag turned
+   out to be avoidable rather than requiring
+   `run_isolated_strategy_fallback`, once the accept decision was
+   simplified to "any current stock" instead of a forecast (see
+   "Deviations from the prompt" above); also not ported: per-strategy
+   `choose_contracts` logic (only 2 of the real 11 strategies use it
+   anyway) and the unlimited-concurrent-offers-per-buyer real engine
+   allows. This phase cost real throughput/memory margin (see
+   Performance above) -- a genuine trade for the ~300x money/~5x harvest
+   swing contracts turned out to dominate, once ported even in simplified
+   form.
 6. **Full agent roster** (`agents/*.py`, 11 strategies): port real decision
    logic (e.g. `profit_optimizer`, `progression_player`) instead of the 3
    threshold-mask strategies here — this is also where a real
-   `choose_sales` (hold vs. sell, channel selection) would land, since the
-   3 fixed strategies don't have per-strategy sale logic to port yet.
-   Variable difficulty per agent.
+   `choose_sales` (hold vs. sell, channel selection) and a real
+   `choose_contracts`/`is_offer_feasible` forecast scheduler would land,
+   since the 3 fixed strategies don't have per-strategy sale/contract
+   logic to port yet. Variable difficulty per agent.
 7. **Upgrades** (`config/upgrades.json`): including storage's own
    `capacity_bonus`/`shelf_life_multiplier` effects (`derived.py`'s
-   `effective_storage`), not folded in during Phase 2 since no upgrades
-   exist yet to apply them.
+   `effective_storage`) and processing-capacity bonuses, not folded in
+   during Phase 2/4 since no upgrades exist yet to apply them. Given
+   Phase 5's already-thin margin (Performance above), this phase should
+   budget for a performance pass, not just a feature port.
 
 Each phase should get its own `scripts/vectorized_validate.py`-style check
 before the next one starts, the same way Phase 1's 144 kernel-vs-reference
-comparisons, Phase 2's 27 forced-capacity-trim comparisons, and Phase 4's
-27 processing-occurs comparisons gate them. Phase 3 needed no new check
-function: its logic runs on every simulated day, so the existing checks
-already exercised it.
+comparisons, Phase 2's 27 forced-capacity-trim comparisons, Phase 4's 27
+processing-occurs comparisons, and Phase 5's 27 contracts-occur comparisons
+gate them. Phase 3 needed no new check function: its logic runs on every
+simulated day, so the existing checks already exercised it.
 
 ## Migration notes: swapping in JAX later
 
-Not needed to hit this prompt's target (2.9x margin above target already, on
-CPU, single process, with Phase 1-4's physics/storage/markets/processing all
-in place) — recorded here since the prompt asked for it. Re-evaluate if a
-later phase (contracts, especially) pushes throughput below the target
-rather than just eating margin -- 2.9x is the thinnest margin since Phase 0,
-worth watching.
+Still not *needed* -- 1.3x margin above target, on CPU, single process,
+with Phase 1-5's physics/storage/markets/processing/contracts all in place
+— but this is the phase that turns "worth watching" into "budget for it
+explicitly." Contracts alone cost more than Phase 2 and Phase 4 combined
+(Performance above). Upgrades (Roadmap item 7, next) should treat this
+margin as a hard constraint: if it can't land without pushing throughput
+below the 60s/1M target, that's the trigger to revisit `prange` tuning or
+finally reach for JAX/GPU, not a later phase.
 
 If GPU throughput becomes the actual constraint:
 
