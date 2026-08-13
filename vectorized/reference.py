@@ -41,23 +41,74 @@ def _f32(x: float) -> float:
     return float(np.float32(x))
 
 
-def _trim_to_capacity(lot_item_id, lot_quantity, lot_age_days, eff_life, capacity) -> int:
+def _insert_lot(
+    lot_item_id,
+    lot_quantity,
+    lot_quality,
+    lot_age_days,
+    occupied,
+    slot_pos,
+    free,
+    item,
+    qty,
+    quality,
+    age,
+) -> bool:
+    """Insert a new lot via the free-list, O(1) instead of scanning for the
+    first empty slot. Scalar mirror of kernel.py's `_insert_lot` -- see its
+    docstring. `occupied`/`free` are plain Python lists here (their length
+    *is* the count kernel.py tracks separately as `occupied_count`/
+    `free_count`, since numpy arrays can't grow but Python lists can) --
+    `free.pop()` removes the *last* free index, matching kernel.py's
+    `free_count -= 1; s = free[free_count]` exactly, so both implementations
+    hand out slots in the same order. Mutates the lot-field lists and
+    `occupied`/`slot_pos`/`free` in place; returns whether it succeeded.
+    """
+    if not free:
+        return False
+    s = free.pop()
+    lot_item_id[s] = item
+    lot_quantity[s] = qty
+    lot_quality[s] = quality
+    lot_age_days[s] = age
+    slot_pos[s] = len(occupied)
+    occupied.append(s)
+    return True
+
+
+def _remove_lot(lot_item_id, occupied, slot_pos, free, s) -> None:
+    """Remove slot `s` via swap-remove, O(1) instead of leaving a hole.
+    Scalar mirror of kernel.py's `_remove_lot` -- see its docstring for the
+    "don't advance the iteration index after calling this" discipline every
+    call site below follows.
+    """
+    pos = slot_pos[s]
+    last_slot = occupied[-1]
+    occupied[pos] = last_slot
+    slot_pos[last_slot] = pos
+    occupied.pop()
+    slot_pos[s] = -1
+    free.append(s)
+    lot_item_id[s] = -1
+
+
+def _trim_to_capacity(
+    lot_item_id, lot_quantity, lot_age_days, eff_life, occupied, slot_pos, free, capacity
+) -> int:
     """FEFO capacity trim for one run's lot-slot lists, in place.
 
     Scalar mirror of kernel.py's `_trim_to_capacity` -- see its docstring.
-    Mutates `lot_item_id`/`lot_quantity` in place (Python lists, passed by
+    Walks `occupied`, not every slot. Mutates the lot-field lists and
+    `occupied`/`slot_pos`/`free` in place (Python lists, passed by
     reference) and returns units spoiled by trimming.
     """
-    num_lot_slots = len(lot_item_id)
-    total_qty = sum(lot_quantity[s] for s in range(num_lot_slots) if lot_item_id[s] >= 0)
+    total_qty = sum(lot_quantity[s] for s in occupied)
     overflow_units = total_qty - int(capacity)
     spoiled = 0
     while overflow_units > 0:
         chosen = -1
         chosen_remaining = 0.0
-        for s in range(num_lot_slots):
-            if lot_item_id[s] < 0:
-                continue
+        for s in occupied:
             item = lot_item_id[s]
             remaining = float(eff_life[item]) - float(lot_age_days[s])
             if chosen < 0 or remaining < chosen_remaining:
@@ -70,7 +121,7 @@ def _trim_to_capacity(lot_item_id, lot_quantity, lot_age_days, eff_life, capacit
         overflow_units -= remove
         spoiled += remove
         if lot_quantity[chosen] == 0:
-            lot_item_id[chosen] = -1
+            _remove_lot(lot_item_id, occupied, slot_pos, free, chosen)
     return spoiled
 
 
@@ -144,6 +195,14 @@ def simulate_run_reference(
     lot_quantity = [0] * num_lot_slots
     lot_quality = [0] * num_lot_slots
     lot_age_days = [0] * num_lot_slots
+
+    # Occupied/free-list bookkeeping for the lot-slot lists above (see
+    # _insert_lot's docstring) -- every slot starts empty, so free starts
+    # holding every index (in the same order kernel.py's array version
+    # does) and occupied starts empty.
+    occupied: list = []
+    slot_pos = [-1] * num_lot_slots
+    free = list(range(num_lot_slots))
 
     # -- markets (Phase 3): per-run scratch, reset fresh each run, not
     # persisted in the returned dict -- see kernel.py's mirror -- item-space
@@ -243,8 +302,7 @@ def simulate_run_reference(
 
         # -- storage liability capture (simulation/inventory.py:capture_storage_liability)
         # -- once/day, before today's harvests are added -- see kernel.py's mirror --
-        has_inventory = any(q > 0 for q in lot_quantity)
-        liability = float(config.storage_daily_cost) if has_inventory else 0.0
+        liability = float(config.storage_daily_cost) if occupied else 0.0
 
         for p in range(num_plots_max):
             if p >= active_plots:
@@ -405,13 +463,19 @@ def simulate_run_reference(
                                 grade = 2  # standard
                             else:
                                 grade = 1  # processing (>= 0.3 guaranteed by the outer gate)
-                            for s in range(num_lot_slots):
-                                if lot_item_id[s] < 0:
-                                    lot_item_id[s] = ct
-                                    lot_quantity[s] = amount_units
-                                    lot_quality[s] = grade
-                                    lot_age_days[s] = -1  # becomes 0 on today's aging pass
-                                    break
+                            _insert_lot(
+                                lot_item_id,
+                                lot_quantity,
+                                lot_quality,
+                                lot_age_days,
+                                occupied,
+                                slot_pos,
+                                free,
+                                ct,
+                                amount_units,
+                                grade,
+                                -1,  # becomes 0 on today's aging pass
+                            )
                             # if no empty slot: silently dropped, matching kernel.py's
                             # overflow_events counter path (checked kernel-side only)
 
@@ -519,12 +583,16 @@ def simulate_run_reference(
         # -- storage: aging, quality downgrade, full-spoil
         # (simulation/inventory.py:age_and_spoil) -- once/day, after today's harvests
         # are in so same-day lots can be correctly skipped -- see kernel.py's mirror --
-        for s in range(num_lot_slots):
-            if lot_item_id[s] < 0:
-                continue
+        # walks `occupied`, not every slot. A full-spoil removal swaps the last
+        # occupied slot into index i (see _remove_lot's docstring), so i is
+        # deliberately NOT advanced on that branch.
+        i = 0
+        while i < len(occupied):
+            s = occupied[i]
             if lot_age_days[s] < 0:
                 # produced today -- becomes 0 this pass, not aged further today
                 lot_age_days[s] = 0
+                i += 1
                 continue
             lot_age_days[s] += 1
             item = lot_item_id[s]
@@ -533,11 +601,13 @@ def simulate_run_reference(
             if age_ratio >= 1.0:
                 total_spoiled = _f32(total_spoiled + lot_quantity[s])
                 lot_quantity[s] = 0
-                lot_item_id[s] = -1
+                _remove_lot(lot_item_id, occupied, slot_pos, free, s)
+                continue
             elif age_ratio >= 0.5 and lot_quality[s] == 3:
                 lot_quality[s] = 2
             elif age_ratio >= 0.8 and lot_quality[s] == 2:
                 lot_quality[s] = 1
+            i += 1
 
         # -- storage: capacity trim, FEFO (simulation/inventory.py:_trim_to_capacity)
         # -- only sorts/mutates when something actually has to be trimmed --
@@ -548,6 +618,9 @@ def simulate_run_reference(
                 lot_quantity,
                 lot_age_days,
                 eff_life_by_item,
+                occupied,
+                slot_pos,
+                free,
                 eff_capacity,
             )
         )
@@ -563,15 +636,21 @@ def simulate_run_reference(
             out_item = job_output_item_id[j]
             out_qty = job_output_quantity[j]
             total_processed = _f32(total_processed + out_qty)
-            for s in range(num_lot_slots):
-                if lot_item_id[s] < 0:
-                    lot_item_id[s] = out_item
-                    lot_quantity[s] = out_qty
-                    lot_quality[s] = 2  # standard -- matches complete_jobs' hardcoded grade
-                    lot_age_days[s] = -1  # becomes 0 on tomorrow's aging pass
-                    break
-                # if no empty slot: silently dropped, matching kernel.py's
-                # overflow_events counter path (checked kernel-side only)
+            _insert_lot(
+                lot_item_id,
+                lot_quantity,
+                lot_quality,
+                lot_age_days,
+                occupied,
+                slot_pos,
+                free,
+                out_item,
+                out_qty,
+                2,  # standard -- matches complete_jobs' hardcoded grade
+                -1,  # becomes 0 on tomorrow's aging pass
+            )
+            # if no empty slot: silently dropped, matching kernel.py's
+            # overflow_events counter path (checked kernel-side only)
             job_output_item_id[j] = -1
             job_output_quantity[j] = 0
 
@@ -585,6 +664,9 @@ def simulate_run_reference(
                 lot_quantity,
                 lot_age_days,
                 eff_life_by_item,
+                occupied,
+                slot_pos,
+                free,
                 eff_capacity,
             )
         )
@@ -642,9 +724,11 @@ def simulate_run_reference(
                 if day > contract_expiry_day[b]:
                     contract_state[b] = 0
                     continue
+                # available/delivered scans walk occupied, not every slot --
+                # see kernel.py's mirror.
                 available = sum(
                     lot_quantity[s]
-                    for s in range(num_lot_slots)
+                    for s in occupied
                     if lot_item_id[s] == item and lot_quality[s] >= min_rank
                 )
                 if available <= 0:
@@ -654,15 +738,19 @@ def simulate_run_reference(
             # cstate == 2: active -- attempt delivery from today's inventory
             remaining = contract_remaining[b]
             delivered = 0
-            for s in range(num_lot_slots):
-                if delivered >= remaining:
-                    break
+            i = 0
+            while i < len(occupied) and delivered < remaining:
+                s = occupied[i]
                 if lot_item_id[s] == item and lot_quality[s] >= min_rank:
                     take = min(remaining - delivered, lot_quantity[s])
                     lot_quantity[s] -= take
-                    if lot_quantity[s] == 0:
-                        lot_item_id[s] = -1
                     delivered += take
+                    if lot_quantity[s] == 0:
+                        # Swap-remove moves the last occupied slot into i, so i
+                        # is deliberately NOT advanced -- see kernel.py's mirror.
+                        _remove_lot(lot_item_id, occupied, slot_pos, free, s)
+                        continue
+                i += 1
             if delivered > 0:
                 revenue = delivered * contract_unit_price[b]
                 money = _f32(money + revenue)
@@ -708,23 +796,29 @@ def simulate_run_reference(
             cost = float(config.recipe_cost[rec])
             if money < cost:
                 continue
+            # available/consume scans walk occupied, not every slot -- see
+            # kernel.py's mirror.
             available = sum(
                 lot_quantity[s]
-                for s in range(num_lot_slots)
+                for s in occupied
                 if lot_item_id[s] == in_item and lot_quality[s] >= min_rank
             )
             if available < need:
                 continue
             remaining = need
-            for s in range(num_lot_slots):
-                if remaining <= 0:
-                    break
+            i = 0
+            while i < len(occupied) and remaining > 0:
+                s = occupied[i]
                 if lot_item_id[s] == in_item and lot_quality[s] >= min_rank:
                     take = min(remaining, lot_quantity[s])
                     lot_quantity[s] -= take
                     remaining -= take
                     if lot_quantity[s] == 0:
-                        lot_item_id[s] = -1
+                        # Swap-remove moves the last occupied slot into i, so i
+                        # is deliberately NOT advanced -- see kernel.py's mirror.
+                        _remove_lot(lot_item_id, occupied, slot_pos, free, s)
+                        continue
+                i += 1
             money = _f32(money - cost)
             job_output_item_id[free_slot] = int(config.recipe_output_item_idx[rec])
             job_output_quantity[free_slot] = int(config.recipe_output_quantity[rec])
@@ -733,10 +827,11 @@ def simulate_run_reference(
         # -- markets: sell all matured lots (component C's choose_sales,
         # simplified -- see kernel.py's module docstring) -- every lot still
         # standing after today's aging/spoilage/trim is sold in full, at
-        # today's price for its crop, scaled by its quality grade --
-        for s in range(num_lot_slots):
-            if lot_item_id[s] < 0:
-                continue
+        # today's price for its crop, scaled by its quality grade -- sells
+        # every occupied slot, so this just walks `occupied` and clears it in
+        # one pass rather than calling _remove_lot per slot -- see kernel.py's
+        # mirror.
+        for s in occupied:
             item = lot_item_id[s]
             qty = lot_quantity[s]
             grade = lot_quality[s]
@@ -753,6 +848,9 @@ def simulate_run_reference(
             market_supply[item] += qty
             lot_item_id[s] = -1
             lot_quantity[s] = 0
+            slot_pos[s] = -1
+            free.append(s)
+        occupied.clear()
 
         # -- storage: liability collect (simulation/inventory.py:collect_storage_liability)
         # -- end of day, using the amount captured before today's harvests; shadow

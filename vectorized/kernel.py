@@ -286,32 +286,112 @@ def _next(state):
     return state, uniform
 
 
+@njit(cache=True, inline="always")
+def _insert_lot(
+    lot_item_id_row,
+    lot_quantity_row,
+    lot_quality_row,
+    lot_age_days_row,
+    occupied,
+    slot_pos,
+    free,
+    occupied_count,
+    free_count,
+    item,
+    qty,
+    quality,
+    age,
+):
+    """Insert a new lot via the free-list, O(1) instead of scanning for the
+    first empty slot. Returns (occupied_count, free_count, inserted) --
+    numba functions can't mutate scalar arguments in place, so every call
+    site reassigns its own counts from the return value, the same
+    discipline `_next`'s `state, u = _next(state)` already uses.
+
+    `free`/`occupied`/`slot_pos` are per-run scratch (see
+    `_simulate_chunk_core`'s docstring) mirroring which of `num_lot_slots`
+    slots are empty/occupied, so every lot-slot-scanning block below can
+    walk `occupied[:occupied_count]` instead of the full `range(L)` --
+    Phase 7 grew L 2.4x (10->18 plots, 3->4 lots_per_plot worst case), and
+    this bookkeeping is what keeps the day-to-day cost proportional to how
+    many slots are actually occupied (typically far fewer than L, since
+    storage rarely survives past the day it's created -- see Phase 3's
+    note) rather than to L itself.
+    """
+    if free_count == 0:
+        return occupied_count, free_count, False
+    free_count -= 1
+    s = free[free_count]
+    lot_item_id_row[s] = item
+    lot_quantity_row[s] = qty
+    lot_quality_row[s] = quality
+    lot_age_days_row[s] = age
+    occupied[occupied_count] = s
+    slot_pos[s] = occupied_count
+    occupied_count += 1
+    return occupied_count, free_count, True
+
+
+@njit(cache=True, inline="always")
+def _remove_lot(lot_item_id_row, occupied, slot_pos, free, occupied_count, free_count, s):
+    """Remove slot `s` via swap-remove, O(1) instead of leaving a hole to be
+    skipped by every future scan. Returns (occupied_count, free_count) --
+    see `_insert_lot`'s docstring for why callers reassign from the return
+    value. Safe to call while a caller is iterating `occupied[:occupied_count]`
+    forward *only* if the caller does not advance its index after calling
+    this (the swap moves the previously-last occupied slot into the index
+    just removed, so that index must be revisited, not skipped) -- every
+    call site below follows that discipline.
+    """
+    pos = slot_pos[s]
+    last = occupied_count - 1
+    last_slot = occupied[last]
+    occupied[pos] = last_slot
+    slot_pos[last_slot] = pos
+    occupied_count -= 1
+    slot_pos[s] = -1
+    free[free_count] = s
+    free_count += 1
+    lot_item_id_row[s] = -1
+    return occupied_count, free_count
+
+
 @njit(cache=True)
-def _trim_to_capacity(lot_item_id_row, lot_quantity_row, lot_age_days_row, eff_life, capacity):
+def _trim_to_capacity(
+    lot_item_id_row,
+    lot_quantity_row,
+    lot_age_days_row,
+    eff_life,
+    occupied,
+    slot_pos,
+    free,
+    occupied_count,
+    free_count,
+    capacity,
+):
     """FEFO capacity trim for one run's lot-slot row, in place.
 
     Matches `simulation/inventory.py:_trim_to_capacity` -- shared by both
     call sites the same way the real function is (`age_and_spoil`'s nightly
     trim, and `enforce_storage_capacity`'s same-day re-trim right after
     processing jobs complete -- see Phase 4 in this module's docstring for
-    why a completing job's output needs a second same-day trim pass).
-    Returns units spoiled by trimming; does not touch `total_spoiled`
-    itself, matching the real function's own division of labor (each call
-    site folds the return value into its own running tally).
+    why a completing job's output needs a second same-day trim pass). Walks
+    `occupied[:occupied_count]`, not `range(num_lot_slots)` -- see
+    `_insert_lot`'s docstring. Returns (spoiled, occupied_count,
+    free_count); does not touch `total_spoiled` itself, matching the real
+    function's own division of labor (each call site folds the return
+    value into its own running tally).
     """
-    num_lot_slots = lot_item_id_row.shape[0]
     total_qty = 0
-    for s in range(num_lot_slots):
-        if lot_item_id_row[s] >= 0:
-            total_qty += lot_quantity_row[s]
+    for i in range(occupied_count):
+        total_qty += lot_quantity_row[occupied[i]]
     overflow_units = total_qty - capacity
     spoiled = 0
     while overflow_units > 0:
         chosen = -1
         chosen_remaining = 0.0
-        for s in range(num_lot_slots):
-            if lot_item_id_row[s] < 0:
-                continue
+        for i in range(occupied_count):
+            s = occupied[i]
             item = lot_item_id_row[s]
             remaining = np.float64(eff_life[item]) - np.float64(lot_age_days_row[s])
             if chosen < 0 or remaining < chosen_remaining:
@@ -324,8 +404,10 @@ def _trim_to_capacity(lot_item_id_row, lot_quantity_row, lot_age_days_row, eff_l
         overflow_units -= remove
         spoiled += remove
         if lot_quantity_row[chosen] == 0:
-            lot_item_id_row[chosen] = -1
-    return spoiled
+            occupied_count, free_count = _remove_lot(
+                lot_item_id_row, occupied, slot_pos, free, occupied_count, free_count, chosen
+            )
+    return spoiled, occupied_count, free_count
 
 
 @njit(parallel=True, cache=True)
@@ -549,6 +631,18 @@ def _simulate_chunk_core(
         # per-day allocation.
         eff_life_by_item = np.zeros(num_items, dtype=np.float64)
 
+        # Occupied/free-list bookkeeping for this run's lot-slot row (see
+        # _insert_lot's docstring) -- every lot slot starts empty (matches
+        # init_runs' lot_item_id[:, :] = -1), so free starts holding every
+        # index and occupied starts empty.
+        occupied = np.empty(num_lot_slots, dtype=np.int32)
+        slot_pos = np.full(num_lot_slots, -1, dtype=np.int32)
+        free = np.empty(num_lot_slots, dtype=np.int32)
+        for s in range(num_lot_slots):
+            free[s] = s
+        occupied_count = 0
+        free_count = num_lot_slots
+
         for day in range(num_days):
             # -- weather (simulation/weather.py:generate_weather) --
             season = (day // season_length_days) % num_seasons
@@ -617,13 +711,9 @@ def _simulate_chunk_core(
                 )
 
             # -- storage liability capture (simulation/inventory.py:capture_storage_liability)
-            # -- run-level, once/day, before today's harvests are added --
-            has_inventory = False
-            for s in range(num_lot_slots):
-                if lot_quantity[r, s] > 0:
-                    has_inventory = True
-                    break
-            liability = storage_daily_cost if has_inventory else 0.0
+            # -- run-level, once/day, before today's harvests are added -- O(1)
+            # via occupied_count instead of scanning for a positive quantity --
+            liability = storage_daily_cost if occupied_count > 0 else 0.0
 
             for p in range(num_plots):
                 if p >= active_p:
@@ -804,15 +894,21 @@ def _simulate_chunk_core(
                                     grade = 2  # standard
                                 else:
                                     grade = 1  # processing (>= 0.3 guaranteed by the outer gate)
-                                inserted = False
-                                for s in range(num_lot_slots):
-                                    if lot_item_id[r, s] < 0:
-                                        lot_item_id[r, s] = ct
-                                        lot_quantity[r, s] = amount_units
-                                        lot_quality[r, s] = grade
-                                        lot_age_days[r, s] = -1  # becomes 0 on today's aging pass
-                                        inserted = True
-                                        break
+                                occupied_count, free_count, inserted = _insert_lot(
+                                    lot_item_id[r],
+                                    lot_quantity[r],
+                                    lot_quality[r],
+                                    lot_age_days[r],
+                                    occupied,
+                                    slot_pos,
+                                    free,
+                                    occupied_count,
+                                    free_count,
+                                    ct,
+                                    amount_units,
+                                    grade,
+                                    -1,  # becomes 0 on today's aging pass
+                                )
                                 if not inserted:
                                     overflow_events[r] += 1
 
@@ -927,12 +1023,18 @@ def _simulate_chunk_core(
             # -- storage: aging, quality downgrade, full-spoil
             # (simulation/inventory.py:age_and_spoil) -- run-level, once/day, after
             # today's harvests are in so same-day lots can be correctly skipped --
-            for s in range(num_lot_slots):
-                if lot_item_id[r, s] < 0:
-                    continue
+            # walks occupied[:occupied_count], not range(num_lot_slots) -- see
+            # _insert_lot's docstring. A full-spoil removal swaps the last
+            # occupied slot into index i (see _remove_lot's docstring), so i is
+            # deliberately NOT advanced on that branch -- the swapped-in slot
+            # still needs its own aging check this same pass.
+            i = 0
+            while i < occupied_count:
+                s = occupied[i]
                 if lot_age_days[r, s] < 0:
                     # produced today -- becomes 0 this pass, not aged further today
                     lot_age_days[r, s] = 0
+                    i += 1
                     continue
                 lot_age_days[r, s] += 1
                 item = lot_item_id[r, s]
@@ -941,23 +1043,33 @@ def _simulate_chunk_core(
                 if age_ratio >= 1.0:
                     ts += lot_quantity[r, s]
                     lot_quantity[r, s] = 0
-                    lot_item_id[r, s] = -1
+                    occupied_count, free_count = _remove_lot(
+                        lot_item_id[r], occupied, slot_pos, free, occupied_count, free_count, s
+                    )
+                    continue
                 elif age_ratio >= 0.5 and lot_quality[r, s] == 3:
                     lot_quality[r, s] = 2
                 elif age_ratio >= 0.8 and lot_quality[r, s] == 2:
                     lot_quality[r, s] = 1
+                i += 1
 
             # -- storage: capacity trim, FEFO (simulation/inventory.py:_trim_to_capacity)
             # -- only sorts/mutates when something actually has to be trimmed, same
             # optimization the real engine documents: storage sits under capacity on
             # the overwhelming majority of days --
-            ts += _trim_to_capacity(
+            spoiled, occupied_count, free_count = _trim_to_capacity(
                 lot_item_id[r],
                 lot_quantity[r],
                 lot_age_days[r],
                 eff_life_by_item,
+                occupied,
+                slot_pos,
+                free,
+                occupied_count,
+                free_count,
                 eff_capacity,
             )
+            ts += spoiled
 
             # -- processing: jobs complete (simulation/processing.py:complete_jobs)
             # -- run-level, once/day, after today's aging/trim so a completing job's
@@ -971,15 +1083,21 @@ def _simulate_chunk_core(
                 out_item = job_output_item_id[r, j]
                 out_qty = job_output_quantity[r, j]
                 tp += out_qty
-                inserted = False
-                for s in range(num_lot_slots):
-                    if lot_item_id[r, s] < 0:
-                        lot_item_id[r, s] = out_item
-                        lot_quantity[r, s] = out_qty
-                        lot_quality[r, s] = 2  # standard -- matches complete_jobs' hardcoded grade
-                        lot_age_days[r, s] = -1  # becomes 0 on tomorrow's aging pass
-                        inserted = True
-                        break
+                occupied_count, free_count, inserted = _insert_lot(
+                    lot_item_id[r],
+                    lot_quantity[r],
+                    lot_quality[r],
+                    lot_age_days[r],
+                    occupied,
+                    slot_pos,
+                    free,
+                    occupied_count,
+                    free_count,
+                    out_item,
+                    out_qty,
+                    2,  # standard -- matches complete_jobs' hardcoded grade
+                    -1,  # becomes 0 on tomorrow's aging pass
+                )
                 if not inserted:
                     overflow_events[r] += 1
                 job_output_item_id[r, j] = -1
@@ -990,13 +1108,19 @@ def _simulate_chunk_core(
             # aging/trim pass already ran, so without a second pass here, overflow it
             # causes wouldn't spoil until tomorrow, letting today's sale use inventory
             # that should already be gone (matches the real engine's own #19 fix) --
-            ts += _trim_to_capacity(
+            spoiled, occupied_count, free_count = _trim_to_capacity(
                 lot_item_id[r],
                 lot_quantity[r],
                 lot_age_days[r],
                 eff_life_by_item,
+                occupied,
+                slot_pos,
+                free,
+                occupied_count,
+                free_count,
                 eff_capacity,
             )
+            ts += spoiled
 
             # -- contracts: offer generation (simulation/contracts.py:generate_offers)
             # -- run-level, only on interval days, simplified scope (see this
@@ -1047,8 +1171,11 @@ def _simulate_chunk_core(
                     if day > contract_expiry_day[r, b]:
                         contract_state[r, b] = 0
                         continue
+                    # available/delivered scans walk occupied[:occupied_count],
+                    # not range(num_lot_slots) -- see _insert_lot's docstring.
                     available = 0
-                    for s in range(num_lot_slots):
+                    for i in range(occupied_count):
+                        s = occupied[i]
                         if lot_item_id[r, s] == item and lot_quality[r, s] >= min_rank:
                             available += lot_quantity[r, s]
                     if available <= 0:
@@ -1058,15 +1185,28 @@ def _simulate_chunk_core(
                 # cstate == 2: active -- attempt delivery from today's inventory
                 remaining = contract_remaining[r, b]
                 delivered = 0
-                for s in range(num_lot_slots):
-                    if delivered >= remaining:
-                        break
+                i = 0
+                while i < occupied_count and delivered < remaining:
+                    s = occupied[i]
                     if lot_item_id[r, s] == item and lot_quality[r, s] >= min_rank:
                         take = min(remaining - delivered, lot_quantity[r, s])
                         lot_quantity[r, s] -= take
-                        if lot_quantity[r, s] == 0:
-                            lot_item_id[r, s] = -1
                         delivered += take
+                        if lot_quantity[r, s] == 0:
+                            # Swap-remove moves the last occupied slot into i,
+                            # so i is deliberately NOT advanced -- see
+                            # _remove_lot's docstring.
+                            occupied_count, free_count = _remove_lot(
+                                lot_item_id[r],
+                                occupied,
+                                slot_pos,
+                                free,
+                                occupied_count,
+                                free_count,
+                                s,
+                            )
+                            continue
+                    i += 1
                 if delivered > 0:
                     revenue = delivered * contract_unit_price[r, b]
                     m += revenue
@@ -1118,22 +1258,38 @@ def _simulate_chunk_core(
                 cost = recipe_cost[rec]
                 if m < cost:
                     continue
+                # available/consume scans walk occupied[:occupied_count], not
+                # range(num_lot_slots) -- see _insert_lot's docstring.
                 available = 0
-                for s in range(num_lot_slots):
+                for i in range(occupied_count):
+                    s = occupied[i]
                     if lot_item_id[r, s] == in_item and lot_quality[r, s] >= min_rank:
                         available += lot_quantity[r, s]
                 if available < need:
                     continue
                 remaining = need
-                for s in range(num_lot_slots):
-                    if remaining <= 0:
-                        break
+                i = 0
+                while i < occupied_count and remaining > 0:
+                    s = occupied[i]
                     if lot_item_id[r, s] == in_item and lot_quality[r, s] >= min_rank:
                         take = min(remaining, lot_quantity[r, s])
                         lot_quantity[r, s] -= take
                         remaining -= take
                         if lot_quantity[r, s] == 0:
-                            lot_item_id[r, s] = -1
+                            # Swap-remove moves the last occupied slot into i,
+                            # so i is deliberately NOT advanced -- see
+                            # _remove_lot's docstring.
+                            occupied_count, free_count = _remove_lot(
+                                lot_item_id[r],
+                                occupied,
+                                slot_pos,
+                                free,
+                                occupied_count,
+                                free_count,
+                                s,
+                            )
+                            continue
+                    i += 1
                 m -= cost
                 job_output_item_id[r, free_slot] = recipe_output_item_idx[rec]
                 job_output_quantity[r, free_slot] = recipe_output_quantity[rec]
@@ -1142,10 +1298,12 @@ def _simulate_chunk_core(
             # -- markets: sell all matured lots (component C's choose_sales,
             # simplified -- see this module's docstring) -- every lot still
             # standing after today's aging/spoilage/trim is sold in full, at
-            # today's price for its crop, scaled by its quality grade --
-            for s in range(num_lot_slots):
-                if lot_item_id[r, s] < 0:
-                    continue
+            # today's price for its crop, scaled by its quality grade -- sells
+            # every occupied slot, so this just walks occupied[:occupied_count]
+            # and clears it in one pass (pushing every slot straight onto
+            # `free`) rather than calling _remove_lot per slot --
+            for i in range(occupied_count):
+                s = occupied[i]
                 item = lot_item_id[r, s]
                 qty = lot_quantity[r, s]
                 grade = lot_quality[r, s]
@@ -1162,6 +1320,10 @@ def _simulate_chunk_core(
                 market_supply[item] += qty
                 lot_item_id[r, s] = -1
                 lot_quantity[r, s] = 0
+                slot_pos[s] = -1
+                free[free_count] = s
+                free_count += 1
+            occupied_count = 0
 
             # -- storage: liability collect (simulation/inventory.py:collect_storage_liability)
             # -- end of day, using the amount captured before today's harvests; shadow
