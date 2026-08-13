@@ -178,10 +178,52 @@ first claim on today's inventory, ahead of processing and selling:
 scratch): they persist for the whole run and gate/scale future offers, so
 they can't be reset between days the way `market_supply` can.
 
-Still NOT ported: the multi-channel market system, upgrades (including
-upgrades' storage `capacity_bonus`/`shelf_life_multiplier` effects and
-processing-capacity bonuses -- Phase 2-4 use only the base
-`config/storage.json`/`config/processing.json` values). See
+Phase 7 ("upgrades") ported `config/upgrades.json`'s four effect types.
+Two of them -- `capacity` (+8 plots) and `processing_capacity` (+2 job
+slots) -- grow a dimension every earlier phase sized once per batch and
+shared by every run. Rather than a per-run variable-shape array (not
+expressible in a dense SoA layout), `state.py` allocates `moisture` and
+friends' `P` axis and `job_output_item_id`'s `J` axis at their *maximum*
+possible width for every run, and two new run-level counters,
+`active_plots`/`active_job_slots`, track how much of that width a given
+run has actually unlocked -- the per-plot loop below and the processing
+free-slot search both skip indices at or past the active count entirely,
+same as if they didn't exist yet (matching
+`simulation/state.py:add_slots`, where an unbought capacity upgrade means
+the plot literally isn't in `player.plots`).
+
+The other two effect types are cheaper: `growth_time_reduction` is folded
+into a per-run multiplier at the moment a crop is planted (`days_to_harvest
+= max(1, round(growth_days * mult))`), matching the real engine's "applied
+to crops planted after purchase" semantics exactly, no retroactive effect
+on an already-growing plot. `storage`'s `capacity_bonus`/
+`shelf_life_multiplier` are folded into two per-run-per-day scalars
+(`eff_capacity`, and a rebuilt `eff_life_by_item` array from the new raw
+`shelf_life_days_item`, since the load-time `effective_shelf_life_days`
+array only has the base config/storage.json multiplier baked in) used
+everywhere the base values were used before -- liability capture, aging,
+both capacity-trim passes.
+
+**Upgrade purchase decision**, run-level, once/day, positioned right after
+the price roll and before storage liability capture (so a same-day
+capacity purchase unlocks its new plots in time for that same day's
+per-plot loop): config-catalog order, one shared `m` pool per run, same
+sequential "if not owned and should_buy: buy" loop the real engine's own
+`for upgrade in upgrades:` is (`simulation/engine.py:run_day`). Like every
+other agent decision this phase's 3 fixed strategies make, the real
+`should_buy_upgrade` logic (`profit_optimizer`/`progression_player`'s
+cooldown + peak-cash-fraction + payback-period gate,
+`economy_rules.should_buy_upgrade_within_budget`) is not ported -- a cash-
+buffer threshold stands in, the same "simplify the agent, not just the
+mechanic" pattern as every prior phase's fixed policy. This means the
+purchase itself, like watering/fertilizing/planting, sees yesterday's cash
+position, not today's just-credited sale revenue -- the real engine buys
+upgrades *after* selling; this phase's per-plot loop (where planting
+happens) still runs before the sell step -- the same known divergence the
+Phase 3 section above already documents for water/fertilize/plant, extended
+here rather than introduced fresh.
+
+Still NOT ported: the multi-channel market system. See
 vectorized/README.md's roadmap.
 
 Kept in lockstep with reference.py: same branch order, same draw order, same
@@ -216,6 +258,12 @@ FERTILIZE_CASH_BUFFER_CONSERVATIVE = 10.0
 WATER_THRESHOLD_GREEDY = 0.6
 WATER_THRESHOLD_CONSERVATIVE = 0.25
 COIN_FLIP = 0.5
+# Multiples of an upgrade's own cost kept in reserve before buying it --
+# smaller than the fertilizer buffers above since upgrades are large,
+# infrequent, one-time purchases (120-300 cost vs. fertilizer's ~15), not a
+# recurring spend a large reserve multiple would starve entirely.
+UPGRADE_CASH_BUFFER_GREEDY = 1.5
+UPGRADE_CASH_BUFFER_CONSERVATIVE = 4.0
 
 # Quality-grade sale multipliers (component: markets), matching
 # simulation/markets.py:QUALITY_MULTIPLIERS exactly. Not config-driven --
@@ -293,6 +341,10 @@ def _simulate_chunk_core(
     total_contracts_completed,
     total_contracts_failed,
     total_contract_penalties,
+    # Phase 7: how many of the (max-width) plot/job-slot columns each run has
+    # unlocked so far -- see this module's and state.py's docstrings.
+    active_plots,
+    active_job_slots,
     moisture,
     nitrogen,
     phosphorus,
@@ -337,6 +389,8 @@ def _simulate_chunk_core(
     contract_expiry_day,
     contract_penalty_rate,
     buyer_relationship,
+    # per-upgrade owned flags (Phase 7), shape (B, U), U = config.num_upgrades
+    upgrade_owned,
     num_days,
     # crop arrays (component: config_arrays.VectorConfig)
     num_crops,
@@ -360,7 +414,11 @@ def _simulate_chunk_core(
     potassium_demand,
     family_id,
     unlock_total_revenue,
-    effective_shelf_life_days,
+    # int16, item-space, RAW (no shelf_life_multiplier applied) -- Phase 7
+    # recomputes the multiplied value per run per day from this, since the
+    # multiplier now depends on which storage upgrade(s) a run owns; see
+    # this module's docstring.
+    shelf_life_days_item,
     seasonal_demand,
     greedy_rank,
     conservative_rank,
@@ -408,9 +466,12 @@ def _simulate_chunk_core(
     season_rain_low,
     season_rain_high,
     season_evaporation,
-    # storage
+    # storage -- storage_shelf_life_multiplier is the BASE (no-upgrade)
+    # multiplier; Phase 7 folds owned storage upgrades' own multiplier on
+    # top of it per run per day (see this module's docstring)
     storage_capacity,
     storage_daily_cost,
+    storage_shelf_life_multiplier,
     # markets
     market_minimum_supply_multiplier,
     market_supply_decay,
@@ -439,6 +500,15 @@ def _simulate_chunk_core(
     contract_relationship_gain,
     contract_relationship_loss,
     contract_relationship_bonus_cap,
+    # upgrades (component: config_arrays.VectorConfig), one entry per
+    # catalog upgrade -- read generically by effect type, identity defaults
+    # for a non-matching type, see config_arrays.py's docstring
+    upgrade_cost,
+    upgrade_capacity_amount,
+    upgrade_growth_time_reduction,
+    upgrade_storage_capacity_bonus,
+    upgrade_storage_shelf_life_multiplier,
+    upgrade_processing_capacity_amount,
 ):
     num_runs = money.shape[0]
     num_plots = moisture.shape[1]
@@ -448,6 +518,7 @@ def _simulate_chunk_core(
     num_items = base_price.shape[0]  # num_crops + num_products (Phase 4 item space)
     num_recipes = recipe_input_item_idx.shape[0]
     num_buyers = contract_state.shape[1]
+    num_upgrades = upgrade_cost.shape[0]
 
     for r in prange(num_runs):
         m = np.float64(money[r])
@@ -460,6 +531,8 @@ def _simulate_chunk_core(
         tcc = np.float64(total_contracts_completed[r])
         tcf = np.float64(total_contracts_failed[r])
         tcp = np.float64(total_contract_penalties[r])
+        active_p = active_plots[r]
+        active_j = active_job_slots[r]
         strat = strategy_id[r]
         run_state = rng_run_state[r]
 
@@ -469,6 +542,12 @@ def _simulate_chunk_core(
         # them across chunk/run boundaries the way lot state has to be.
         market_supply = np.zeros(num_items, dtype=np.float64)
         today_price = np.zeros(num_items, dtype=np.float64)
+        # Phase 7: this run's effective per-item shelf life (base
+        # shelf_life_days_item * this run's folded storage-upgrade
+        # multiplier), rebuilt in place every day -- same reuse-a-scratch-
+        # buffer discipline as market_supply/today_price above, not a fresh
+        # per-day allocation.
+        eff_life_by_item = np.zeros(num_items, dtype=np.float64)
 
         for day in range(num_days):
             # -- weather (simulation/weather.py:generate_weather) --
@@ -500,6 +579,43 @@ def _simulate_chunk_core(
                 today_price[c] = max(0.01, base_price[c] * seasonal * saturation * price_factor)
                 market_supply[c] = supply * market_supply_decay
 
+            # -- upgrades: agent buys (component C's should_buy_upgrade,
+            # simplified -- see this module's docstring) -- run-level, once/day,
+            # config-catalog order, one shared `m` pool, same sequential
+            # "if not owned and should_buy: buy" loop as the real engine's own --
+            for u in range(num_upgrades):
+                run_state, u_buy = _next(run_state)
+                if upgrade_owned[r, u]:
+                    continue
+                cost = upgrade_cost[u]
+                if strat == STRATEGY_GREEDY:
+                    should_buy = m >= cost * UPGRADE_CASH_BUFFER_GREEDY
+                elif strat == STRATEGY_CONSERVATIVE:
+                    should_buy = m >= cost * UPGRADE_CASH_BUFFER_CONSERVATIVE
+                else:
+                    should_buy = u_buy < COIN_FLIP and m >= cost
+                if should_buy:
+                    m -= cost
+                    upgrade_owned[r, u] = 1
+                    active_p += upgrade_capacity_amount[u]
+                    active_j += upgrade_processing_capacity_amount[u]
+
+            # -- upgrades: fold owned storage upgrades into this run's effective
+            # capacity/shelf-life-multiplier (simulation/derived.py:effective_storage,
+            # recomputed daily the same way engine.py does) -- identity defaults
+            # (0 bonus, 1.0 multiplier) on non-storage catalog rows make this safe
+            # without a type check at the fold site, see config_arrays.py's docstring --
+            eff_capacity = storage_capacity
+            eff_shelf_mult = storage_shelf_life_multiplier
+            for u in range(num_upgrades):
+                if upgrade_owned[r, u]:
+                    eff_capacity += upgrade_storage_capacity_bonus[u]
+                    eff_shelf_mult *= upgrade_storage_shelf_life_multiplier[u]
+            for item in range(num_items):
+                eff_life_by_item[item] = max(
+                    1.0, round(np.float64(shelf_life_days_item[item]) * eff_shelf_mult)
+                )
+
             # -- storage liability capture (simulation/inventory.py:capture_storage_liability)
             # -- run-level, once/day, before today's harvests are added --
             has_inventory = False
@@ -510,6 +626,11 @@ def _simulate_chunk_core(
             liability = storage_daily_cost if has_inventory else 0.0
 
             for p in range(num_plots):
+                if p >= active_p:
+                    # Not unlocked yet (Phase 7: no capacity upgrade owned for
+                    # this column) -- same as if the plot didn't exist, matching
+                    # simulation/state.py:add_slots. No RNG draw, no state touch.
+                    continue
                 plot_state = rng_plot_state[r, p]
                 ct = crop_type[r, p]
 
@@ -751,7 +872,18 @@ def _simulate_chunk_core(
                         m -= seed_cost[crop_idx]
                         crop_type[r, p] = crop_idx
                         growth_stage[r, p] = 0
-                        days_to_harvest[r, p] = growth_days[crop_idx]
+                        # Phase 7: fold owned growth_time_reduction upgrades in at
+                        # planting time only -- matches config/upgrades.json's
+                        # "applied to crops planted after purchase" semantics
+                        # exactly: an already-growing plot's days_to_harvest, set
+                        # on a previous day, is never revisited.
+                        growth_mult = 1.0
+                        for u in range(num_upgrades):
+                            if upgrade_owned[r, u]:
+                                growth_mult *= 1.0 - upgrade_growth_time_reduction[u]
+                        days_to_harvest[r, p] = max(
+                            1, int(round(growth_days[crop_idx] * growth_mult))
+                        )
                         last_watered_day[r, p] = day
                 else:
                     # watering
@@ -804,8 +936,8 @@ def _simulate_chunk_core(
                     continue
                 lot_age_days[r, s] += 1
                 item = lot_item_id[r, s]
-                eff_life = effective_shelf_life_days[item]
-                age_ratio = np.float64(lot_age_days[r, s]) / np.float64(eff_life)
+                eff_life = eff_life_by_item[item]
+                age_ratio = np.float64(lot_age_days[r, s]) / eff_life
                 if age_ratio >= 1.0:
                     ts += lot_quantity[r, s]
                     lot_quantity[r, s] = 0
@@ -823,8 +955,8 @@ def _simulate_chunk_core(
                 lot_item_id[r],
                 lot_quantity[r],
                 lot_age_days[r],
-                effective_shelf_life_days,
-                storage_capacity,
+                eff_life_by_item,
+                eff_capacity,
             )
 
             # -- processing: jobs complete (simulation/processing.py:complete_jobs)
@@ -862,8 +994,8 @@ def _simulate_chunk_core(
                 lot_item_id[r],
                 lot_quantity[r],
                 lot_age_days[r],
-                effective_shelf_life_days,
-                storage_capacity,
+                eff_life_by_item,
+                eff_capacity,
             )
 
             # -- contracts: offer generation (simulation/contracts.py:generate_offers)
@@ -971,7 +1103,10 @@ def _simulate_chunk_core(
             # inventory (at the recipe's min quality) and cash --
             for rec in range(num_recipes):
                 free_slot = -1
-                for j in range(num_job_slots):
+                # Bounded by active_j (Phase 7), not num_job_slots -- an
+                # unbought processing_capacity upgrade's extra slots don't
+                # exist yet, same as an unbought capacity upgrade's plots.
+                for j in range(active_j):
                     if job_output_item_id[r, j] < 0:
                         free_slot = j
                         break
@@ -1045,6 +1180,8 @@ def _simulate_chunk_core(
         total_contracts_completed[r] = np.float32(tcc)
         total_contracts_failed[r] = np.float32(tcf)
         total_contract_penalties[r] = np.float32(tcp)
+        active_plots[r] = active_p
+        active_job_slots[r] = active_j
         rng_run_state[r] = run_state
 
 
@@ -1062,12 +1199,18 @@ def simulate_chunk(
     if master_seed is not None:
         from vectorized import state as state_mod
 
+        # state.num_plots is the *max* width (Phase 7); the base/starting
+        # count isn't otherwise available on this self-seeding one-shot
+        # path, so it's recovered from the invariant orchestrator.py's
+        # allocation always establishes: max = base + total_capacity_bonus.
+        num_plots_base = state.num_plots - config.total_capacity_bonus
         state_mod.init_runs(
             state,
             config,
             master_seed,
             run_index_offset=0,
             strategy_of_run=state.strategy_id,
+            num_plots_base=num_plots_base,
         )
 
     overflow_events = np.zeros(state.num_runs, dtype=np.int32)
@@ -1084,6 +1227,8 @@ def simulate_chunk(
         state.total_contracts_completed,
         state.total_contracts_failed,
         state.total_contract_penalties,
+        state.active_plots,
+        state.active_job_slots,
         state.moisture,
         state.nitrogen,
         state.phosphorus,
@@ -1123,6 +1268,7 @@ def simulate_chunk(
         state.contract_expiry_day,
         state.contract_penalty_rate,
         state.buyer_relationship,
+        state.upgrade_owned,
         num_days,
         config.num_crops,
         config.seed_cost,
@@ -1145,7 +1291,7 @@ def simulate_chunk(
         config.potassium_demand,
         config.family_id,
         config.unlock_total_revenue,
-        config.effective_shelf_life_days,
+        config.shelf_life_days_item,
         config.seasonal_demand,
         config.greedy_rank,
         config.conservative_rank,
@@ -1191,6 +1337,7 @@ def simulate_chunk(
         config.season_evaporation,
         int(config.storage_capacity),
         float(config.storage_daily_cost),
+        float(config.storage_shelf_life_multiplier),
         float(config.market_minimum_supply_multiplier),
         float(config.market_supply_decay),
         config.recipe_input_item_idx,
@@ -1215,6 +1362,12 @@ def simulate_chunk(
         float(config.contract_relationship_gain),
         float(config.contract_relationship_loss),
         float(config.contract_relationship_bonus_cap),
+        config.upgrade_cost,
+        config.upgrade_capacity_amount,
+        config.upgrade_growth_time_reduction,
+        config.upgrade_storage_capacity_bonus,
+        config.upgrade_storage_shelf_life_multiplier,
+        config.upgrade_processing_capacity_amount,
     )
 
     if np.any(overflow_events):

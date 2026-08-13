@@ -53,6 +53,28 @@ engine's unbounded concurrent offers-and-active-contracts per buyer, so
 `K = num_buyers` is exact, not a derived bound. See kernel.py's module
 docstring for the accept/deliver/resolve policy this enables and what it
 simplifies away.
+
+Phase 7 ("upgrades") added a fixed-size **per-upgrade** dimension `(B, U)`,
+`U = config.num_upgrades` -- `upgrade_owned`, an exact catalog-bound the
+same way contract slots are, not a derived bound. It also added two new
+`(B,)` fields, `active_plots` and `active_job_slots`: two of
+`config/upgrades.json`'s four effect types (`capacity`, `processing_capacity`)
+grow a dimension every earlier phase sized once per batch and shared by
+every run (plots, processing job slots). Rather than a per-run variable-
+shape array -- not expressible in a dense SoA layout -- `moisture` and
+friends' `P` axis and `job_output_item_id`'s `J` axis are allocated at
+their *maximum* possible width (`num_plots + config.total_capacity_bonus`,
+`config.base_capacity + config.total_processing_capacity_bonus`) for every
+run, and `active_plots`/`active_job_slots` track how much of that width a
+given run has actually unlocked so far (`kernel.py` skips plot/job-slot
+indices at or past the active count entirely, same as if they didn't exist
+yet -- matching `simulation/state.py:add_slots`, where an unbought
+capacity upgrade means the plot literally isn't in `player.plots`). Every
+run starts with `active_plots = num_plots` (the base/starting count, a
+caller-supplied `init_runs` parameter, not derived from `state.num_plots`
+since that property is now the *max* width) and
+`active_job_slots = config.base_capacity`, and only grows when that run's
+agent buys the corresponding upgrade.
 """
 
 from __future__ import annotations
@@ -84,6 +106,14 @@ class BatchState:
     # float32 (B,) -- cumulative deadline-failure penalties paid, real (unlike
     # storage liability): deducted from money, not shadow accounting
     total_contract_penalties: np.ndarray
+    # int16 (B,) -- Phase 7: how many of the P (max-width) plot columns this
+    # run has unlocked so far; starts at the base/starting plot count, grows
+    # by a capacity upgrade's amount when bought. Plot indices >= this value
+    # are skipped entirely, same as if they didn't exist yet.
+    active_plots: np.ndarray
+    # int16 (B,) -- Phase 7: same idea for job_output_* 's J axis; starts at
+    # config.base_capacity, grows by a processing_capacity upgrade's amount.
+    active_job_slots: np.ndarray
 
     # -- plot-level: soil --
     moisture: np.ndarray  # float32 (B, P)
@@ -144,6 +174,10 @@ class BatchState:
     # contracts (NOT reset on resolve, unlike the fields above)
     buyer_relationship: np.ndarray
 
+    # -- upgrade-level (Phase 7), shape (B, U), U = config.num_upgrades,
+    # one entry per catalog upgrade -- exact bound, same as contract slots --
+    upgrade_owned: np.ndarray  # int8 (B, U), 0/1
+
     @property
     def num_runs(self) -> int:
         return self.money.shape[0]
@@ -164,22 +198,31 @@ class BatchState:
     def num_buyers(self) -> int:
         return self.contract_state.shape[1]
 
+    @property
+    def num_upgrades(self) -> int:
+        return self.upgrade_owned.shape[1]
 
-def bytes_per_run(num_plots: int, num_lot_slots: int, num_job_slots: int, num_buyers: int) -> int:
+
+def bytes_per_run(
+    num_plots: int, num_lot_slots: int, num_job_slots: int, num_buyers: int, num_upgrades: int
+) -> int:
     """Bytes/run this layout costs, for `run_millions`' memory-budget chunking.
 
     Closed-form sum kept in sync with the dataclass fields above by hand --
     exact because it's small and reviewed alongside the fields, not because
-    it's introspected. `num_lot_slots` is normally `num_plots *
-    config.lots_per_plot + config.base_capacity`, `num_job_slots` is
-    `config.base_capacity`, and `num_buyers` is `config.num_buyers` (see
-    `config_arrays.py`), passed explicitly here rather than derived so this
-    module doesn't need a `VectorConfig` import.
+    it's introspected. `num_plots`/`num_job_slots` are the *max* width
+    (base + total_capacity_bonus / total_processing_capacity_bonus, Phase 7 --
+    see this module's docstring), `num_lot_slots` is normally `num_plots *
+    config.lots_per_plot + num_job_slots`, and `num_buyers`/`num_upgrades`
+    are `config.num_buyers`/`config.num_upgrades` (see `config_arrays.py`),
+    passed explicitly here rather than derived so this module doesn't need a
+    `VectorConfig` import.
     """
     # money, total_harvest, total_revenue, strategy_id, rng_run, total_spoiled,
     # total_storage_cost, total_processed, reputation, total_contracts_completed,
-    # total_contracts_failed, total_contract_penalties
-    per_run = 4 + 4 + 4 + 1 + 8 + 4 + 4 + 4 + 4 + 4 + 4 + 4
+    # total_contracts_failed, total_contract_penalties, active_plots(i2),
+    # active_job_slots(i2)
+    per_run = 4 + 4 + 4 + 1 + 8 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 2 + 2
     per_plot = (
         4 * 8  # moisture, nitrogen, phosphorus, potassium, ph, soil_health, pest, disease (f4)
         + 1 * 4  # crop_type, growth_stage, previous_crop_family, fertilized (i1)
@@ -199,17 +242,24 @@ def bytes_per_run(num_plots: int, num_lot_slots: int, num_job_slots: int, num_bu
     )  # contract_state(i1) + item_idx(i1) + remaining(i4) + unit_price(f4) +
     # min_quality_rank(i1) + deadline_day(i4) + expiry_day(i4) + penalty_rate(f4) +
     # buyer_relationship(f4)
+    per_upgrade = 1  # upgrade_owned(i1)
     return (
         per_run
         + num_plots * per_plot
         + num_lot_slots * per_lot_slot
         + num_job_slots * per_job_slot
         + num_buyers * per_buyer
+        + num_upgrades * per_upgrade
     )
 
 
 def allocate(
-    num_runs: int, num_plots: int, num_lot_slots: int, num_job_slots: int, num_buyers: int
+    num_runs: int,
+    num_plots: int,
+    num_lot_slots: int,
+    num_job_slots: int,
+    num_buyers: int,
+    num_upgrades: int,
 ) -> BatchState:
     """Allocate an uninitialized chunk. Call `init_runs` before simulating."""
     f4 = lambda: np.empty((num_runs, num_plots), dtype=np.float32)  # noqa: E731
@@ -227,6 +277,8 @@ def allocate(
         total_contracts_completed=np.empty(num_runs, dtype=np.float32),
         total_contracts_failed=np.empty(num_runs, dtype=np.float32),
         total_contract_penalties=np.empty(num_runs, dtype=np.float32),
+        active_plots=np.empty(num_runs, dtype=np.int16),
+        active_job_slots=np.empty(num_runs, dtype=np.int16),
         moisture=f4(),
         nitrogen=f4(),
         phosphorus=f4(),
@@ -265,6 +317,7 @@ def allocate(
         contract_expiry_day=np.empty((num_runs, num_buyers), dtype=np.int32),
         contract_penalty_rate=np.empty((num_runs, num_buyers), dtype=np.float32),
         buyer_relationship=np.empty((num_runs, num_buyers), dtype=np.float32),
+        upgrade_owned=np.empty((num_runs, num_upgrades), dtype=np.int8),
     )
 
 
@@ -274,6 +327,7 @@ def init_runs(
     master_seed: int,
     run_index_offset: int,
     strategy_of_run: np.ndarray,
+    num_plots_base: int,
 ) -> None:
     """Initialize a freshly-allocated chunk in place.
 
@@ -282,7 +336,12 @@ def init_runs(
     (see vectorized/rng.py's module docstring and
     scripts/vectorized_validate.py, which checks exactly this).
     `strategy_of_run` assigns each row a strategy id (component C);
-    `run_millions` round-robins the roster across a chunk.
+    `run_millions` round-robins the roster across a chunk. `num_plots_base`
+    is the starting (pre-upgrade) plot count -- `state.num_plots` is now the
+    *max* width (Phase 7, see this module's docstring), so the starting
+    count can't be derived from the array shape and has to be passed
+    explicitly; `active_job_slots` doesn't need an equivalent parameter
+    since its base (`config.base_capacity`) is already in `config`.
     """
     from vectorized import rng as _rng
 
@@ -319,6 +378,8 @@ def init_runs(
     state.total_contracts_completed[:] = 0.0
     state.total_contracts_failed[:] = 0.0
     state.total_contract_penalties[:] = 0.0
+    state.active_plots[:] = num_plots_base
+    state.active_job_slots[:] = config.base_capacity
 
     state.moisture[:, :] = config.initial_moisture
     state.nitrogen[:, :] = config.initial_nitrogen
@@ -362,3 +423,5 @@ def init_runs(
     state.contract_expiry_day[:, :] = 0
     state.contract_penalty_rate[:, :] = 0.0
     state.buyer_relationship[:, :] = 0.0
+
+    state.upgrade_owned[:, :] = 0

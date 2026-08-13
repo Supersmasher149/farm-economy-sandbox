@@ -42,6 +42,8 @@ class BatchResult:
     overall_contracts_completed: StreamingStats
     overall_contracts_failed: StreamingStats
     overall_contract_penalties: StreamingStats
+    # Phase 7 ("upgrades"): how many of the catalog's upgrades a run bought.
+    overall_upgrades_owned: StreamingStats
     by_strategy_money: dict = field(default_factory=dict)
     by_strategy_harvest: dict = field(default_factory=dict)
 
@@ -63,6 +65,8 @@ class BatchResult:
             f"  overall contracts: completed mean={self.overall_contracts_completed.mean:5.2f}  "
             f"failed mean={self.overall_contracts_failed.mean:5.2f}  "
             f"penalties mean={self.overall_contract_penalties.mean:6.2f}",
+            f"  overall upgrades owned: mean={self.overall_upgrades_owned.mean:4.2f}  "
+            f"max={self.overall_upgrades_owned.maximum:.0f}",
         ]
         for sid, name in enumerate(crops.STRATEGY_NAMES):
             m = self.by_strategy_money.get(sid)
@@ -84,11 +88,25 @@ def choose_chunk_size(
     lots_per_plot: int = 1,
     base_capacity: int = 0,
     num_buyers: int = 0,
+    num_upgrades: int = 0,
+    total_capacity_bonus: int = 0,
+    total_processing_capacity_bonus: int = 0,
 ) -> int:
     """Chunk size ≤ max_chunk, and small enough that one chunk's arrays fit
-    the memory budget (component D step 1)."""
-    num_lot_slots = num_plots * lots_per_plot + base_capacity
-    per_run = bytes_per_run(num_plots, num_lot_slots, base_capacity, num_buyers)
+    the memory budget (component D step 1).
+
+    `num_plots` is the starting (pre-upgrade) plot count -- Phase 7 grows
+    the actual allocated width by `total_capacity_bonus`/
+    `total_processing_capacity_bonus` (the max a run could unlock, see
+    state.py's docstring), so the memory budget has to be sized off those
+    max widths, not the starting ones.
+    """
+    num_plots_max = num_plots + total_capacity_bonus
+    num_job_slots_max = base_capacity + total_processing_capacity_bonus
+    num_lot_slots = num_plots_max * lots_per_plot + num_job_slots_max
+    per_run = bytes_per_run(
+        num_plots_max, num_lot_slots, num_job_slots_max, num_buyers, num_upgrades
+    )
     budget_bound = int((max_memory_gb * (1024**3)) // per_run)
     return max(1, min(max_chunk, budget_bound))
 
@@ -127,9 +145,17 @@ def run_millions(
         config.lots_per_plot,
         config.base_capacity,
         config.num_buyers,
+        config.num_upgrades,
+        config.total_capacity_bonus,
+        config.total_processing_capacity_bonus,
     )
-    num_lot_slots = num_plots * config.lots_per_plot + config.base_capacity
-    num_job_slots = config.base_capacity
+    # Phase 7: state.py's plot/job-slot dimensions are allocated at their
+    # *max* width (base + total_capacity_bonus/total_processing_capacity_bonus)
+    # -- see state.py's docstring. `num_plots` stays the starting count this
+    # function's callers already know (init_runs needs it to seed active_plots).
+    num_plots_max = num_plots + config.total_capacity_bonus
+    num_job_slots_max = config.base_capacity + config.total_processing_capacity_bonus
+    num_lot_slots = num_plots_max * config.lots_per_plot + num_job_slots_max
     num_buyers = config.num_buyers
     weights = np.asarray(strategy_weights, dtype=np.float64)
     weights = weights / weights.sum()
@@ -142,6 +168,7 @@ def run_millions(
     overall_contracts_completed = StreamingStats()
     overall_contracts_failed = StreamingStats()
     overall_contract_penalties = StreamingStats()
+    overall_upgrades_owned = StreamingStats()
     by_money = {sid: StreamingStats() for sid in range(len(crops.STRATEGY_NAMES))}
     by_harvest = {sid: StreamingStats() for sid in range(len(crops.STRATEGY_NAMES))}
 
@@ -150,7 +177,14 @@ def run_millions(
     while run_offset < total_runs:
         this_chunk = min(chunk_size, total_runs - run_offset)
 
-        state = allocate(this_chunk, num_plots, num_lot_slots, num_job_slots, num_buyers)
+        state = allocate(
+            this_chunk,
+            num_plots_max,
+            num_lot_slots,
+            num_job_slots_max,
+            num_buyers,
+            config.num_upgrades,
+        )
         # Deterministic strategy assignment: cumulative-weight bucketing of
         # each row's fractional position in [0, 1), not per-row RNG draws --
         # keeps the mix exact and independent of chunk boundaries.
@@ -159,7 +193,7 @@ def run_millions(
         strategy_of_run = np.searchsorted(cum_weights, fractions).astype(np.int8)
         strategy_of_run = np.clip(strategy_of_run, 0, len(crops.STRATEGY_NAMES) - 1)
 
-        init_runs(state, config, master_seed, run_offset, strategy_of_run)
+        init_runs(state, config, master_seed, run_offset, strategy_of_run, num_plots)
         simulate_chunk(state, num_days, config)
 
         overall_money.update(state.money)
@@ -170,6 +204,7 @@ def run_millions(
         overall_contracts_completed.update(state.total_contracts_completed)
         overall_contracts_failed.update(state.total_contracts_failed)
         overall_contract_penalties.update(state.total_contract_penalties)
+        overall_upgrades_owned.update(state.upgrade_owned.sum(axis=1).astype(np.float64))
         for sid in by_money:
             mask = strategy_of_run == sid
             if mask.any():
@@ -202,6 +237,7 @@ def run_millions(
         overall_contracts_completed=overall_contracts_completed,
         overall_contracts_failed=overall_contracts_failed,
         overall_contract_penalties=overall_contract_penalties,
+        overall_upgrades_owned=overall_upgrades_owned,
         by_strategy_money=by_money,
         by_strategy_harvest=by_harvest,
     )

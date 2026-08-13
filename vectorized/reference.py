@@ -13,18 +13,20 @@ simulation and the validation script stops meaning anything.
 
 This does *not* validate against `simulation/`'s real crop-growth model --
 see vectorized/README.md for why that comparison isn't meaningful (different
-RNG scheme, still-simplified economy: no upgrades, markets are
-single-channel, and contracts skip the real production-forecast scheduler --
-see kernel.py's module docstring). It validates that the numba kernel is a
-faithful parallelization of *this* module's sequential algorithm, which is
-itself a config-driven port of simulation/crop_growth.py + simulation/
-weather.py's per-plot mechanics, plus a Phase 2 storage/spoilage mirror of
+RNG scheme, still-simplified economy: markets are single-channel, and
+contracts skip the real production-forecast scheduler -- see kernel.py's
+module docstring). It validates that the numba kernel is a faithful
+parallelization of *this* module's sequential algorithm, which is itself a
+config-driven port of simulation/crop_growth.py + simulation/weather.py's
+per-plot mechanics, plus a Phase 2 storage/spoilage mirror of
 simulation/inventory.py's age-and-spoil/capacity-trim/liability logic, a
 Phase 3 single-channel mirror of simulation/markets.py's daily pricing, a
-Phase 4 mirror of simulation/processing.py's recipe/job mechanics, and a
+Phase 4 mirror of simulation/processing.py's recipe/job mechanics, a
 Phase 5 simplified mirror of simulation/contracts.py's offer/accept/
-deliver/resolve mechanics -- see kernel.py's per-block comments for which
-real function each block mirrors.
+deliver/resolve mechanics, and a Phase 7 mirror of `config/upgrades.json`'s
+four effect types (see kernel.py's module docstring for the
+active_plots/active_job_slots gating this needs) -- see kernel.py's
+per-block comments for which real function each block mirrors.
 """
 
 from __future__ import annotations
@@ -80,9 +82,19 @@ def simulate_run_reference(
     num_plots: int,
     num_days: int,
 ) -> dict:
-    """Sequentially simulate exactly one run. Returns final money/total_harvest/total_revenue."""
+    """Sequentially simulate exactly one run. Returns final money/total_harvest/total_revenue.
+
+    `num_plots` is the starting (pre-upgrade) plot count -- Phase 7's
+    active_plots gating means the plot-level lists below are actually sized
+    at `num_plots_max = num_plots + config.total_capacity_bonus`, the same
+    max-width allocation kernel.py's caller (state.allocate) does; see this
+    module's and kernel.py's docstrings.
+    """
+    num_plots_max = num_plots + config.total_capacity_bonus
+    num_job_slots_max = config.base_capacity + config.total_processing_capacity_bonus
+
     run_state = rng.run_seed(master_seed, run_index)
-    plot_state = [rng.plot_seed(run_state, p) for p in range(num_plots)]
+    plot_state = [rng.plot_seed(run_state, p) for p in range(num_plots_max)]
 
     money = _f32(config.start_money)
     total_harvest = _f32(0.0)
@@ -95,33 +107,39 @@ def simulate_run_reference(
     total_contracts_failed = _f32(0.0)
     total_contract_penalties = _f32(0.0)
 
-    moisture = [_f32(config.initial_moisture) for _ in range(num_plots)]
-    nitrogen = [_f32(config.initial_nitrogen) for _ in range(num_plots)]
-    phosphorus = [_f32(config.initial_phosphorus) for _ in range(num_plots)]
-    potassium = [_f32(config.initial_potassium) for _ in range(num_plots)]
-    ph = [_f32(config.initial_ph) for _ in range(num_plots)]
-    soil_health = [_f32(config.initial_soil_health) for _ in range(num_plots)]
-    pest_pressure = [_f32(config.initial_pest_pressure) for _ in range(num_plots)]
-    disease_pressure = [_f32(config.initial_disease_pressure) for _ in range(num_plots)]
+    moisture = [_f32(config.initial_moisture) for _ in range(num_plots_max)]
+    nitrogen = [_f32(config.initial_nitrogen) for _ in range(num_plots_max)]
+    phosphorus = [_f32(config.initial_phosphorus) for _ in range(num_plots_max)]
+    potassium = [_f32(config.initial_potassium) for _ in range(num_plots_max)]
+    ph = [_f32(config.initial_ph) for _ in range(num_plots_max)]
+    soil_health = [_f32(config.initial_soil_health) for _ in range(num_plots_max)]
+    pest_pressure = [_f32(config.initial_pest_pressure) for _ in range(num_plots_max)]
+    disease_pressure = [_f32(config.initial_disease_pressure) for _ in range(num_plots_max)]
 
-    crop_type = [-1] * num_plots
-    growth_stage = [0] * num_plots
-    days_to_harvest = [0] * num_plots
-    previous_crop_family = [-1] * num_plots
-    fertilized = [0] * num_plots
+    crop_type = [-1] * num_plots_max
+    growth_stage = [0] * num_plots_max
+    days_to_harvest = [0] * num_plots_max
+    previous_crop_family = [-1] * num_plots_max
+    fertilized = [0] * num_plots_max
 
-    water_stress = [0.0] * num_plots
-    nutrient_stress = [0.0] * num_plots
-    temperature_stress = [0.0] * num_plots
-    pest_stress = [0.0] * num_plots
-    disease_stress = [0.0] * num_plots
+    water_stress = [0.0] * num_plots_max
+    nutrient_stress = [0.0] * num_plots_max
+    temperature_stress = [0.0] * num_plots_max
+    pest_stress = [0.0] * num_plots_max
+    disease_stress = [0.0] * num_plots_max
 
-    neglect_days = [0] * num_plots
-    last_watered_day = [0] * num_plots
+    neglect_days = [0] * num_plots_max
+    last_watered_day = [0] * num_plots_max
+
+    # Phase 7: how many of the (max-width) plot/job-slot columns this run has
+    # unlocked so far -- see kernel.py's and state.py's docstrings.
+    active_plots = num_plots
+    active_job_slots = config.base_capacity
+    upgrade_owned = [0] * config.num_upgrades
 
     # -- storage lots (Phase 2), fixed-size list mirroring kernel.py's (B, L) array --
-    # -- Phase 4 reserves +base_capacity slots for processed-product lots --
-    num_lot_slots = num_plots * config.lots_per_plot + config.base_capacity
+    # -- Phase 4/7 reserve +num_job_slots_max slots for processed-product lots --
+    num_lot_slots = num_plots_max * config.lots_per_plot + num_job_slots_max
     lot_item_id = [-1] * num_lot_slots
     lot_quantity = [0] * num_lot_slots
     lot_quality = [0] * num_lot_slots
@@ -132,10 +150,13 @@ def simulate_run_reference(
     # (crops + processed products, Phase 4) --
     market_supply = [0.0] * config.num_items
     today_price = [0.0] * config.num_items
+    # Phase 7: this run's effective per-item shelf life, rebuilt each day --
+    # see kernel.py's mirror.
+    eff_life_by_item = [0.0] * config.num_items
 
-    # -- processing job slots (Phase 4), fixed-size list mirroring kernel.py's
-    # (B, J) array, J = config.base_capacity --
-    num_job_slots = config.base_capacity
+    # -- processing job slots (Phase 4/7), fixed-size list mirroring kernel.py's
+    # (B, J) array, J = num_job_slots_max --
+    num_job_slots = num_job_slots_max
     job_output_item_id = [-1] * num_job_slots
     job_output_quantity = [0] * num_job_slots
     job_completion_day = [0] * num_job_slots
@@ -187,12 +208,48 @@ def simulate_run_reference(
             )
             market_supply[c] = supply * float(config.market_supply_decay)
 
+        # -- upgrades: agent buys (component C's should_buy_upgrade, simplified
+        # -- see kernel.py's module docstring) -- once/day, config-catalog
+        # order, one shared `money` pool --
+        for u in range(config.num_upgrades):
+            run_state, u_buy = rng.next_scalar(run_state)
+            if upgrade_owned[u]:
+                continue
+            cost = float(config.upgrade_cost[u])
+            if strategy == kernel.STRATEGY_GREEDY:
+                should_buy = money >= cost * kernel.UPGRADE_CASH_BUFFER_GREEDY
+            elif strategy == kernel.STRATEGY_CONSERVATIVE:
+                should_buy = money >= cost * kernel.UPGRADE_CASH_BUFFER_CONSERVATIVE
+            else:
+                should_buy = u_buy < kernel.COIN_FLIP and money >= cost
+            if should_buy:
+                money = _f32(money - cost)
+                upgrade_owned[u] = 1
+                active_plots += int(config.upgrade_capacity_amount[u])
+                active_job_slots += int(config.upgrade_processing_capacity_amount[u])
+
+        # -- upgrades: fold owned storage upgrades into this run's effective
+        # capacity/shelf-life-multiplier -- see kernel.py's mirror --
+        eff_capacity = int(config.storage_capacity)
+        eff_shelf_mult = float(config.storage_shelf_life_multiplier)
+        for u in range(config.num_upgrades):
+            if upgrade_owned[u]:
+                eff_capacity += int(config.upgrade_storage_capacity_bonus[u])
+                eff_shelf_mult *= float(config.upgrade_storage_shelf_life_multiplier[u])
+        for item in range(config.num_items):
+            eff_life_by_item[item] = max(
+                1.0, round(float(config.shelf_life_days_item[item]) * eff_shelf_mult)
+            )
+
         # -- storage liability capture (simulation/inventory.py:capture_storage_liability)
         # -- once/day, before today's harvests are added -- see kernel.py's mirror --
         has_inventory = any(q > 0 for q in lot_quantity)
         liability = float(config.storage_daily_cost) if has_inventory else 0.0
 
-        for p in range(num_plots):
+        for p in range(num_plots_max):
+            if p >= active_plots:
+                # Not unlocked yet -- see kernel.py's mirror.
+                continue
             ps = plot_state[p]
             ct = crop_type[p]
 
@@ -412,7 +469,15 @@ def simulate_run_reference(
                     money = _f32(money - float(config.seed_cost[crop_idx]))
                     crop_type[p] = crop_idx
                     growth_stage[p] = 0
-                    days_to_harvest[p] = int(config.growth_days[crop_idx])
+                    # Phase 7: fold owned growth_time_reduction upgrades in at
+                    # planting time only -- see kernel.py's mirror.
+                    growth_mult = 1.0
+                    for u in range(config.num_upgrades):
+                        if upgrade_owned[u]:
+                            growth_mult *= 1.0 - float(config.upgrade_growth_time_reduction[u])
+                    days_to_harvest[p] = max(
+                        1, int(round(config.growth_days[crop_idx] * growth_mult))
+                    )
                     last_watered_day[p] = day
             else:
                 ps, u_water = rng.next_scalar(ps)
@@ -463,7 +528,7 @@ def simulate_run_reference(
                 continue
             lot_age_days[s] += 1
             item = lot_item_id[s]
-            eff_life = int(config.effective_shelf_life_days[item])
+            eff_life = eff_life_by_item[item]
             age_ratio = lot_age_days[s] / eff_life
             if age_ratio >= 1.0:
                 total_spoiled = _f32(total_spoiled + lot_quantity[s])
@@ -482,8 +547,8 @@ def simulate_run_reference(
                 lot_item_id,
                 lot_quantity,
                 lot_age_days,
-                config.effective_shelf_life_days,
-                config.storage_capacity,
+                eff_life_by_item,
+                eff_capacity,
             )
         )
 
@@ -519,8 +584,8 @@ def simulate_run_reference(
                 lot_item_id,
                 lot_quantity,
                 lot_age_days,
-                config.effective_shelf_life_days,
-                config.storage_capacity,
+                eff_life_by_item,
+                eff_capacity,
             )
         )
 
@@ -629,7 +694,9 @@ def simulate_run_reference(
         # preference, same policy for all 3 strategies --
         for rec in range(config.num_recipes):
             free_slot = -1
-            for j in range(num_job_slots):
+            # Bounded by active_job_slots (Phase 7), not num_job_slots -- see
+            # kernel.py's mirror.
+            for j in range(active_job_slots):
                 if job_output_item_id[j] < 0:
                     free_slot = j
                     break
@@ -705,4 +772,7 @@ def simulate_run_reference(
         "total_contracts_completed": total_contracts_completed,
         "total_contracts_failed": total_contracts_failed,
         "total_contract_penalties": total_contract_penalties,
+        "active_plots": float(active_plots),
+        "active_job_slots": float(active_job_slots),
+        "upgrades_owned_count": float(sum(upgrade_owned)),
     }

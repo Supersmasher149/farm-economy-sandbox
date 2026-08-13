@@ -14,7 +14,10 @@ confirms kernel vs. reference still agree there too. A fourth check (Phase
 config -- no forcing needed, it happens naturally within a normal run. A
 fifth check (Phase 5) confirms contracts both complete successfully and
 fail their deadline under the default config, same "no forcing needed"
-reasoning.
+reasoning. A sixth check (Phase 7) confirms upgrades actually get bought
+under the default config -- across the whole grid, at least one run buys
+none, at least one buys every upgrade in the catalog -- again no forcing
+needed.
 
 This does NOT compare against simulation/'s real engine -- see
 vectorized/README.md for why. It validates internal consistency of this
@@ -55,17 +58,30 @@ CONFIG = load_vector_config()
 TINY_CAPACITY_CONFIG = dataclasses.replace(CONFIG, storage_capacity=np.int32(3))
 
 
+def _num_plots_max(num_plots: int, config=CONFIG) -> int:
+    return num_plots + config.total_capacity_bonus
+
+
+def _num_job_slots_max(config=CONFIG) -> int:
+    return config.base_capacity + config.total_processing_capacity_bonus
+
+
 def _num_lot_slots(num_plots: int, config=CONFIG) -> int:
-    return num_plots * config.lots_per_plot + config.base_capacity
+    return _num_plots_max(num_plots, config) * config.lots_per_plot + _num_job_slots_max(config)
 
 
 def _kernel_single_run(
     master_seed: int, run_index: int, strategy: int, num_plots: int, num_days: int, config=CONFIG
 ) -> dict:
     state = allocate(
-        1, num_plots, _num_lot_slots(num_plots, config), config.base_capacity, config.num_buyers
+        1,
+        _num_plots_max(num_plots, config),
+        _num_lot_slots(num_plots, config),
+        _num_job_slots_max(config),
+        config.num_buyers,
+        config.num_upgrades,
     )
-    init_runs(state, config, master_seed, run_index, np.array([strategy], dtype=np.int8))
+    init_runs(state, config, master_seed, run_index, np.array([strategy], dtype=np.int8), num_plots)
     simulate_chunk(state, num_days, config)
     return {
         "money": float(state.money[0]),
@@ -78,6 +94,9 @@ def _kernel_single_run(
         "total_contracts_completed": float(state.total_contracts_completed[0]),
         "total_contracts_failed": float(state.total_contracts_failed[0]),
         "total_contract_penalties": float(state.total_contract_penalties[0]),
+        "active_plots": float(state.active_plots[0]),
+        "active_job_slots": float(state.active_job_slots[0]),
+        "upgrades_owned_count": float(state.upgrade_owned[0].sum()),
     }
 
 
@@ -93,6 +112,9 @@ def _assert_close(label: str, a: dict, b: dict) -> None:
         "total_contracts_completed",
         "total_contracts_failed",
         "total_contract_penalties",
+        "active_plots",
+        "active_job_slots",
+        "upgrades_owned_count",
     ):
         if not np.isclose(a[key], b[key], rtol=RTOL, atol=ATOL):
             raise AssertionError(
@@ -141,7 +163,12 @@ def check_chunk_size_independence(num_days: int) -> int:
 
     # Baseline: alone, in a size-1 chunk at its own global offset.
     baseline_state = allocate(
-        1, num_plots, _num_lot_slots(num_plots), CONFIG.base_capacity, CONFIG.num_buyers
+        1,
+        _num_plots_max(num_plots),
+        _num_lot_slots(num_plots),
+        _num_job_slots_max(),
+        CONFIG.num_buyers,
+        CONFIG.num_upgrades,
     )
     init_runs(
         baseline_state,
@@ -149,6 +176,7 @@ def check_chunk_size_independence(num_days: int) -> int:
         master_seed,
         target_global_index,
         strategies[target_global_index : target_global_index + 1],
+        num_plots,
     )
     simulate_chunk(baseline_state, num_days, CONFIG)
     baseline = {
@@ -162,6 +190,9 @@ def check_chunk_size_independence(num_days: int) -> int:
         "total_contracts_completed": float(baseline_state.total_contracts_completed[0]),
         "total_contracts_failed": float(baseline_state.total_contracts_failed[0]),
         "total_contract_penalties": float(baseline_state.total_contract_penalties[0]),
+        "active_plots": float(baseline_state.active_plots[0]),
+        "active_job_slots": float(baseline_state.active_job_slots[0]),
+        "upgrades_owned_count": float(baseline_state.upgrade_owned[0].sum()),
     }
 
     checks = 0
@@ -170,12 +201,15 @@ def check_chunk_size_independence(num_days: int) -> int:
             continue
         state = allocate(
             chunk_size,
-            num_plots,
+            _num_plots_max(num_plots),
             _num_lot_slots(num_plots),
-            CONFIG.base_capacity,
+            _num_job_slots_max(),
             CONFIG.num_buyers,
+            CONFIG.num_upgrades,
         )
-        init_runs(state, CONFIG, master_seed, offset, strategies[offset : offset + chunk_size])
+        init_runs(
+            state, CONFIG, master_seed, offset, strategies[offset : offset + chunk_size], num_plots
+        )
         simulate_chunk(state, num_days, CONFIG)
         local_index = target_global_index - offset
         result = {
@@ -189,6 +223,9 @@ def check_chunk_size_independence(num_days: int) -> int:
             "total_contracts_completed": float(state.total_contracts_completed[local_index]),
             "total_contracts_failed": float(state.total_contracts_failed[local_index]),
             "total_contract_penalties": float(state.total_contract_penalties[local_index]),
+            "active_plots": float(state.active_plots[local_index]),
+            "active_job_slots": float(state.active_job_slots[local_index]),
+            "upgrades_owned_count": float(state.upgrade_owned[local_index].sum()),
         }
         _assert_close(f"chunk_size={chunk_size} offset={offset}", result, baseline)
         checks += 1
@@ -339,6 +376,58 @@ def check_contracts_occur(num_days: int) -> int:
     return checks
 
 
+def check_upgrades_purchased(num_days: int) -> int:
+    """Phase 7: confirm upgrades actually get bought under the default
+    config -- not just numerically dormant -- and check kernel vs.
+    reference agree on the resulting active_plots/active_job_slots/
+    upgrades_owned_count counters.
+
+    Two outcomes matter here: at least one (seed, strategy, plot-count)
+    combination in the grid buys nothing (proves the "not yet owned and
+    not affordable/willing" path stays reachable), and at least one buys
+    every upgrade in the catalog (proves capacity_1's plot growth *and*
+    processing_1's job-slot growth both actually got exercised together,
+    not just one or the other) -- same "OR across the whole grid, both
+    ends matter" reasoning as check_contracts_occur.
+    """
+    checks = 0
+    any_none_owned = False
+    any_all_owned = False
+    seeds = [1, 42, 12345]
+    plots = [1, 3, 10]
+    for master_seed in seeds:
+        for num_plots in plots:
+            for strategy in (
+                crops.STRATEGY_GREEDY,
+                crops.STRATEGY_CONSERVATIVE,
+                crops.STRATEGY_RANDOM,
+            ):
+                kernel_result = _kernel_single_run(master_seed, 0, strategy, num_plots, num_days)
+                reference_result = simulate_run_reference(
+                    CONFIG, master_seed, 0, strategy, num_plots, num_days
+                )
+                label = f"seed={master_seed} strat={strategy} plots={num_plots}"
+                _assert_close(label, kernel_result, reference_result)
+                owned = kernel_result["upgrades_owned_count"]
+                any_none_owned = any_none_owned or owned == 0.0
+                any_all_owned = any_all_owned or owned == CONFIG.num_upgrades
+                checks += 1
+    if not any_none_owned:
+        raise AssertionError(
+            "check_upgrades_purchased: every (seed, strategy, plot-count) combination "
+            "bought at least one upgrade -- the 'not affordable/willing yet' path never "
+            "fired, this check isn't exercising the code path it claims to"
+        )
+    if not any_all_owned:
+        raise AssertionError(
+            "check_upgrades_purchased: no (seed, strategy, plot-count) combination "
+            "bought every upgrade in the catalog -- capacity_1 and processing_1's "
+            "plot/job-slot growth were never both exercised together in the same run, "
+            "this check isn't exercising the code path it claims to"
+        )
+    return checks
+
+
 def main() -> int:
     num_days = 90  # short run: enough days to exercise every branch repeatedly, still fast
     print("Checking kernel vs. sequential reference...")
@@ -361,7 +450,11 @@ def main() -> int:
     n5 = check_contracts_occur(num_days)
     print(f"  {n5} (seed, strategy, plot-count) combinations matched with contracts confirmed")
 
-    print(f"\nOK: {n1 + n2 + n3 + n4 + n5} checks passed.")
+    print("Checking upgrades get purchased...")
+    n6 = check_upgrades_purchased(num_days)
+    print(f"  {n6} (seed, strategy, plot-count) combinations matched with upgrades confirmed")
+
+    print(f"\nOK: {n1 + n2 + n3 + n4 + n5 + n6} checks passed.")
     return 0
 
 

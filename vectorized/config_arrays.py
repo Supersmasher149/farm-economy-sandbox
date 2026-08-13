@@ -47,9 +47,20 @@ kernel.py's module docstring. `fallback_price_multiplier` (used only by
 that scheduler's market-alternative comparison) is correspondingly not
 read either.
 
-Still NOT read here: `config/upgrades.json`. That subsystem isn't ported
-yet -- see vectorized/README.md's roadmap -- so loading its config now
-would be dead weight that silently goes stale.
+Phase 7 ("upgrades") added `config/upgrades.json`, read generically by
+`effect["type"]` (`capacity`, `growth_time_reduction`, `storage`,
+`processing_capacity`) rather than by hardcoded id, matching
+`simulation/derived.py`'s own type-dispatch fold. Two of those four types
+grow a fixed-shape array dimension that every other phase sized once per
+batch (`capacity` grows plots, `processing_capacity` grows processing job
+slots) -- see `state.py`'s docstring for how `active_plots`/
+`active_job_slots` gate that. This also changed `lots_per_plot`: its bound
+now uses the *worst case* growth_days (shortest, if any owned
+`growth_time_reduction` upgrade applies) and shelf life (longest, if any
+owned `storage` upgrade's `shelf_life_multiplier` applies) instead of the
+base config values, since a run that buys those upgrades can hold more
+concurrent lots per plot than a run that never does, and the bound has to
+cover every run regardless of what it ends up owning.
 
 Only `unlock_requirement.type == "total_revenue"` is understood (the only
 type any shipped crop uses). A crop with a different unlock type fails to
@@ -249,6 +260,40 @@ class VectorConfig:
     # -- top-level (config/simulation_settings.json) --
     start_money: np.float32
 
+    # -- upgrades (config/upgrades.json), Phase 7, one entry per index
+    # 0..num_upgrades-1, read generically by effect["type"] -- see this
+    # module's docstring. Amount/bonus fields default to the identity for
+    # an upgrade of a different type (0 for additive amounts, 1.0 for the
+    # shelf_life_multiplier), so summing/multiplying across the whole
+    # catalog is always exactly the fold real engine's own dispatch does
+    # per owned upgrade, without a type check at the fold site --
+    num_upgrades: int
+    upgrade_ids: tuple
+    upgrade_cost: np.ndarray  # float32
+    upgrade_capacity_amount: np.ndarray  # int32, u.effect.amount if type=="capacity" else 0
+    # float32, u.effect.amount if type=="growth_time_reduction" else 0.0
+    upgrade_growth_time_reduction: np.ndarray
+    # int32, u.effect.capacity_bonus if type=="storage" else 0
+    upgrade_storage_capacity_bonus: np.ndarray
+    # float32, u.effect.shelf_life_multiplier if type=="storage" else 1.0 (identity)
+    upgrade_storage_shelf_life_multiplier: np.ndarray
+    # int32, u.effect.amount if type=="processing_capacity" else 0
+    upgrade_processing_capacity_amount: np.ndarray
+    # Sum across the whole catalog -- the extra plots/job slots available if a
+    # run buys every capacity/processing_capacity upgrade there is. This is
+    # what callers (orchestrator.py) grow num_plots/num_job_slots by, since
+    # BatchState's arrays are fixed-shape for the whole batch (see state.py's
+    # docstring for active_plots/active_job_slots, which track how much of
+    # that headroom a given run has actually unlocked).
+    total_capacity_bonus: int
+    total_processing_capacity_bonus: int
+    # int16, ITEM-space, RAW (no shelf_life_multiplier applied) -- unlike
+    # effective_shelf_life_days above (baked in at load time with only the
+    # base config/storage.json multiplier), a run's effective multiplier
+    # depends on which storage upgrade(s) it owns, so the kernel needs the
+    # raw per-item value to recompute the multiplied value per run per day.
+    shelf_life_days_item: np.ndarray
+
 
 def _load_json(config_dir: Path, name: str) -> dict:
     with open(config_dir / name) as f:
@@ -267,6 +312,7 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     processing = _load_json(config_dir, "processing.json")
     buyers = _load_json(config_dir, "buyers.json")
     contracts_cfg = _load_json(config_dir, "contracts.json")
+    upgrades = _load_json(config_dir, "upgrades.json")
 
     crop_ids = tuple(c["id"] for c in crops)
     num_crops = len(crop_ids)
@@ -354,11 +400,67 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     market_minimum_supply_multiplier = np.float32(markets.get("minimum_supply_multiplier", 0.65))
     market_supply_decay = np.float32(markets.get("supply_decay", 0.75))
 
+    # -- upgrades (config/upgrades.json), Phase 7 -- read generically by
+    # effect["type"], matching simulation/derived.py's own dispatch. Amount
+    # arrays default to the identity for a non-matching type (0 additive,
+    # 1.0 multiplicative) so a fold across the whole catalog never needs a
+    # type check at the fold site -- see this module's docstring.
+    upgrade_ids = tuple(u["id"] for u in upgrades)
+    num_upgrades = len(upgrade_ids)
+    upgrade_cost = np.array([u["cost"] for u in upgrades], dtype=np.float32)
+    upgrade_capacity_amount = np.zeros(num_upgrades, dtype=np.int32)
+    upgrade_growth_time_reduction = np.zeros(num_upgrades, dtype=np.float32)
+    upgrade_storage_capacity_bonus = np.zeros(num_upgrades, dtype=np.int32)
+    upgrade_storage_shelf_life_multiplier = np.ones(num_upgrades, dtype=np.float32)
+    upgrade_processing_capacity_amount = np.zeros(num_upgrades, dtype=np.int32)
+    for i, u in enumerate(upgrades):
+        effect = u["effect"]
+        etype = effect["type"]
+        if etype == "capacity":
+            upgrade_capacity_amount[i] = effect["amount"]
+        elif etype == "growth_time_reduction":
+            upgrade_growth_time_reduction[i] = effect["amount"]
+        elif etype == "storage":
+            upgrade_storage_capacity_bonus[i] = effect.get("capacity_bonus", 0)
+            upgrade_storage_shelf_life_multiplier[i] = effect.get("shelf_life_multiplier", 1.0)
+        elif etype == "processing_capacity":
+            upgrade_processing_capacity_amount[i] = effect["amount"]
+        else:
+            raise NotImplementedError(
+                f"upgrade {u['id']!r} has effect type {etype!r}, which "
+                "vectorized/config_arrays.py does not understand (only 'capacity', "
+                "'growth_time_reduction', 'storage', and 'processing_capacity' are "
+                "supported) -- add support before loading this config, don't "
+                "silently drop the upgrade's effect."
+            )
+    total_capacity_bonus = int(upgrade_capacity_amount.sum())
+    total_processing_capacity_bonus = int(upgrade_processing_capacity_amount.sum())
+
+    # lots_per_plot's bound (see its docstring) has to cover a run that owns
+    # every growth_time_reduction/storage upgrade at once: shorter growth_days
+    # means more harvests fit inside one shelf-life window, and a longer
+    # shelf life directly extends that window -- both worst cases, not the
+    # base config values, are what the ceiling below has to use.
+    worst_growth_factor = 1.0
+    for amount in upgrade_growth_time_reduction:
+        if amount > 0.0:
+            worst_growth_factor *= 1.0 - float(amount)
+    growth_days_worst = np.maximum(
+        1, np.round(growth_days.astype(np.float64) * worst_growth_factor)
+    ).astype(np.int16)
+    worst_shelf_life_multiplier = float(storage_shelf_life_multiplier) * float(
+        np.prod(upgrade_storage_shelf_life_multiplier)
+    )
+    effective_shelf_life_days_worst = np.maximum(
+        1, np.round(shelf_life_days.astype(np.float64) * worst_shelf_life_multiplier)
+    ).astype(np.int16)
+
     lots_per_plot = (
         int(
             np.max(
                 np.ceil(
-                    effective_shelf_life_days.astype(np.float64) / growth_days.astype(np.float64)
+                    effective_shelf_life_days_worst.astype(np.float64)
+                    / growth_days_worst.astype(np.float64)
                 )
             )
         )
@@ -422,6 +524,12 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     effective_shelf_life_days = np.concatenate(
         [effective_shelf_life_days, product_effective_shelf_life_days]
     )
+    # Raw (no multiplier applied), item-space -- Phase 7 needs this alongside
+    # effective_shelf_life_days above: that array is baked in with only the
+    # base config/storage.json multiplier at load time, but a run's actual
+    # multiplier depends on which storage upgrade(s) it owns, so the kernel
+    # recomputes the multiplied value per run per day from this raw array.
+    shelf_life_days_item = np.concatenate([shelf_life_days, product_shelf_life])
 
     def _resolve_item(item_id: str, recipe_id: str, field: str) -> int:
         if item_id not in item_index:
@@ -630,4 +738,15 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
         contract_relationship_loss=contract_relationship_loss,
         contract_relationship_bonus_cap=contract_relationship_bonus_cap,
         start_money=np.float32(settings.get("start_money", 100)),
+        num_upgrades=num_upgrades,
+        upgrade_ids=upgrade_ids,
+        upgrade_cost=upgrade_cost,
+        upgrade_capacity_amount=upgrade_capacity_amount,
+        upgrade_growth_time_reduction=upgrade_growth_time_reduction,
+        upgrade_storage_capacity_bonus=upgrade_storage_capacity_bonus,
+        upgrade_storage_shelf_life_multiplier=upgrade_storage_shelf_life_multiplier,
+        upgrade_processing_capacity_amount=upgrade_processing_capacity_amount,
+        total_capacity_bonus=total_capacity_bonus,
+        total_processing_capacity_bonus=total_processing_capacity_bonus,
+        shelf_life_days_item=shelf_life_days_item,
     )
