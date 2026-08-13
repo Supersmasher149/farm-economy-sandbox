@@ -438,9 +438,16 @@ comparison isn't meaningful.
   has actually unlocked. The alternative (a second, smaller allocation only
   for runs that buy `capacity_1`, requiring a ragged/two-tier chunk layout)
   was rejected as a much larger restructuring than this phase's scope
-  asked for; this is the direct cause of Phase 7's performance miss (see
+  asked for; this was the direct cause of Phase 7's performance miss (see
   Performance below) -- worth knowing before assuming it was an accident
-  rather than a considered tradeoff.
+  rather than a considered tradeoff. A follow-up pass added an occupied-
+  slot free-list (`kernel.py`'s `_insert_lot`/`_remove_lot`) so the
+  *lot-slot* dimension's max-width cost no longer applies to every
+  lot-slot-scanning block -- but `P` itself is still allocated at max
+  width and gated only by `active_plots`, so the per-plot loop still pays
+  for 18 plots' worth of width as a run's `active_plots` grows, even
+  though most of the six lot-slot blocks now don't. See Migration notes
+  for why that's the likelier remaining cost driver, not lot-slot scanning.
 - **Markets are single-channel, not the real 5-channel system.** No
   `spot`/`wholesale`/`farm_stand`/`processor`/`specialty` price
   multipliers, quality gates, daily capacities, or fees; the real per-
@@ -527,28 +534,22 @@ body and docstring.
 
 ## Performance
 
-**Phase 7 is the first phase to miss the <60s CPU / 1M-runs target.**
+**Phase 7 is the first phase to miss the <60s CPU / 1M-runs target --
+and a first optimization pass narrowed the miss but hasn't closed it.**
 Measured on this machine, `.venv` (Python 3.12.9, numpy 2.5.2, numba
 0.67.0), starting `num_plots=10`, `num_days=365`, one `run_millions` call
-per process (via `/usr/bin/time -l`, so each row's peak RSS is isolated
-rather than a running high-water mark across multiple sizes in one
-process):
+per process (via `/usr/bin/time -l`, isolated rather than a running
+high-water mark across sizes):
 
-| Runs | Plots × Days | Wall time | Throughput | Peak RSS | vs. targets |
-|---:|---:|---:|---:|---:|---|
-| 1,000 | 10 × 365 | 0.22 s | ~4,500 runs/s | 111 MB | — |
-| 10,000 | 10 × 365 | 1.02 s | ~9,800 runs/s | 134 MB | — |
-| 100,000 | 10 × 365 | 8.54 s | ~11,700 runs/s | 366 MB | — |
-| 500,000 | 10 × 365 | 43.89 s | ~11,400 runs/s | 710 MB | — |
-| **1,000,000** | **10 × 365** | **91.51 s** | **~10,900 runs/s** | **743 MB** | **0.66x of 60s (MISS) · 2.8x under 2GB** |
+| Version | Wall time (1M) | Throughput | Peak RSS | vs. 60s target |
+|---|---:|---:|---:|---|
+| Initial Phase 7 (max-width `range(L)` scans) | 84–92 s | ~10,900–11,900 runs/s | ~735–780 MB | 0.65–0.71x (MISS) |
+| **+ occupied-slot free-list** (current) | **73–74 s** | **~13,500–13,700 runs/s** | **~840–880 MB** | **0.81–0.82x (still MISS)** |
 
-(A second isolated 1M-run measurement, taken separately from the table
-above, came in at 84.25s/734MB -- an ~8% spread between two otherwise
-identical isolated runs, ordinary machine noise, not a determinism concern
--- either number misses the 60s target, so the conclusion doesn't depend
-on which one is quoted. Phase 5's comparable figure: 44.82s, ~22,300
-runs/s, 740MB at 1M -- Phase 7 roughly **doubled** Phase 5's wall time
-while peak RSS barely moved.)
+(Two isolated 1M-run measurements at each version, quoted as a range rather
+than a single number -- ordinary machine noise between otherwise-identical
+isolated runs, same as Phase 7's first measurement already showed. Phase
+5's comparable figure, for scale: 44.82s, ~22,300 runs/s, 740MB at 1M.)
 
 (numba JIT compilation of `simulate_chunk` happens once per process on first
 call and is excluded from these figures, same as the main engine's
@@ -558,61 +559,81 @@ Cython/`_fastplot` builds are one-time costs excluded from
 wall-clock reference point — see that script's docstring for why it's not an
 apples-to-apples comparison of the same economic model.
 
-**Why: `num_lot_slots` (L) grew 2.4x, and every lot-slot-scanning block
-pays for it once per day, not once.** L was `num_plots * lots_per_plot +
-base_capacity = 10*3+1 = 31` through Phase 5; Phase 7 allocates
-`num_plots_max * lots_per_plot + num_job_slots_max = 18*4+3 = 75` — 18 not
-10 because `capacity_1` can add 8 plots, worth allocating for even in a run
-that never buys it (see "Deviations from the prompt" below for why that
-tradeoff was made this way), and 4 not 3 because `lots_per_plot`'s bound
-now has to cover the *worst case* shelf-life multiplier a run could reach
-(`storage_1`'s 1.5x), not just the base config's. Aging, both capacity-trim
-passes, the jobs-complete insert search, the contracts accept/deliver scan,
-the processing input scan, and the sell-all-lots loop all walk `range(L)`
-once per day regardless of how many slots are actually occupied — six
-separate blocks, each now doing 2.4x the iteration work, every day, for
-every run, whether or not that run ever buys a single upgrade. The
-per-plot loop growing toward 18 plots (gated by `active_plots`, so it's
-cheap early in a run and only expensive after `capacity_1` is bought) and
-the new per-day `num_upgrades`-length buy-decision loop (4 iterations) are
-real but minor by comparison — L's growth is the dominant cost, not
-plot-count growth or the upgrade-purchase logic itself.
+**What the free-list fixed, and what it revealed it didn't.** The
+Migration notes below (option 1, chosen by the user over kernel
+micro-tuning or JAX) diagnosed `num_lot_slots` (L) growing 2.4x as *the*
+cost driver, with per-plot-loop growth (10 plots toward 18 as `capacity_1`
+gets bought) dismissed as "real but minor by comparison." That dismissal
+was wrong, or at least incomplete: `state.py` now tracks an
+occupied-slot/free-list per run (`occupied`/`slot_pos`/`free`, see
+`_insert_lot`/`_remove_lot`/`_trim_to_capacity`'s docstrings in
+`kernel.py`), so aging, both capacity-trim passes, the jobs-complete
+insert, the contracts accept/deliver scan, the processing input scan, and
+the sell-all-lots loop all now walk *occupied* slots (typically a handful,
+matching Phase 3's "inventory rarely survives the day" finding) instead of
+`range(75)` -- an O(1) storage-liability check and O(1) lot insertion came
+along for free at the same time (former linear scan for "any inventory
+exists," former linear scan for "first empty slot"). That's a real,
+validated ~20% win (91.5s → 73.3s at the noisy end of each range) -- but
+it only closed about a fifth of the gap to the 60s target, which means the
+per-plot loop growing toward 18 plots (and the wider arrays' memory-
+bandwidth cost, independent of any O(L)-vs-O(occupied) algorithmic
+question) is the *larger* remaining driver, not lot-slot scanning. Neither
+was touched by this pass -- see Migration notes for what's next.
+
+**Correctness note**: converting to a free-list changes *which physical
+slot* a given lot occupies (LIFO free-list order, not "always the
+lowest-index empty slot" the original linear scan implicitly gave). That
+has no effect on any conserved total (`total_harvest`/`total_spoiled` are
+provably order-independent), but it does change which of several
+identically-eligible lots (same item, tied quality-gate or tied FEFO
+remaining-shelf-life) gets consumed first by contracts/processing/trim --
+a real, if economically negligible, per-seed output shift discovered via
+`scripts/vectorized_validate.py` immediately catching kernel/reference
+disagreement until `reference.py` was updated to the identical scheme (see
+its `_insert_lot`/`_remove_lot` docstrings for why `list.pop()` on a
+`free = list(range(L))` list exactly reproduces the array version's
+pop-from-the-end order). Aggregate/statistical behavior is unaffected;
+exact per-seed replay values from before this optimization are not
+preserved -- same caveat every phase's numbers have carried since Phase 1.
 
 **Phase 1 cost ~7.5x throughput against the Phase 0 toy kernel; Phase 2 cost
 another ~1.16x on top of that; Phase 3 got most of Phase 2's cost back; Phase
 4 gave back about a third of Phase 3's gain; Phase 5 cost more than Phase 4
-and Phase 2 combined; Phase 7 cost more than every prior phase combined**
-(Phase 0: ~335,000 runs/s at scale, Phase 1: ~44,900, Phase 2: ~38,600,
-Phase 3: ~73,300, Phase 4: ~48,700, Phase 5: ~22,300, Phase 7: ~10,900).
-Phase 1's hit was the real price of real physics; Phase 3's recovery came
-from lots no longer surviving past the day they're created, collapsing most
-of the aging/trim loop's per-slot work to a cheap `continue` (see
-"Deviations from the prompt" above). Phase 5's cost had two real drivers:
-contracts becoming the dominant economic path, and a `num_buyers`-length
-scan running every day regardless of buyer state. **Phase 7's cost is
-different in kind from every prior phase's: it's not new per-day work
-proportional to a small config-driven count (buyers, recipes, upgrades) --
-it's a multiplier applied to every existing lot-slot-scanning block at
-once**, because the fixed-shape-array answer to "a run might unlock more
-plots/job-slots" was to make the shared array bigger for every run, not
-just the runs that actually get there.
+and Phase 2 combined; Phase 7 cost more than every prior phase combined, and
+its first optimization pass only recovered a fifth of that** (Phase 0:
+~335,000 runs/s at scale, Phase 1: ~44,900, Phase 2: ~38,600, Phase 3:
+~73,300, Phase 4: ~48,700, Phase 5: ~22,300, Phase 7 initial: ~10,900,
+Phase 7 + free-list: ~13,600). Phase 1's hit was the real price of real
+physics; Phase 3's recovery came from lots no longer surviving past the day
+they're created, collapsing most of the aging/trim loop's per-slot work to
+a cheap `continue` (see "Deviations from the prompt" above). Phase 5's cost
+had two real drivers: contracts becoming the dominant economic path, and a
+`num_buyers`-length scan running every day regardless of buyer state.
+Phase 7's cost was different in kind from every prior phase's -- not new
+per-day work proportional to a small config-driven count, but a multiplier
+applied to every existing lot-slot-scanning block at once, because the
+fixed-shape-array answer to "a run might unlock more plots/job-slots" was
+to make the shared array bigger for every run. The free-list removed that
+multiplier from the *lot-slot* side of that tradeoff; the *plot-count* side
+(P allocated at 18 for every run) is still exactly as it was.
 
 Two shapes worth reading, not just the headline row:
 
-- **Throughput now falls slightly from 100k to 1M instead of plateauing or
-  still rising** (11,700 → 11,400 → 10,900 runs/s from 100k → 500k → 1M) --
-  the opposite of Phase 5's still-rising shape at the same sizes. The most
-  likely explanation is `active_plots` itself: a longer-run-count batch has
-  more total plot-columns-unlocked-days accumulated across its chunk by the
-  time later chunks run (more runs have had more of a 365-day run to buy
-  `capacity_1` and start paying the wider per-plot loop), not a new
-  mechanism -- unconfirmed without further profiling, flagged here rather
-  than asserted.
-- **Peak RSS grew only ~1% over Phase 5's at 1M** (740MB → 743MB) despite
-  `bytes_per_run` growing 79% (1,235 → 2,205) -- `choose_chunk_size` simply
-  picked a smaller chunk to compensate, exactly as designed (see Memory
-  strategy above); the memory budget was never the tight one this phase.
-  2.8x under the 2GB target, essentially unchanged from Phase 5's 2.8x.
+- **Throughput improved at every chunk size, not just at 1M** -- the
+  free-list's win isn't a large-N-only effect, since occupied-vs-L was
+  already a large gap even at small run counts (occupancy depends on how
+  many plots/days have run, not on how many *runs* are in the batch).
+- **Peak RSS rose slightly with this change** (~740-780MB → ~840-880MB) --
+  the three new per-run scratch arrays (`occupied`/`slot_pos`/`free`, each
+  `int32 * num_lot_slots`) add real bytes that `bytes_per_run` doesn't
+  account for (they're per-run scratch inside `_simulate_chunk_core`, like
+  `market_supply`, not `BatchState` fields -- see Data contract above for
+  why that's the right call architecturally, but it does mean this
+  specific cost is invisible to `choose_chunk_size`'s budgeting). Still
+  comfortably under the 2GB target (~2.3-2.4x margin, down from 2.8x) --
+  worth knowing if a future change also grows L, since this margin has
+  room but is no longer as flat as Phase 5's.
 
 ## Roadmap: closing the gap with the real engine
 
@@ -707,36 +728,46 @@ existing checks already exercised it.
 
 ## Migration notes: swapping in JAX later
 
-**The trigger fired.** Phase 5's Migration notes said upgrades should treat
-the (then 1.3x) margin as a hard constraint, and that missing it "is the
-trigger to revisit `prange` tuning or finally reach for JAX/GPU, not a
-later phase." Phase 7 missed it -- ~91.5s at 1M runs, 0.66x of the 60s
-budget. This section is now a decision a human needs to make, not a
-contingency to keep in mind. Three options, roughly in order of effort:
+**The trigger fired, and a first fix landed but didn't close it.** Phase
+5's Migration notes said upgrades should treat the (then 1.3x) margin as a
+hard constraint, and that missing it "is the trigger to revisit `prange`
+tuning or finally reach for JAX/GPU, not a later phase." Phase 7 missed
+it -- ~84-92s at 1M runs, 0.65-0.71x of the 60s budget. The user chose
+option 1 (below) of the three then on offer; an occupied-slot free-list
+(see Performance above) closed about a fifth of the gap -- 73-74s, 0.81-
+0.82x -- and revealed that option 1's original diagnosis was incomplete:
+lot-slot scanning (L growing 2.4x) was real but not the dominant driver
+after all. **This is still a decision a human needs to make, not a solved
+problem.** Updated options, roughly in order of effort:
 
-1. **Stop allocating upgrade-growable dimensions at max width for every
-   run.** The direct cause of the miss (see "Deviations from the prompt"
-   above): `num_lot_slots` grew 2.4x because `P`/`J` are sized for a run
-   that buys every upgrade, even though the mean run only owns 2.33 of 4
-   (Usage above). A two-tier chunk layout (small arrays for runs that never
-   reach `capacity_1`/`processing_1`, a separate pass for the ones that do)
-   or an occupied-slot index/free-list (so lot-slot-scanning blocks walk
-   occupied slots, not the full allocated width) would recover most of
-   this without touching `prange` or the RNG scheme at all. Real
-   engineering work, not a config tweak -- but scoped to `state.py` +
-   `kernel.py`'s lot-slot blocks, not a rewrite of the whole kernel.
-2. **`prange`/kernel micro-tuning** (loop fusion across the six lot-slot-
-   scanning blocks that now each pay the 2.4x cost separately; revisiting
-   whether every block needs its own full `range(L)` walk) -- lower
-   ceiling than option 1 (it doesn't reduce L itself), but no architectural
-   change.
+1. **Finish option 1: stop allocating *plots* at max width for every
+   run**, the half not yet done. The free-list already fixed the
+   *lot-slot* side of "allocate for the max, gate with a counter"; `P`
+   (plots) is still allocated at 18 for every run regardless of whether
+   `capacity_1` is ever bought, and the per-plot loop growing toward that
+   width as a run progresses is now the likelier dominant cost (see
+   Performance above). A two-tier chunk layout (small-P arrays for runs
+   that never reach `capacity_1`, a separate max-width pass for the ones
+   that do) is the natural next step -- it's the sub-approach the original
+   plan set aside as the higher-risk one (it touches
+   `orchestrator.run_millions`'s streaming/`StreamingStats` flow, not just
+   `state.py` + `kernel.py`'s lot-slot blocks), but the free-list's
+   lower-risk alternative doesn't have an equivalent for *plot count* the
+   way it did for *lot slots* (a plot's per-day work -- soil regen, stress
+   accumulation, harvest, planting -- can't be skipped via an "occupied"
+   index the way an empty lot slot can, since every active plot has real
+   work to do every day it's active).
+2. **`prange`/kernel micro-tuning** on what's left (the per-plot loop
+   itself, or the wider arrays' memory-bandwidth cost independent of
+   iteration count) -- lower ceiling than fully finishing option 1, no
+   architectural change.
 3. **JAX/GPU**, below -- the largest-effort option, and the one Phase 5's
    notes flagged as the last resort, not the first one to reach for.
 
-Whichever is chosen, re-run `scripts/vectorized_benchmark.py` at 1M runs
-against the same isolated-process methodology this section's numbers use,
-and update the Performance section above with the result before Phase 6
-(full agent roster, blocked on this -- see Roadmap) proceeds.
+Whichever is chosen, re-run the isolated-process 1M-run benchmark this
+section's numbers use, and update the Performance section above with the
+result before Phase 6 (full agent roster, blocked on this -- see Roadmap)
+proceeds.
 
 If GPU throughput becomes the actual constraint (option 3):
 
