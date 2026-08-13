@@ -42,6 +42,17 @@ config.lots_per_plot + config.base_capacity`, reserving one extra lot
 slot per concurrent job so a completing job's output always has
 somewhere to go (at most `base_capacity` jobs can be in flight, so at
 most that many product lots can be pending at once).
+
+Phase 5 ("contracts", simplified scope) added a `(B,)` `reputation` field
+(matches `simulation/state.py`'s `player.reputation`, starts at 0.0) and a
+fixed-size **per-buyer** dimension `(B, K)`, `K = config.num_buyers` --
+not a bounded approximation of a dynamic list the way lots/jobs are, but
+an exact one-to-one mapping: this phase gives each buyer exactly one
+contract "slot" (empty / offered / active) at a time instead of the real
+engine's unbounded concurrent offers-and-active-contracts per buyer, so
+`K = num_buyers` is exact, not a derived bound. See kernel.py's module
+docstring for the accept/deliver/resolve policy this enables and what it
+simplifies away.
 """
 
 from __future__ import annotations
@@ -66,6 +77,13 @@ class BatchState:
     # float32 (B,) -- cumulative processed-product units completed (Phase 4),
     # matches simulation/state.py's player.total_processed
     total_processed: np.ndarray
+    # float32 (B,) -- matches simulation/state.py's player.reputation, starts at 0.0
+    reputation: np.ndarray
+    total_contracts_completed: np.ndarray  # float32 (B,)
+    total_contracts_failed: np.ndarray  # float32 (B,)
+    # float32 (B,) -- cumulative deadline-failure penalties paid, real (unlike
+    # storage liability): deducted from money, not shadow accounting
+    total_contract_penalties: np.ndarray
 
     # -- plot-level: soil --
     moisture: np.ndarray  # float32 (B, P)
@@ -112,6 +130,20 @@ class BatchState:
     job_output_quantity: np.ndarray  # int32 (B, J)
     job_completion_day: np.ndarray  # int32 (B, J) -- absolute day the job's output is ready
 
+    # -- buyer-level: contracts (Phase 5), shape (B, K), K = config.num_buyers,
+    # one contract "slot" per buyer -- see this module's docstring --
+    contract_state: np.ndarray  # int8 (B, K), 0=empty 1=offered 2=active
+    contract_item_idx: np.ndarray  # int8 (B, K), item-space index, -1 if empty
+    contract_remaining: np.ndarray  # int32 (B, K), quantity not yet delivered
+    contract_unit_price: np.ndarray  # float32 (B, K)
+    contract_min_quality_rank: np.ndarray  # int8 (B, K), QUALITY_ORDER rank
+    contract_deadline_day: np.ndarray  # int32 (B, K), absolute day
+    contract_expiry_day: np.ndarray  # int32 (B, K), absolute day, meaningful while state==1
+    contract_penalty_rate: np.ndarray  # float32 (B, K)
+    # float32 (B, K) -- per-buyer standing, persists across that buyer's
+    # contracts (NOT reset on resolve, unlike the fields above)
+    buyer_relationship: np.ndarray
+
     @property
     def num_runs(self) -> int:
         return self.money.shape[0]
@@ -128,20 +160,26 @@ class BatchState:
     def num_job_slots(self) -> int:
         return self.job_output_item_id.shape[1]
 
+    @property
+    def num_buyers(self) -> int:
+        return self.contract_state.shape[1]
 
-def bytes_per_run(num_plots: int, num_lot_slots: int, num_job_slots: int) -> int:
+
+def bytes_per_run(num_plots: int, num_lot_slots: int, num_job_slots: int, num_buyers: int) -> int:
     """Bytes/run this layout costs, for `run_millions`' memory-budget chunking.
 
     Closed-form sum kept in sync with the dataclass fields above by hand --
     exact because it's small and reviewed alongside the fields, not because
     it's introspected. `num_lot_slots` is normally `num_plots *
-    config.lots_per_plot + config.base_capacity` and `num_job_slots` is
-    `config.base_capacity` (see `config_arrays.py`), passed explicitly here
-    rather than derived so this module doesn't need a `VectorConfig` import.
+    config.lots_per_plot + config.base_capacity`, `num_job_slots` is
+    `config.base_capacity`, and `num_buyers` is `config.num_buyers` (see
+    `config_arrays.py`), passed explicitly here rather than derived so this
+    module doesn't need a `VectorConfig` import.
     """
     # money, total_harvest, total_revenue, strategy_id, rng_run, total_spoiled,
-    # total_storage_cost, total_processed
-    per_run = 4 + 4 + 4 + 1 + 8 + 4 + 4 + 4
+    # total_storage_cost, total_processed, reputation, total_contracts_completed,
+    # total_contracts_failed, total_contract_penalties
+    per_run = 4 + 4 + 4 + 1 + 8 + 4 + 4 + 4 + 4 + 4 + 4 + 4
     per_plot = (
         4 * 8  # moisture, nitrogen, phosphorus, potassium, ph, soil_health, pest, disease (f4)
         + 1 * 4  # crop_type, growth_stage, previous_crop_family, fertilized (i1)
@@ -156,12 +194,23 @@ def bytes_per_run(num_plots: int, num_lot_slots: int, num_job_slots: int) -> int
     per_job_slot = (
         1 + 4 + 4
     )  # job_output_item_id(i1) + job_output_quantity(i4) + completion_day(i4)
+    per_buyer = (
+        1 + 1 + 4 + 4 + 1 + 4 + 4 + 4 + 4
+    )  # contract_state(i1) + item_idx(i1) + remaining(i4) + unit_price(f4) +
+    # min_quality_rank(i1) + deadline_day(i4) + expiry_day(i4) + penalty_rate(f4) +
+    # buyer_relationship(f4)
     return (
-        per_run + num_plots * per_plot + num_lot_slots * per_lot_slot + num_job_slots * per_job_slot
+        per_run
+        + num_plots * per_plot
+        + num_lot_slots * per_lot_slot
+        + num_job_slots * per_job_slot
+        + num_buyers * per_buyer
     )
 
 
-def allocate(num_runs: int, num_plots: int, num_lot_slots: int, num_job_slots: int) -> BatchState:
+def allocate(
+    num_runs: int, num_plots: int, num_lot_slots: int, num_job_slots: int, num_buyers: int
+) -> BatchState:
     """Allocate an uninitialized chunk. Call `init_runs` before simulating."""
     f4 = lambda: np.empty((num_runs, num_plots), dtype=np.float32)  # noqa: E731
     i1 = lambda: np.empty((num_runs, num_plots), dtype=np.int8)  # noqa: E731
@@ -174,6 +223,10 @@ def allocate(num_runs: int, num_plots: int, num_lot_slots: int, num_job_slots: i
         total_spoiled=np.empty(num_runs, dtype=np.float32),
         total_storage_cost=np.empty(num_runs, dtype=np.float32),
         total_processed=np.empty(num_runs, dtype=np.float32),
+        reputation=np.empty(num_runs, dtype=np.float32),
+        total_contracts_completed=np.empty(num_runs, dtype=np.float32),
+        total_contracts_failed=np.empty(num_runs, dtype=np.float32),
+        total_contract_penalties=np.empty(num_runs, dtype=np.float32),
         moisture=f4(),
         nitrogen=f4(),
         phosphorus=f4(),
@@ -203,6 +256,15 @@ def allocate(num_runs: int, num_plots: int, num_lot_slots: int, num_job_slots: i
         job_output_item_id=np.empty((num_runs, num_job_slots), dtype=np.int8),
         job_output_quantity=np.empty((num_runs, num_job_slots), dtype=np.int32),
         job_completion_day=np.empty((num_runs, num_job_slots), dtype=np.int32),
+        contract_state=np.empty((num_runs, num_buyers), dtype=np.int8),
+        contract_item_idx=np.empty((num_runs, num_buyers), dtype=np.int8),
+        contract_remaining=np.empty((num_runs, num_buyers), dtype=np.int32),
+        contract_unit_price=np.empty((num_runs, num_buyers), dtype=np.float32),
+        contract_min_quality_rank=np.empty((num_runs, num_buyers), dtype=np.int8),
+        contract_deadline_day=np.empty((num_runs, num_buyers), dtype=np.int32),
+        contract_expiry_day=np.empty((num_runs, num_buyers), dtype=np.int32),
+        contract_penalty_rate=np.empty((num_runs, num_buyers), dtype=np.float32),
+        buyer_relationship=np.empty((num_runs, num_buyers), dtype=np.float32),
     )
 
 
@@ -253,6 +315,10 @@ def init_runs(
     state.total_spoiled[:] = 0.0
     state.total_processed[:] = 0.0
     state.total_storage_cost[:] = 0.0
+    state.reputation[:] = 0.0
+    state.total_contracts_completed[:] = 0.0
+    state.total_contracts_failed[:] = 0.0
+    state.total_contract_penalties[:] = 0.0
 
     state.moisture[:, :] = config.initial_moisture
     state.nitrogen[:, :] = config.initial_nitrogen
@@ -286,3 +352,13 @@ def init_runs(
     state.job_output_item_id[:, :] = -1
     state.job_output_quantity[:, :] = 0
     state.job_completion_day[:, :] = 0
+
+    state.contract_state[:, :] = 0
+    state.contract_item_idx[:, :] = -1
+    state.contract_remaining[:, :] = 0
+    state.contract_unit_price[:, :] = 0.0
+    state.contract_min_quality_rank[:, :] = 0
+    state.contract_deadline_day[:, :] = 0
+    state.contract_expiry_day[:, :] = 0
+    state.contract_penalty_rate[:, :] = 0.0
+    state.buyer_relationship[:, :] = 0.0

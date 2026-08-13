@@ -13,16 +13,18 @@ simulation and the validation script stops meaning anything.
 
 This does *not* validate against `simulation/`'s real crop-growth model --
 see vectorized/README.md for why that comparison isn't meaningful (different
-RNG scheme, still-simplified economy: no contracts/upgrades, and markets are
-single-channel -- see kernel.py's module docstring). It validates that the
-numba kernel is a faithful parallelization of *this* module's sequential
-algorithm, which is itself a config-driven port of simulation/crop_growth.py
-+ simulation/weather.py's per-plot mechanics, plus a Phase 2 storage/
-spoilage mirror of simulation/inventory.py's age-and-spoil/capacity-trim/
-liability logic, a Phase 3 single-channel mirror of simulation/markets.py's
-daily pricing, and a Phase 4 mirror of simulation/processing.py's recipe/
-job mechanics -- see kernel.py's per-block comments for which real function
-each block mirrors.
+RNG scheme, still-simplified economy: no upgrades, markets are
+single-channel, and contracts skip the real production-forecast scheduler --
+see kernel.py's module docstring). It validates that the numba kernel is a
+faithful parallelization of *this* module's sequential algorithm, which is
+itself a config-driven port of simulation/crop_growth.py + simulation/
+weather.py's per-plot mechanics, plus a Phase 2 storage/spoilage mirror of
+simulation/inventory.py's age-and-spoil/capacity-trim/liability logic, a
+Phase 3 single-channel mirror of simulation/markets.py's daily pricing, a
+Phase 4 mirror of simulation/processing.py's recipe/job mechanics, and a
+Phase 5 simplified mirror of simulation/contracts.py's offer/accept/
+deliver/resolve mechanics -- see kernel.py's per-block comments for which
+real function each block mirrors.
 """
 
 from __future__ import annotations
@@ -88,6 +90,10 @@ def simulate_run_reference(
     total_spoiled = _f32(0.0)
     total_storage_cost = _f32(0.0)
     total_processed = _f32(0.0)
+    reputation = _f32(0.0)
+    total_contracts_completed = _f32(0.0)
+    total_contracts_failed = _f32(0.0)
+    total_contract_penalties = _f32(0.0)
 
     moisture = [_f32(config.initial_moisture) for _ in range(num_plots)]
     nitrogen = [_f32(config.initial_nitrogen) for _ in range(num_plots)]
@@ -133,6 +139,19 @@ def simulate_run_reference(
     job_output_item_id = [-1] * num_job_slots
     job_output_quantity = [0] * num_job_slots
     job_completion_day = [0] * num_job_slots
+
+    # -- per-buyer contract slots (Phase 5), fixed-size lists mirroring
+    # kernel.py's (B, K) arrays, K = config.num_buyers -- one slot per buyer --
+    num_buyers = config.num_buyers
+    contract_state = [0] * num_buyers
+    contract_item_idx = [-1] * num_buyers
+    contract_remaining = [0] * num_buyers
+    contract_unit_price = [0.0] * num_buyers
+    contract_min_quality_rank = [0] * num_buyers
+    contract_deadline_day = [0] * num_buyers
+    contract_expiry_day = [0] * num_buyers
+    contract_penalty_rate = [0.0] * num_buyers
+    buyer_relationship = [0.0] * num_buyers
 
     num_seasons = len(config.season_rain_chance)
 
@@ -505,6 +524,106 @@ def simulate_run_reference(
             )
         )
 
+        # -- contracts: offer generation (simulation/contracts.py:generate_offers)
+        # -- only on interval days, simplified scope (see kernel.py's module
+        # docstring) -- one contract "slot" per buyer --
+        if day != 0 and day % config.contract_offer_interval_days == 0:
+            for b in range(num_buyers):
+                if contract_state[b] != 0:
+                    continue  # buyer already has an offer or active contract
+                if reputation < float(config.buyer_min_reputation[b]):
+                    continue
+                n_elig = int(config.buyer_num_items[b])
+                run_state, u_item = rng.next_scalar(run_state)
+                pick = int(u_item * n_elig)
+                if pick >= n_elig:
+                    pick = n_elig - 1
+                item_idx = int(config.buyer_item_idx[b, pick])
+                run_state, u_qty = rng.next_scalar(run_state)
+                qmin = int(config.buyer_quantity_min[b])
+                qmax = int(config.buyer_quantity_max[b])
+                quantity = qmin + int(u_qty * (qmax - qmin + 1))
+                if quantity > qmax:
+                    quantity = qmax
+                relationship_mult = 1.0 + min(
+                    float(config.contract_relationship_bonus_cap),
+                    buyer_relationship[b] * float(config.buyer_relationship_bonus_rate[b]),
+                )
+                price = (
+                    float(config.base_price[item_idx])
+                    * float(config.buyer_price_multiplier[b])
+                    * relationship_mult
+                )
+                contract_state[b] = 1
+                contract_item_idx[b] = item_idx
+                contract_remaining[b] = quantity
+                contract_unit_price[b] = price
+                contract_min_quality_rank[b] = int(config.buyer_min_quality_rank[b])
+                contract_deadline_day[b] = day + int(config.buyer_deadline_days[b])
+                contract_expiry_day[b] = day + config.contract_offer_expiry_days
+                contract_penalty_rate[b] = float(config.buyer_penalty_rate[b])
+
+        # -- contracts: accept + deliver + resolve (component C's
+        # choose_contracts/choose_contract_deliveries, simplified
+        # is_offer_feasible -- see kernel.py's module docstring) -- every day a
+        # slot is offered or active --
+        for b in range(num_buyers):
+            cstate = contract_state[b]
+            if cstate == 0:
+                continue
+            item = contract_item_idx[b]
+            min_rank = contract_min_quality_rank[b]
+            if cstate == 1:
+                if day > contract_expiry_day[b]:
+                    contract_state[b] = 0
+                    continue
+                available = sum(
+                    lot_quantity[s]
+                    for s in range(num_lot_slots)
+                    if lot_item_id[s] == item and lot_quality[s] >= min_rank
+                )
+                if available <= 0:
+                    continue  # still just offered, try again tomorrow (until expiry)
+                contract_state[b] = 2
+                cstate = 2
+            # cstate == 2: active -- attempt delivery from today's inventory
+            remaining = contract_remaining[b]
+            delivered = 0
+            for s in range(num_lot_slots):
+                if delivered >= remaining:
+                    break
+                if lot_item_id[s] == item and lot_quality[s] >= min_rank:
+                    take = min(remaining - delivered, lot_quantity[s])
+                    lot_quantity[s] -= take
+                    if lot_quantity[s] == 0:
+                        lot_item_id[s] = -1
+                    delivered += take
+            if delivered > 0:
+                revenue = delivered * contract_unit_price[b]
+                money = _f32(money + revenue)
+                total_revenue = _f32(total_revenue + revenue)
+                total_harvest = _f32(total_harvest + delivered)
+                remaining -= delivered
+                contract_remaining[b] = remaining
+            if remaining <= 0:
+                contract_state[b] = 0
+                reputation = _f32(min(100.0, reputation + 5.0))
+                buyer_relationship[b] = min(
+                    100.0, buyer_relationship[b] + float(config.contract_relationship_gain)
+                )
+                total_contracts_completed = _f32(total_contracts_completed + 1)
+            elif day > contract_deadline_day[b]:
+                shortfall_value = remaining * contract_unit_price[b]
+                penalty = min(max(0.0, money), max(0.0, shortfall_value * contract_penalty_rate[b]))
+                money = _f32(money - penalty)
+                total_contract_penalties = _f32(total_contract_penalties + penalty)
+                reputation = _f32(max(0.0, reputation - 4.0))
+                buyer_relationship[b] = max(
+                    0.0, buyer_relationship[b] - float(config.contract_relationship_loss)
+                )
+                contract_state[b] = 0
+                total_contracts_failed = _f32(total_contracts_failed + 1)
+
         # -- processing: agent starts jobs (component C's choose_processing,
         # simplified -- see kernel.py's module docstring) -- fixed recipe-order
         # preference, same policy for all 3 strategies --
@@ -582,4 +701,8 @@ def simulate_run_reference(
         "total_spoiled": total_spoiled,
         "total_storage_cost": total_storage_cost,
         "total_processed": total_processed,
+        "reputation": reputation,
+        "total_contracts_completed": total_contracts_completed,
+        "total_contracts_failed": total_contracts_failed,
+        "total_contract_penalties": total_contract_penalties,
     }

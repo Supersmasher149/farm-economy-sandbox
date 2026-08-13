@@ -11,7 +11,10 @@ check (Phase 2) forces the storage FEFO capacity-trim and full age-out
 spoilage branches to actually fire, via a tiny-capacity config variant, and
 confirms kernel vs. reference still agree there too. A fourth check (Phase
 4) confirms processing jobs actually start/complete/sell under the default
-config -- no forcing needed, it happens naturally within a normal run.
+config -- no forcing needed, it happens naturally within a normal run. A
+fifth check (Phase 5) confirms contracts both complete successfully and
+fail their deadline under the default config, same "no forcing needed"
+reasoning.
 
 This does NOT compare against simulation/'s real engine -- see
 vectorized/README.md for why. It validates internal consistency of this
@@ -59,7 +62,9 @@ def _num_lot_slots(num_plots: int, config=CONFIG) -> int:
 def _kernel_single_run(
     master_seed: int, run_index: int, strategy: int, num_plots: int, num_days: int, config=CONFIG
 ) -> dict:
-    state = allocate(1, num_plots, _num_lot_slots(num_plots, config), config.base_capacity)
+    state = allocate(
+        1, num_plots, _num_lot_slots(num_plots, config), config.base_capacity, config.num_buyers
+    )
     init_runs(state, config, master_seed, run_index, np.array([strategy], dtype=np.int8))
     simulate_chunk(state, num_days, config)
     return {
@@ -69,6 +74,10 @@ def _kernel_single_run(
         "total_spoiled": float(state.total_spoiled[0]),
         "total_storage_cost": float(state.total_storage_cost[0]),
         "total_processed": float(state.total_processed[0]),
+        "reputation": float(state.reputation[0]),
+        "total_contracts_completed": float(state.total_contracts_completed[0]),
+        "total_contracts_failed": float(state.total_contracts_failed[0]),
+        "total_contract_penalties": float(state.total_contract_penalties[0]),
     }
 
 
@@ -80,6 +89,10 @@ def _assert_close(label: str, a: dict, b: dict) -> None:
         "total_spoiled",
         "total_storage_cost",
         "total_processed",
+        "reputation",
+        "total_contracts_completed",
+        "total_contracts_failed",
+        "total_contract_penalties",
     ):
         if not np.isclose(a[key], b[key], rtol=RTOL, atol=ATOL):
             raise AssertionError(
@@ -127,7 +140,9 @@ def check_chunk_size_independence(num_days: int) -> int:
     target_global_index = 37  # picked to land in the middle of a chunk below
 
     # Baseline: alone, in a size-1 chunk at its own global offset.
-    baseline_state = allocate(1, num_plots, _num_lot_slots(num_plots), CONFIG.base_capacity)
+    baseline_state = allocate(
+        1, num_plots, _num_lot_slots(num_plots), CONFIG.base_capacity, CONFIG.num_buyers
+    )
     init_runs(
         baseline_state,
         CONFIG,
@@ -143,13 +158,23 @@ def check_chunk_size_independence(num_days: int) -> int:
         "total_spoiled": float(baseline_state.total_spoiled[0]),
         "total_storage_cost": float(baseline_state.total_storage_cost[0]),
         "total_processed": float(baseline_state.total_processed[0]),
+        "reputation": float(baseline_state.reputation[0]),
+        "total_contracts_completed": float(baseline_state.total_contracts_completed[0]),
+        "total_contracts_failed": float(baseline_state.total_contracts_failed[0]),
+        "total_contract_penalties": float(baseline_state.total_contract_penalties[0]),
     }
 
     checks = 0
     for chunk_size, offset in [(60, 0), (40, 0), (10, 30)]:
         if not (offset <= target_global_index < offset + chunk_size):
             continue
-        state = allocate(chunk_size, num_plots, _num_lot_slots(num_plots), CONFIG.base_capacity)
+        state = allocate(
+            chunk_size,
+            num_plots,
+            _num_lot_slots(num_plots),
+            CONFIG.base_capacity,
+            CONFIG.num_buyers,
+        )
         init_runs(state, CONFIG, master_seed, offset, strategies[offset : offset + chunk_size])
         simulate_chunk(state, num_days, CONFIG)
         local_index = target_global_index - offset
@@ -160,6 +185,10 @@ def check_chunk_size_independence(num_days: int) -> int:
             "total_spoiled": float(state.total_spoiled[local_index]),
             "total_storage_cost": float(state.total_storage_cost[local_index]),
             "total_processed": float(state.total_processed[local_index]),
+            "reputation": float(state.reputation[local_index]),
+            "total_contracts_completed": float(state.total_contracts_completed[local_index]),
+            "total_contracts_failed": float(state.total_contracts_failed[local_index]),
+            "total_contract_penalties": float(state.total_contract_penalties[local_index]),
         }
         _assert_close(f"chunk_size={chunk_size} offset={offset}", result, baseline)
         checks += 1
@@ -259,6 +288,57 @@ def check_processing_occurs(num_days: int) -> int:
     return checks
 
 
+def check_contracts_occur(num_days: int) -> int:
+    """Phase 5: confirm contracts actually get offered/accepted/delivered
+    *and* fail their deadline under the default config -- not just
+    numerically dormant -- and check kernel vs. reference agree on the
+    resulting counters.
+
+    Both outcomes matter here, unlike Phase 4's single `total_processed`
+    signal: `total_contracts_completed` proves the offer/accept/deliver
+    path fires, `total_contracts_failed` (and `total_contract_penalties`
+    following it) proves the simplified accept policy -- accept on any
+    current stock, not full forecasted coverage -- actually produces
+    contracts the farm can't finish in time, the behavior this phase's
+    simplification is expected to make *more* likely than the real
+    engine's forecast-gated accept, not less.
+    """
+    checks = 0
+    any_completed = False
+    any_failed = False
+    seeds = [1, 42, 12345]
+    plots = [1, 3, 10]
+    for master_seed in seeds:
+        for num_plots in plots:
+            for strategy in (
+                crops.STRATEGY_GREEDY,
+                crops.STRATEGY_CONSERVATIVE,
+                crops.STRATEGY_RANDOM,
+            ):
+                kernel_result = _kernel_single_run(master_seed, 0, strategy, num_plots, num_days)
+                reference_result = simulate_run_reference(
+                    CONFIG, master_seed, 0, strategy, num_plots, num_days
+                )
+                label = f"seed={master_seed} strat={strategy} plots={num_plots}"
+                _assert_close(label, kernel_result, reference_result)
+                any_completed = any_completed or kernel_result["total_contracts_completed"] > 0.0
+                any_failed = any_failed or kernel_result["total_contracts_failed"] > 0.0
+                checks += 1
+    if not any_completed:
+        raise AssertionError(
+            "check_contracts_occur: total_contracts_completed was 0 across the entire "
+            "grid -- the offer/accept/deliver path never actually fired, this check "
+            "isn't exercising the code path it claims to"
+        )
+    if not any_failed:
+        raise AssertionError(
+            "check_contracts_occur: total_contracts_failed was 0 across the entire "
+            "grid -- the deadline-penalty path never actually fired, this check isn't "
+            "exercising the code path it claims to"
+        )
+    return checks
+
+
 def main() -> int:
     num_days = 90  # short run: enough days to exercise every branch repeatedly, still fast
     print("Checking kernel vs. sequential reference...")
@@ -277,7 +357,11 @@ def main() -> int:
     n4 = check_processing_occurs(num_days)
     print(f"  {n4} (seed, strategy, plot-count) combinations matched with processing confirmed")
 
-    print(f"\nOK: {n1 + n2 + n3 + n4} checks passed.")
+    print("Checking contracts occur...")
+    n5 = check_contracts_occur(num_days)
+    print(f"  {n5} (seed, strategy, plot-count) combinations matched with contracts confirmed")
+
+    print(f"\nOK: {n1 + n2 + n3 + n4 + n5} checks passed.")
     return 0
 
 

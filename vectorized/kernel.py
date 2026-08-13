@@ -116,9 +116,71 @@ instead (at most `base_capacity` product lots can be pending at once,
 bounded by job-slot count, independent of plot count -- see `state.py`'s
 docstring).
 
-Still NOT ported: the multi-channel market system, contracts, upgrades
-(including upgrades' storage `capacity_bonus`/`shelf_life_multiplier`
-effects and processing-capacity bonuses -- Phase 2-4 use only the base
+Phase 5 ("contracts", simplified scope) ported `simulation/contracts.py`'s
+offer/accept/deliver/resolve mechanics, but not its `is_offer_feasible`:
+a multi-day production-forecast engine (greedy batch scheduling against
+processing-slot free-days, sorted future-harvest arrival lists, cash
+reservation across competing recipes) that is genuinely list/branch-shaped,
+not array-shaped -- the roadmap's own "least naturally mask-shaped
+subsystem" flag. Dropping it is also low-cost: only 2 of the real 11
+strategies (`profit_optimizer`, `progression_player`) even override
+`choose_contracts` to accept anything; the base `Agent` (and every
+strategy closer to this module's 3 fixed ones) never does.
+
+Structural simplification: the real engine lets a buyer have any number of
+simultaneous offers/active contracts over a run (bounded only by
+`unresolved_ids` deduplication on `buyer_id-item_id-day`). This phase gives
+each buyer exactly **one** contract "slot" at a time instead -- empty,
+offered, or active -- so `state.py`'s per-buyer arrays are `K = num_buyers`
+exactly, not a derived bound; a buyer with an outstanding offer or active
+contract simply isn't re-offered until that slot frees up. This trades away
+some of the real engine's throughput (a popular buyer could otherwise stack
+several contracts) for a much simpler, still fully vectorized state
+machine.
+
+Per-buyer daily block, run-level, positioned after that day's aging/trim/
+jobs-complete/re-trim and before jobs-start (processing) -- matching the
+real day order (harvest → age/spoil → jobs complete → re-trim → price →
+contracts offer/accept/deliver → jobs start → sell → ...), so contracts get
+first claim on today's inventory, ahead of processing and selling:
+
+1. **Offer generation**, only on interval days (`day % offer_interval_days
+   == 0`, `day != 0`): for each buyer with an empty slot and `reputation >=
+   min_reputation`, roll one eligible item and a quantity (matching
+   `generate_offers`'s `rng.choice`/`rng.roll_yield`), price it at
+   `base_price * buyer_price_multiplier * relationship_multiplier`
+   (`_relationship_price_multiplier`, unchanged), and offer it.
+2. **Accept**, every day a slot is offered and not yet expired
+   (`offer_expiry_days`, default 3): accept as soon as *any* current stock
+   (>0) of the item at the required quality exists. This stands in for
+   `is_offer_feasible`'s forecast -- current inventory only, no promise of
+   harvests that haven't happened yet -- so contracts get accepted (and
+   sometimes fail their deadline) less predictably than the real engine's
+   forecast-gated accept, which is the intended trade for staying array-
+   shaped. An expired, never-accepted offer just clears the slot -- no
+   penalty (only *accepted* contracts can fail).
+3. **Deliver**, every day a slot is active: consume up to `remaining` units
+   from matching lot slots (same item + quality gate as processing's input
+   check), crediting `money`/`total_revenue`/`total_harvest` immediately
+   (contract revenue counts as a sale, same as `total_sold` does in the
+   real engine). Fully delivered -> resolved successfully: `reputation`
+   +5 (capped 100), `buyer_relationship` up by `relationship_gain_per_delivery`
+   (capped 100), `total_contracts_completed` +1.
+4. **Deadline resolve**, only if a slot is still active *after* today's
+   delivery attempt and `day > deadline_day`: penalty
+   `min(money, remaining * unit_price * penalty_rate)`, deducted for real
+   (not shadow, unlike storage liability) -- `reputation` -4 (floored 0),
+   `buyer_relationship` down by `relationship_loss_per_failure` (floored
+   0), `total_contracts_failed` +1, `total_contract_penalties` tracks the
+   cumulative cost.
+
+`reputation` and `buyer_relationship` are real `BatchState` fields (not
+scratch): they persist for the whole run and gate/scale future offers, so
+they can't be reset between days the way `market_supply` can.
+
+Still NOT ported: the multi-channel market system, upgrades (including
+upgrades' storage `capacity_bonus`/`shelf_life_multiplier` effects and
+processing-capacity bonuses -- Phase 2-4 use only the base
 `config/storage.json`/`config/processing.json` values). See
 vectorized/README.md's roadmap.
 
@@ -227,6 +289,10 @@ def _simulate_chunk_core(
     total_spoiled,
     total_storage_cost,
     total_processed,
+    reputation,
+    total_contracts_completed,
+    total_contracts_failed,
+    total_contract_penalties,
     moisture,
     nitrogen,
     phosphorus,
@@ -261,6 +327,16 @@ def _simulate_chunk_core(
     job_output_item_id,
     job_output_quantity,
     job_completion_day,
+    # per-buyer contract slots (Phase 5), shape (B, K), K = config.num_buyers
+    contract_state,
+    contract_item_idx,
+    contract_remaining,
+    contract_unit_price,
+    contract_min_quality_rank,
+    contract_deadline_day,
+    contract_expiry_day,
+    contract_penalty_rate,
+    buyer_relationship,
     num_days,
     # crop arrays (component: config_arrays.VectorConfig)
     num_crops,
@@ -346,6 +422,23 @@ def _simulate_chunk_core(
     recipe_output_quantity,
     recipe_processing_days,
     recipe_cost,
+    # buyers (component: config_arrays.VectorConfig), one entry per buyer
+    buyer_item_idx,
+    buyer_num_items,
+    buyer_quantity_min,
+    buyer_quantity_max,
+    buyer_min_quality_rank,
+    buyer_price_multiplier,
+    buyer_deadline_days,
+    buyer_penalty_rate,
+    buyer_min_reputation,
+    buyer_relationship_bonus_rate,
+    # contracts (component: config_arrays.VectorConfig)
+    contract_offer_interval_days,
+    contract_offer_expiry_days,
+    contract_relationship_gain,
+    contract_relationship_loss,
+    contract_relationship_bonus_cap,
 ):
     num_runs = money.shape[0]
     num_plots = moisture.shape[1]
@@ -354,6 +447,7 @@ def _simulate_chunk_core(
     num_job_slots = job_output_item_id.shape[1]
     num_items = base_price.shape[0]  # num_crops + num_products (Phase 4 item space)
     num_recipes = recipe_input_item_idx.shape[0]
+    num_buyers = contract_state.shape[1]
 
     for r in prange(num_runs):
         m = np.float64(money[r])
@@ -362,6 +456,10 @@ def _simulate_chunk_core(
         ts = np.float64(total_spoiled[r])
         tc = np.float64(total_storage_cost[r])
         tp = np.float64(total_processed[r])
+        rep = np.float64(reputation[r])
+        tcc = np.float64(total_contracts_completed[r])
+        tcf = np.float64(total_contracts_failed[r])
+        tcp = np.float64(total_contract_penalties[r])
         strat = strategy_id[r]
         run_state = rng_run_state[r]
 
@@ -768,6 +866,103 @@ def _simulate_chunk_core(
                 storage_capacity,
             )
 
+            # -- contracts: offer generation (simulation/contracts.py:generate_offers)
+            # -- run-level, only on interval days, simplified scope (see this
+            # module's docstring) -- one contract "slot" per buyer --
+            if day != 0 and day % contract_offer_interval_days == 0:
+                for b in range(num_buyers):
+                    if contract_state[r, b] != 0:
+                        continue  # buyer already has an offer or active contract
+                    if rep < buyer_min_reputation[b]:
+                        continue
+                    n_elig = buyer_num_items[b]
+                    run_state, u_item = _next(run_state)
+                    pick = int(u_item * n_elig)
+                    if pick >= n_elig:
+                        pick = n_elig - 1
+                    item_idx = buyer_item_idx[b, pick]
+                    run_state, u_qty = _next(run_state)
+                    qmin = buyer_quantity_min[b]
+                    qmax = buyer_quantity_max[b]
+                    quantity = qmin + int(u_qty * (qmax - qmin + 1))
+                    if quantity > qmax:
+                        quantity = qmax
+                    relationship_mult = 1.0 + min(
+                        contract_relationship_bonus_cap,
+                        buyer_relationship[r, b] * buyer_relationship_bonus_rate[b],
+                    )
+                    price = base_price[item_idx] * buyer_price_multiplier[b] * relationship_mult
+                    contract_state[r, b] = 1
+                    contract_item_idx[r, b] = item_idx
+                    contract_remaining[r, b] = quantity
+                    contract_unit_price[r, b] = price
+                    contract_min_quality_rank[r, b] = buyer_min_quality_rank[b]
+                    contract_deadline_day[r, b] = day + buyer_deadline_days[b]
+                    contract_expiry_day[r, b] = day + contract_offer_expiry_days
+                    contract_penalty_rate[r, b] = buyer_penalty_rate[b]
+
+            # -- contracts: accept + deliver + resolve (component C's
+            # choose_contracts/choose_contract_deliveries, simplified is_offer_feasible
+            # -- see this module's docstring) -- run-level, every day a slot is
+            # offered or active --
+            for b in range(num_buyers):
+                cstate = contract_state[r, b]
+                if cstate == 0:
+                    continue
+                item = contract_item_idx[r, b]
+                min_rank = contract_min_quality_rank[r, b]
+                if cstate == 1:
+                    if day > contract_expiry_day[r, b]:
+                        contract_state[r, b] = 0
+                        continue
+                    available = 0
+                    for s in range(num_lot_slots):
+                        if lot_item_id[r, s] == item and lot_quality[r, s] >= min_rank:
+                            available += lot_quantity[r, s]
+                    if available <= 0:
+                        continue  # still just offered, try again tomorrow (until expiry)
+                    contract_state[r, b] = 2
+                    cstate = 2
+                # cstate == 2: active -- attempt delivery from today's inventory
+                remaining = contract_remaining[r, b]
+                delivered = 0
+                for s in range(num_lot_slots):
+                    if delivered >= remaining:
+                        break
+                    if lot_item_id[r, s] == item and lot_quality[r, s] >= min_rank:
+                        take = min(remaining - delivered, lot_quantity[r, s])
+                        lot_quantity[r, s] -= take
+                        if lot_quantity[r, s] == 0:
+                            lot_item_id[r, s] = -1
+                        delivered += take
+                if delivered > 0:
+                    revenue = delivered * contract_unit_price[r, b]
+                    m += revenue
+                    tr += revenue
+                    th += delivered
+                    remaining -= delivered
+                    contract_remaining[r, b] = remaining
+                if remaining <= 0:
+                    contract_state[r, b] = 0
+                    rep = min(100.0, rep + 5.0)
+                    buyer_relationship[r, b] = min(
+                        100.0, buyer_relationship[r, b] + contract_relationship_gain
+                    )
+                    tcc += 1
+                elif day > contract_deadline_day[r, b]:
+                    shortfall_value = remaining * contract_unit_price[r, b]
+                    penalty = min(
+                        max(0.0, m), max(0.0, shortfall_value * contract_penalty_rate[r, b])
+                    )
+                    m -= penalty
+                    tcp += penalty
+                    rep = max(0.0, rep - 4.0)
+                    buyer_relationship[r, b] = max(
+                        0.0, buyer_relationship[r, b] - contract_relationship_loss
+                    )
+                    contract_state[r, b] = 0
+                    tcf += 1
+
             # -- processing: agent starts jobs (component C's choose_processing,
             # simplified -- see this module's docstring) -- fixed recipe-order
             # preference, same policy for all 3 strategies, matching "sell
@@ -846,6 +1041,10 @@ def _simulate_chunk_core(
         total_spoiled[r] = np.float32(ts)
         total_storage_cost[r] = np.float32(tc)
         total_processed[r] = np.float32(tp)
+        reputation[r] = np.float32(rep)
+        total_contracts_completed[r] = np.float32(tcc)
+        total_contracts_failed[r] = np.float32(tcf)
+        total_contract_penalties[r] = np.float32(tcp)
         rng_run_state[r] = run_state
 
 
@@ -881,6 +1080,10 @@ def simulate_chunk(
         state.total_spoiled,
         state.total_storage_cost,
         state.total_processed,
+        state.reputation,
+        state.total_contracts_completed,
+        state.total_contracts_failed,
+        state.total_contract_penalties,
         state.moisture,
         state.nitrogen,
         state.phosphorus,
@@ -911,6 +1114,15 @@ def simulate_chunk(
         state.job_output_item_id,
         state.job_output_quantity,
         state.job_completion_day,
+        state.contract_state,
+        state.contract_item_idx,
+        state.contract_remaining,
+        state.contract_unit_price,
+        state.contract_min_quality_rank,
+        state.contract_deadline_day,
+        state.contract_expiry_day,
+        state.contract_penalty_rate,
+        state.buyer_relationship,
         num_days,
         config.num_crops,
         config.seed_cost,
@@ -988,6 +1200,21 @@ def simulate_chunk(
         config.recipe_output_quantity,
         config.recipe_processing_days,
         config.recipe_cost,
+        config.buyer_item_idx,
+        config.buyer_num_items,
+        config.buyer_quantity_min,
+        config.buyer_quantity_max,
+        config.buyer_min_quality_rank,
+        config.buyer_price_multiplier,
+        config.buyer_deadline_days,
+        config.buyer_penalty_rate,
+        config.buyer_min_reputation,
+        config.buyer_relationship_bonus_rate,
+        config.contract_offer_interval_days,
+        config.contract_offer_expiry_days,
+        float(config.contract_relationship_gain),
+        float(config.contract_relationship_loss),
+        float(config.contract_relationship_bonus_cap),
     )
 
     if np.any(overflow_events):

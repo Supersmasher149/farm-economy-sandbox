@@ -35,10 +35,21 @@ already does for the real engine, so `lot_item_id` can hold either a crop
 or a product without a second lot-array system. See `kernel.py`'s module
 docstring for the processing mechanics this enables.
 
-Still NOT read here: `config/contracts.json`, `config/buyers.json`,
-`config/upgrades.json`. Those subsystems aren't ported yet -- see
-vectorized/README.md's roadmap -- so loading their config now would be
-dead weight that silently goes stale.
+Phase 5 ("contracts", simplified scope -- see kernel.py's module
+docstring) added `config/buyers.json` and `config/contracts.json`. Buyer
+`items` lists are resolved to item-space indices at load time (loud
+failure on an unknown id, same policy as recipes) into a padded
+`(num_buyers, buyer_max_items)` array. NOT ported:
+`contracts.py`'s `is_offer_feasible` multi-day production-forecast
+scheduler (`production_safety_factor`, the whole greedy batch-scheduling
+machinery) -- this phase's accept policy is a simplified stand-in, see
+kernel.py's module docstring. `fallback_price_multiplier` (used only by
+that scheduler's market-alternative comparison) is correspondingly not
+read either.
+
+Still NOT read here: `config/upgrades.json`. That subsystem isn't ported
+yet -- see vectorized/README.md's roadmap -- so loading its config now
+would be dead weight that silently goes stale.
 
 Only `unlock_requirement.type == "total_revenue"` is understood (the only
 type any shipped crop uses). A crop with a different unlock type fails to
@@ -126,6 +137,30 @@ class VectorConfig:
     # Concurrent processing job slots, global (not per-plot) -- see kernel.py's
     # module docstring for why this is a tiny, provably-safe bound.
     base_capacity: int
+
+    # -- buyers (config/buyers.json), Phase 5, one entry per index
+    # 0..num_buyers-1 -- one contract "slot" per buyer, see kernel.py's
+    # module docstring for the simplified accept policy this enables --
+    num_buyers: int
+    buyer_ids: tuple
+    buyer_max_items: int  # padding width of buyer_item_idx's second axis
+    buyer_item_idx: np.ndarray  # int8 (num_buyers, buyer_max_items), -1 padding
+    buyer_num_items: np.ndarray  # int8 (num_buyers,), real (unpadded) item count
+    buyer_quantity_min: np.ndarray  # int32
+    buyer_quantity_max: np.ndarray  # int32
+    buyer_min_quality_rank: np.ndarray  # int8, QUALITY_ORDER rank
+    buyer_price_multiplier: np.ndarray  # float32
+    buyer_deadline_days: np.ndarray  # int32
+    buyer_penalty_rate: np.ndarray  # float32
+    buyer_min_reputation: np.ndarray  # float32
+    buyer_relationship_bonus_rate: np.ndarray  # float32
+
+    # -- contracts (config/contracts.json), Phase 5 --
+    contract_offer_interval_days: int
+    contract_offer_expiry_days: int
+    contract_relationship_gain: np.float32
+    contract_relationship_loss: np.float32
+    contract_relationship_bonus_cap: np.float32
 
     # Preference rankings for the 3 fixed strategies (component C): crop
     # indices ordered by that strategy's preference, best first. The kernel
@@ -230,6 +265,8 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     storage = _load_json(config_dir, "storage.json")
     markets = _load_json(config_dir, "markets.json")
     processing = _load_json(config_dir, "processing.json")
+    buyers = _load_json(config_dir, "buyers.json")
+    contracts_cfg = _load_json(config_dir, "contracts.json")
 
     crop_ids = tuple(c["id"] for c in crops)
     num_crops = len(crop_ids)
@@ -416,6 +453,53 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     recipe_cost = np.array([r.get("cost", 0.0) for r in recipes], dtype=np.float32)
     base_capacity = int(processing.get("base_capacity", 1))
 
+    # -- buyers (config/buyers.json), Phase 5 --
+    buyer_ids = tuple(b["id"] for b in buyers)
+    num_buyers = len(buyer_ids)
+    buyer_max_items = max((len(b.get("items", [])) for b in buyers), default=0)
+    buyer_item_idx = np.full((num_buyers, max(1, buyer_max_items)), -1, dtype=np.int8)
+    buyer_num_items = np.empty(num_buyers, dtype=np.int8)
+    for i, b in enumerate(buyers):
+        items = b.get("items", [])
+        buyer_num_items[i] = len(items)
+        for j, item_id in enumerate(items):
+            if item_id not in item_index:
+                raise NotImplementedError(
+                    f"buyer {b['id']!r}'s items includes {item_id!r}, not a known crop "
+                    "or product id -- vectorized/config_arrays.py's item space only "
+                    "covers config/crops.json + config/processing.json's products list; "
+                    "add it there before loading this config."
+                )
+            buyer_item_idx[i, j] = item_index[item_id]
+    quantity_ranges = [b.get("quantity_range", [5, 12]) for b in buyers]
+    buyer_quantity_min = np.array([qr[0] for qr in quantity_ranges], dtype=np.int32)
+    buyer_quantity_max = np.array([qr[1] for qr in quantity_ranges], dtype=np.int32)
+    buyer_min_quality_rank = np.array(
+        [_QUALITY_RANK[b.get("min_quality", "standard")] for b in buyers], dtype=np.int8
+    )
+    default_penalty_rate = np.float32(contracts_cfg.get("default_penalty_rate", 0.35))
+    buyer_price_multiplier = np.array(
+        [b.get("contract_price_multiplier", 1.2) for b in buyers], dtype=np.float32
+    )
+    buyer_deadline_days = np.array([b.get("deadline_days", 10) for b in buyers], dtype=np.int32)
+    buyer_penalty_rate = np.array(
+        [b.get("penalty_rate", default_penalty_rate) for b in buyers], dtype=np.float32
+    )
+    buyer_min_reputation = np.array(
+        [b.get("min_reputation", 0.0) for b in buyers], dtype=np.float32
+    )
+    buyer_relationship_bonus_rate = np.array(
+        [b.get("relationship_bonus_rate", 0.0) for b in buyers], dtype=np.float32
+    )
+
+    contract_offer_interval_days = int(contracts_cfg.get("offer_interval_days", 7))
+    contract_offer_expiry_days = int(contracts_cfg.get("offer_expiry_days", 3))
+    contract_relationship_gain = np.float32(
+        contracts_cfg.get("relationship_gain_per_delivery", 6.0)
+    )
+    contract_relationship_loss = np.float32(contracts_cfg.get("relationship_loss_per_failure", 5.0))
+    contract_relationship_bonus_cap = np.float32(contracts_cfg.get("relationship_bonus_cap", 0.25))
+
     return VectorConfig(
         crop_ids=crop_ids,
         num_crops=num_crops,
@@ -527,5 +611,23 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
         recipe_processing_days=recipe_processing_days,
         recipe_cost=recipe_cost,
         base_capacity=base_capacity,
+        num_buyers=num_buyers,
+        buyer_ids=buyer_ids,
+        buyer_max_items=max(1, buyer_max_items),
+        buyer_item_idx=buyer_item_idx,
+        buyer_num_items=buyer_num_items,
+        buyer_quantity_min=buyer_quantity_min,
+        buyer_quantity_max=buyer_quantity_max,
+        buyer_min_quality_rank=buyer_min_quality_rank,
+        buyer_price_multiplier=buyer_price_multiplier,
+        buyer_deadline_days=buyer_deadline_days,
+        buyer_penalty_rate=buyer_penalty_rate,
+        buyer_min_reputation=buyer_min_reputation,
+        buyer_relationship_bonus_rate=buyer_relationship_bonus_rate,
+        contract_offer_interval_days=contract_offer_interval_days,
+        contract_offer_expiry_days=contract_offer_expiry_days,
+        contract_relationship_gain=contract_relationship_gain,
+        contract_relationship_loss=contract_relationship_loss,
+        contract_relationship_bonus_cap=contract_relationship_bonus_cap,
         start_money=np.float32(settings.get("start_money", 100)),
     )
