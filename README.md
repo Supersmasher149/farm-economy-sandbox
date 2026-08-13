@@ -92,17 +92,19 @@ accelerators changes what a seed replays to.
 `vectorized/` is a **separate, experimental** module for a different
 question than the simulator above answers: aggregate outcomes across
 millions of runs, when you don't need per-day history or bit-exact replay of
-a specific seed. Crop growth, soil chemistry, weather, storage/spoilage, and
-single-channel markets are ported from the real `config/*.json`-driven
-mechanics (see `vectorized/config_arrays.py`): every crop gets a daily
-supply/demand price roll and matured lots sell in full each day, real money
-in real time -- not the real engine's 5-channel/fee/reputation system.
-Contracts, processing, and upgrades aren't ported yet (see that module's
-Roadmap). It uses a different (splitmix64) RNG scheme throughout -- not a
-faster path through `simulation/`, and not expected to agree with it
-numerically. Needs `numpy`/`numba` (`pip install -r requirements-fast.txt`);
-nothing else in the repo imports it or is affected by its absence. See
-`vectorized/README.md`.
+a specific seed. Crop growth, soil chemistry, weather, storage/spoilage,
+single-channel markets, and processing are ported from the real
+`config/*.json`-driven mechanics (see `vectorized/config_arrays.py`): every
+crop and processed product gets a daily supply/demand price roll and
+matured lots sell in full each day, real money in real time -- not the real
+engine's 5-channel/fee/reputation system; recipes consume a crop and cash
+to complete into a sellable product, one global job-slot capacity, no
+per-strategy processing decisions. Contracts and upgrades aren't ported yet
+(see that module's Roadmap). It uses a different (splitmix64) RNG scheme
+throughout -- not a faster path through `simulation/`, and not expected to
+agree with it numerically. Needs `numpy`/`numba`
+(`pip install -r requirements-fast.txt`); nothing else in the repo imports
+it or is affected by its absence. See `vectorized/README.md`.
 
 ```bash
 python3 scripts/vectorized_validate.py    # kernel vs. reference agreement
