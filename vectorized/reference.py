@@ -13,15 +13,16 @@ simulation and the validation script stops meaning anything.
 
 This does *not* validate against `simulation/`'s real crop-growth model --
 see vectorized/README.md for why that comparison isn't meaningful (different
-RNG scheme, still-simplified economy: no contracts/processing/upgrades, and
-markets are single-channel -- see kernel.py's module docstring). It
-validates that the numba kernel is a faithful parallelization of *this*
-module's sequential algorithm, which is itself a config-driven port of
-simulation/crop_growth.py + simulation/weather.py's per-plot mechanics,
-plus a Phase 2 storage/spoilage mirror of simulation/inventory.py's
-age-and-spoil/capacity-trim/liability logic and a Phase 3 single-channel
-mirror of simulation/markets.py's daily pricing -- see kernel.py's
-per-block comments for which real function each block mirrors.
+RNG scheme, still-simplified economy: no contracts/upgrades, and markets are
+single-channel -- see kernel.py's module docstring). It validates that the
+numba kernel is a faithful parallelization of *this* module's sequential
+algorithm, which is itself a config-driven port of simulation/crop_growth.py
++ simulation/weather.py's per-plot mechanics, plus a Phase 2 storage/
+spoilage mirror of simulation/inventory.py's age-and-spoil/capacity-trim/
+liability logic, a Phase 3 single-channel mirror of simulation/markets.py's
+daily pricing, and a Phase 4 mirror of simulation/processing.py's recipe/
+job mechanics -- see kernel.py's per-block comments for which real function
+each block mirrors.
 """
 
 from __future__ import annotations
@@ -34,6 +35,39 @@ from vectorized.config_arrays import VectorConfig
 
 def _f32(x: float) -> float:
     return float(np.float32(x))
+
+
+def _trim_to_capacity(lot_item_id, lot_quantity, lot_age_days, eff_life, capacity) -> int:
+    """FEFO capacity trim for one run's lot-slot lists, in place.
+
+    Scalar mirror of kernel.py's `_trim_to_capacity` -- see its docstring.
+    Mutates `lot_item_id`/`lot_quantity` in place (Python lists, passed by
+    reference) and returns units spoiled by trimming.
+    """
+    num_lot_slots = len(lot_item_id)
+    total_qty = sum(lot_quantity[s] for s in range(num_lot_slots) if lot_item_id[s] >= 0)
+    overflow_units = total_qty - int(capacity)
+    spoiled = 0
+    while overflow_units > 0:
+        chosen = -1
+        chosen_remaining = 0.0
+        for s in range(num_lot_slots):
+            if lot_item_id[s] < 0:
+                continue
+            item = lot_item_id[s]
+            remaining = float(eff_life[item]) - float(lot_age_days[s])
+            if chosen < 0 or remaining < chosen_remaining:
+                chosen = s
+                chosen_remaining = remaining
+        if chosen < 0:
+            break  # no occupied slots left -- shouldn't happen if overflow_units > 0
+        remove = min(overflow_units, lot_quantity[chosen])
+        lot_quantity[chosen] -= remove
+        overflow_units -= remove
+        spoiled += remove
+        if lot_quantity[chosen] == 0:
+            lot_item_id[chosen] = -1
+    return spoiled
 
 
 def simulate_run_reference(
@@ -53,6 +87,7 @@ def simulate_run_reference(
     total_revenue = _f32(0.0)
     total_spoiled = _f32(0.0)
     total_storage_cost = _f32(0.0)
+    total_processed = _f32(0.0)
 
     moisture = [_f32(config.initial_moisture) for _ in range(num_plots)]
     nitrogen = [_f32(config.initial_nitrogen) for _ in range(num_plots)]
@@ -79,16 +114,25 @@ def simulate_run_reference(
     last_watered_day = [0] * num_plots
 
     # -- storage lots (Phase 2), fixed-size list mirroring kernel.py's (B, L) array --
-    num_lot_slots = num_plots * config.lots_per_plot
+    # -- Phase 4 reserves +base_capacity slots for processed-product lots --
+    num_lot_slots = num_plots * config.lots_per_plot + config.base_capacity
     lot_item_id = [-1] * num_lot_slots
     lot_quantity = [0] * num_lot_slots
     lot_quality = [0] * num_lot_slots
     lot_age_days = [0] * num_lot_slots
 
     # -- markets (Phase 3): per-run scratch, reset fresh each run, not
-    # persisted in the returned dict -- see kernel.py's mirror --
-    market_supply = [0.0] * config.num_crops
-    today_price = [0.0] * config.num_crops
+    # persisted in the returned dict -- see kernel.py's mirror -- item-space
+    # (crops + processed products, Phase 4) --
+    market_supply = [0.0] * config.num_items
+    today_price = [0.0] * config.num_items
+
+    # -- processing job slots (Phase 4), fixed-size list mirroring kernel.py's
+    # (B, J) array, J = config.base_capacity --
+    num_job_slots = config.base_capacity
+    job_output_item_id = [-1] * num_job_slots
+    job_output_quantity = [0] * num_job_slots
+    job_completion_day = [0] * num_job_slots
 
     num_seasons = len(config.season_rain_chance)
 
@@ -110,8 +154,9 @@ def simulate_run_reference(
 
         # -- markets: daily price roll + supply decay
         # (simulation/markets.py:update_daily_prices) -- single-channel scope,
-        # see kernel.py's module docstring --
-        for c in range(config.num_crops):
+        # item-space (crops + processed products, Phase 4) -- see kernel.py's
+        # module docstring --
+        for c in range(config.num_items):
             seasonal = float(config.seasonal_demand[c, season])
             supply = market_supply[c]
             saturation = max(float(config.market_minimum_supply_multiplier), 1.0 - supply * 0.01)
@@ -412,27 +457,92 @@ def simulate_run_reference(
 
         # -- storage: capacity trim, FEFO (simulation/inventory.py:_trim_to_capacity)
         # -- only sorts/mutates when something actually has to be trimmed --
-        total_qty = sum(lot_quantity[s] for s in range(num_lot_slots) if lot_item_id[s] >= 0)
-        overflow_units = total_qty - int(config.storage_capacity)
-        while overflow_units > 0:
-            chosen = -1
-            chosen_remaining = 0.0
+        total_spoiled = _f32(
+            total_spoiled
+            + _trim_to_capacity(
+                lot_item_id,
+                lot_quantity,
+                lot_age_days,
+                config.effective_shelf_life_days,
+                config.storage_capacity,
+            )
+        )
+
+        # -- processing: jobs complete (simulation/processing.py:complete_jobs)
+        # -- once/day, after today's aging/trim so a completing job's output is
+        # unambiguously "produced today" -- see kernel.py's mirror --
+        for j in range(num_job_slots):
+            if job_output_item_id[j] < 0:
+                continue
+            if day < job_completion_day[j]:
+                continue
+            out_item = job_output_item_id[j]
+            out_qty = job_output_quantity[j]
+            total_processed = _f32(total_processed + out_qty)
             for s in range(num_lot_slots):
                 if lot_item_id[s] < 0:
-                    continue
-                item = lot_item_id[s]
-                remaining = float(config.effective_shelf_life_days[item]) - float(lot_age_days[s])
-                if chosen < 0 or remaining < chosen_remaining:
-                    chosen = s
-                    chosen_remaining = remaining
-            if chosen < 0:
-                break  # no occupied slots left -- shouldn't happen if overflow_units > 0
-            remove = min(overflow_units, lot_quantity[chosen])
-            lot_quantity[chosen] -= remove
-            overflow_units -= remove
-            total_spoiled = _f32(total_spoiled + remove)
-            if lot_quantity[chosen] == 0:
-                lot_item_id[chosen] = -1
+                    lot_item_id[s] = out_item
+                    lot_quantity[s] = out_qty
+                    lot_quality[s] = 2  # standard -- matches complete_jobs' hardcoded grade
+                    lot_age_days[s] = -1  # becomes 0 on tomorrow's aging pass
+                    break
+                # if no empty slot: silently dropped, matching kernel.py's
+                # overflow_events counter path (checked kernel-side only)
+            job_output_item_id[j] = -1
+            job_output_quantity[j] = 0
+
+        # -- storage: same-day re-trim (simulation/inventory.py:enforce_storage_capacity)
+        # -- see kernel.py's mirror for why a completing job's output needs its own
+        # same-day trim pass, not just tomorrow's regular one --
+        total_spoiled = _f32(
+            total_spoiled
+            + _trim_to_capacity(
+                lot_item_id,
+                lot_quantity,
+                lot_age_days,
+                config.effective_shelf_life_days,
+                config.storage_capacity,
+            )
+        )
+
+        # -- processing: agent starts jobs (component C's choose_processing,
+        # simplified -- see kernel.py's module docstring) -- fixed recipe-order
+        # preference, same policy for all 3 strategies --
+        for rec in range(config.num_recipes):
+            free_slot = -1
+            for j in range(num_job_slots):
+                if job_output_item_id[j] < 0:
+                    free_slot = j
+                    break
+            if free_slot < 0:
+                break  # no free job slot -- nothing else can start today
+            in_item = int(config.recipe_input_item_idx[rec])
+            need = int(config.recipe_input_quantity[rec])
+            min_rank = int(config.recipe_min_quality_rank[rec])
+            cost = float(config.recipe_cost[rec])
+            if money < cost:
+                continue
+            available = sum(
+                lot_quantity[s]
+                for s in range(num_lot_slots)
+                if lot_item_id[s] == in_item and lot_quality[s] >= min_rank
+            )
+            if available < need:
+                continue
+            remaining = need
+            for s in range(num_lot_slots):
+                if remaining <= 0:
+                    break
+                if lot_item_id[s] == in_item and lot_quality[s] >= min_rank:
+                    take = min(remaining, lot_quantity[s])
+                    lot_quantity[s] -= take
+                    remaining -= take
+                    if lot_quantity[s] == 0:
+                        lot_item_id[s] = -1
+            money = _f32(money - cost)
+            job_output_item_id[free_slot] = int(config.recipe_output_item_idx[rec])
+            job_output_quantity[free_slot] = int(config.recipe_output_quantity[rec])
+            job_completion_day[free_slot] = day + int(config.recipe_processing_days[rec])
 
         # -- markets: sell all matured lots (component C's choose_sales,
         # simplified -- see kernel.py's module docstring) -- every lot still
@@ -471,4 +581,5 @@ def simulate_run_reference(
         "total_revenue": total_revenue,
         "total_spoiled": total_spoiled,
         "total_storage_cost": total_storage_cost,
+        "total_processed": total_processed,
     }

@@ -36,6 +36,8 @@ class BatchResult:
     # doesn't affect overall_money -- see kernel.py's module docstring.
     overall_spoiled: StreamingStats
     overall_storage_cost: StreamingStats
+    # Phase 4 ("processing"): units of processed product completed and sold.
+    overall_processed: StreamingStats
     by_strategy_money: dict = field(default_factory=dict)
     by_strategy_harvest: dict = field(default_factory=dict)
 
@@ -52,6 +54,8 @@ class BatchResult:
             f"stddev={self.overall_spoiled.stddev:8.2f}  "
             f"(storage cost mean={self.overall_storage_cost.mean:6.2f}, shadow accounting -- "
             f"not deducted from money)",
+            f"  overall processed: mean={self.overall_processed.mean:7.2f}  "
+            f"stddev={self.overall_processed.stddev:8.2f}",
         ]
         for sid, name in enumerate(crops.STRATEGY_NAMES):
             m = self.by_strategy_money.get(sid)
@@ -67,11 +71,16 @@ class BatchResult:
 
 
 def choose_chunk_size(
-    num_plots: int, max_memory_gb: float, max_chunk: int = DEFAULT_MAX_CHUNK, lots_per_plot: int = 1
+    num_plots: int,
+    max_memory_gb: float,
+    max_chunk: int = DEFAULT_MAX_CHUNK,
+    lots_per_plot: int = 1,
+    base_capacity: int = 0,
 ) -> int:
     """Chunk size ≤ max_chunk, and small enough that one chunk's arrays fit
     the memory budget (component D step 1)."""
-    per_run = bytes_per_run(num_plots, num_plots * lots_per_plot)
+    num_lot_slots = num_plots * lots_per_plot + base_capacity
+    per_run = bytes_per_run(num_plots, num_lot_slots, base_capacity)
     budget_bound = int((max_memory_gb * (1024**3)) // per_run)
     return max(1, min(max_chunk, budget_bound))
 
@@ -103,8 +112,11 @@ def run_millions(
     if config is None:
         config = load_vector_config()
 
-    chunk_size = choose_chunk_size(num_plots, max_memory_gb, max_chunk, config.lots_per_plot)
-    num_lot_slots = num_plots * config.lots_per_plot
+    chunk_size = choose_chunk_size(
+        num_plots, max_memory_gb, max_chunk, config.lots_per_plot, config.base_capacity
+    )
+    num_lot_slots = num_plots * config.lots_per_plot + config.base_capacity
+    num_job_slots = config.base_capacity
     weights = np.asarray(strategy_weights, dtype=np.float64)
     weights = weights / weights.sum()
 
@@ -112,6 +124,7 @@ def run_millions(
     overall_harvest = StreamingStats()
     overall_spoiled = StreamingStats()
     overall_storage_cost = StreamingStats()
+    overall_processed = StreamingStats()
     by_money = {sid: StreamingStats() for sid in range(len(crops.STRATEGY_NAMES))}
     by_harvest = {sid: StreamingStats() for sid in range(len(crops.STRATEGY_NAMES))}
 
@@ -120,7 +133,7 @@ def run_millions(
     while run_offset < total_runs:
         this_chunk = min(chunk_size, total_runs - run_offset)
 
-        state = allocate(this_chunk, num_plots, num_lot_slots)
+        state = allocate(this_chunk, num_plots, num_lot_slots, num_job_slots)
         # Deterministic strategy assignment: cumulative-weight bucketing of
         # each row's fractional position in [0, 1), not per-row RNG draws --
         # keeps the mix exact and independent of chunk boundaries.
@@ -136,6 +149,7 @@ def run_millions(
         overall_harvest.update(state.total_harvest)
         overall_spoiled.update(state.total_spoiled)
         overall_storage_cost.update(state.total_storage_cost)
+        overall_processed.update(state.total_processed)
         for sid in by_money:
             mask = strategy_of_run == sid
             if mask.any():
@@ -164,6 +178,7 @@ def run_millions(
         overall_harvest=overall_harvest,
         overall_spoiled=overall_spoiled,
         overall_storage_cost=overall_storage_cost,
+        overall_processed=overall_processed,
         by_strategy_money=by_money,
         by_strategy_harvest=by_harvest,
     )

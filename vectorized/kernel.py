@@ -79,10 +79,48 @@ strict day-order match would mean two full passes over plots (harvest-only,
 then water/fertilize/plant-only) instead of one, a larger restructuring
 than this phase's scope asked for.
 
-Still NOT ported: the multi-channel market system above, contracts,
-processing, upgrades (including upgrades' storage
-`capacity_bonus`/`shelf_life_multiplier` effects -- Phase 2/3 use only the
-base `config/storage.json` values). See vectorized/README.md's roadmap.
+Phase 4 ("processing") ported `simulation/processing.py`'s recipe/job
+mechanics: `config/processing.json`'s recipes each consume a fixed quantity
+of one crop (at a minimum quality) and cash, occupy one of `base_capacity`
+global (not per-plot) job slots for `processing_days`, then complete into a
+lot of a processed *product* -- a new item-space entry alongside crops
+(index >= `num_crops`; see `config_arrays.py`'s docstring for the unified
+crop+product item space this required), sold the same way and at the same
+daily-rolled price as any crop lot. Job slots are a fixed-size `(B, J)`
+array, `J = config.base_capacity`, the same bounded-array pattern Phase 2
+used for lots -- but bounded by the real engine's own capacity constant
+(currently 1: at most one job in flight at a time), not a derived formula,
+since processing capacity is a global resource, not a per-plot one.
+
+Same "simplify the agent, not just the mechanic" approach as Phase 3's
+sell-everything: `Agent.choose_processing` (real per-strategy recipe/batch
+choices) becomes a fixed policy shared by all 3 fixed strategies -- try
+each recipe in `config/processing.json`'s order, start it if a job slot is
+free and there's enough input inventory and cash, once per day. This runs
+after that day's aging/spoilage/trim and before the sell-all-lots step
+(matching the real engine's day order: harvest → age/spoil → jobs complete
+→ re-trim → price → **jobs start** → **sell** → ...), so processing
+competes with same-day selling for the same freshly-harvested inventory --
+whichever recipe is tried first each day gets first claim on its input
+crop, same-day, before any of it could otherwise be swept into that day's
+sale.
+
+A completing job's output is new inventory added *after* that day's
+regular aging/trim pass already ran, so it needs its own same-day re-trim
+(`simulation/inventory.py:enforce_storage_capacity`) before pricing/
+selling -- both trim passes now share one `_trim_to_capacity` helper,
+matching the real engine's own `_trim_to_capacity`/`enforce_storage_capacity`
+split. `lots_per_plot`'s per-plot lot-slot bound didn't need to change for
+this: `num_lot_slots` gained a flat `+ config.base_capacity` reserve
+instead (at most `base_capacity` product lots can be pending at once,
+bounded by job-slot count, independent of plot count -- see `state.py`'s
+docstring).
+
+Still NOT ported: the multi-channel market system, contracts, upgrades
+(including upgrades' storage `capacity_bonus`/`shelf_life_multiplier`
+effects and processing-capacity bonuses -- Phase 2-4 use only the base
+`config/storage.json`/`config/processing.json` values). See
+vectorized/README.md's roadmap.
 
 Kept in lockstep with reference.py: same branch order, same draw order, same
 float32 rounding on every state write (see reference.py's docstring). That
@@ -138,6 +176,48 @@ def _next(state):
     return state, uniform
 
 
+@njit(cache=True)
+def _trim_to_capacity(lot_item_id_row, lot_quantity_row, lot_age_days_row, eff_life, capacity):
+    """FEFO capacity trim for one run's lot-slot row, in place.
+
+    Matches `simulation/inventory.py:_trim_to_capacity` -- shared by both
+    call sites the same way the real function is (`age_and_spoil`'s nightly
+    trim, and `enforce_storage_capacity`'s same-day re-trim right after
+    processing jobs complete -- see Phase 4 in this module's docstring for
+    why a completing job's output needs a second same-day trim pass).
+    Returns units spoiled by trimming; does not touch `total_spoiled`
+    itself, matching the real function's own division of labor (each call
+    site folds the return value into its own running tally).
+    """
+    num_lot_slots = lot_item_id_row.shape[0]
+    total_qty = 0
+    for s in range(num_lot_slots):
+        if lot_item_id_row[s] >= 0:
+            total_qty += lot_quantity_row[s]
+    overflow_units = total_qty - capacity
+    spoiled = 0
+    while overflow_units > 0:
+        chosen = -1
+        chosen_remaining = 0.0
+        for s in range(num_lot_slots):
+            if lot_item_id_row[s] < 0:
+                continue
+            item = lot_item_id_row[s]
+            remaining = np.float64(eff_life[item]) - np.float64(lot_age_days_row[s])
+            if chosen < 0 or remaining < chosen_remaining:
+                chosen = s
+                chosen_remaining = remaining
+        if chosen < 0:
+            break  # no occupied slots left -- shouldn't happen if overflow_units > 0
+        remove = min(overflow_units, lot_quantity_row[chosen])
+        lot_quantity_row[chosen] -= remove
+        overflow_units -= remove
+        spoiled += remove
+        if lot_quantity_row[chosen] == 0:
+            lot_item_id_row[chosen] = -1
+    return spoiled
+
+
 @njit(parallel=True, cache=True)
 def _simulate_chunk_core(
     money,
@@ -146,6 +226,7 @@ def _simulate_chunk_core(
     strategy_id,
     total_spoiled,
     total_storage_cost,
+    total_processed,
     moisture,
     nitrogen,
     phosphorus,
@@ -169,11 +250,17 @@ def _simulate_chunk_core(
     rng_run_state,
     rng_plot_state,
     # storage lots (Phase 2), shape (B, L), L = num_plots * config.lots_per_plot
+    # + config.base_capacity (Phase 4 reserves the +base_capacity for processed-
+    # product lots -- see state.py's docstring)
     lot_item_id,
     lot_quantity,
     lot_quality,
     lot_age_days,
     overflow_events,
+    # processing job slots (Phase 4), shape (B, J), J = config.base_capacity
+    job_output_item_id,
+    job_output_quantity,
+    job_completion_day,
     num_days,
     # crop arrays (component: config_arrays.VectorConfig)
     num_crops,
@@ -251,11 +338,22 @@ def _simulate_chunk_core(
     # markets
     market_minimum_supply_multiplier,
     market_supply_decay,
+    # processing (component: config_arrays.VectorConfig), one entry per recipe
+    recipe_input_item_idx,
+    recipe_input_quantity,
+    recipe_min_quality_rank,
+    recipe_output_item_idx,
+    recipe_output_quantity,
+    recipe_processing_days,
+    recipe_cost,
 ):
     num_runs = money.shape[0]
     num_plots = moisture.shape[1]
     num_seasons = season_rain_chance.shape[0]
     num_lot_slots = lot_item_id.shape[1]
+    num_job_slots = job_output_item_id.shape[1]
+    num_items = base_price.shape[0]  # num_crops + num_products (Phase 4 item space)
+    num_recipes = recipe_input_item_idx.shape[0]
 
     for r in prange(num_runs):
         m = np.float64(money[r])
@@ -263,6 +361,7 @@ def _simulate_chunk_core(
         tr = np.float64(total_revenue[r])
         ts = np.float64(total_spoiled[r])
         tc = np.float64(total_storage_cost[r])
+        tp = np.float64(total_processed[r])
         strat = strategy_id[r]
         run_state = rng_run_state[r]
 
@@ -270,8 +369,8 @@ def _simulate_chunk_core(
         # run (matching player.market_supply starting empty each game) and
         # unneeded after the run completes, so there's no reason to persist
         # them across chunk/run boundaries the way lot state has to be.
-        market_supply = np.zeros(num_crops, dtype=np.float64)
-        today_price = np.zeros(num_crops, dtype=np.float64)
+        market_supply = np.zeros(num_items, dtype=np.float64)
+        today_price = np.zeros(num_items, dtype=np.float64)
 
         for day in range(num_days):
             # -- weather (simulation/weather.py:generate_weather) --
@@ -292,8 +391,9 @@ def _simulate_chunk_core(
 
             # -- markets: daily price roll + supply decay
             # (simulation/markets.py:update_daily_prices) -- run-level, once/day,
-            # single-channel scope (see this module's docstring) --
-            for c in range(num_crops):
+            # single-channel scope, item-space (crops + processed products,
+            # Phase 4 -- see this module's docstring) --
+            for c in range(num_items):
                 seasonal = seasonal_demand[c, season]
                 supply = market_supply[c]
                 saturation = max(market_minimum_supply_multiplier, 1.0 - supply * 0.01)
@@ -621,32 +721,93 @@ def _simulate_chunk_core(
             # -- only sorts/mutates when something actually has to be trimmed, same
             # optimization the real engine documents: storage sits under capacity on
             # the overwhelming majority of days --
-            total_qty = 0
-            for s in range(num_lot_slots):
-                if lot_item_id[r, s] >= 0:
-                    total_qty += lot_quantity[r, s]
-            overflow_units = total_qty - storage_capacity
-            while overflow_units > 0:
-                chosen = -1
-                chosen_remaining = 0.0
+            ts += _trim_to_capacity(
+                lot_item_id[r],
+                lot_quantity[r],
+                lot_age_days[r],
+                effective_shelf_life_days,
+                storage_capacity,
+            )
+
+            # -- processing: jobs complete (simulation/processing.py:complete_jobs)
+            # -- run-level, once/day, after today's aging/trim so a completing job's
+            # output is unambiguously "produced today" (skipped by tomorrow's aging
+            # pass the same way a fresh harvest lot is) --
+            for j in range(num_job_slots):
+                if job_output_item_id[r, j] < 0:
+                    continue
+                if day < job_completion_day[r, j]:
+                    continue
+                out_item = job_output_item_id[r, j]
+                out_qty = job_output_quantity[r, j]
+                tp += out_qty
+                inserted = False
                 for s in range(num_lot_slots):
                     if lot_item_id[r, s] < 0:
-                        continue
-                    item = lot_item_id[r, s]
-                    remaining = np.float64(effective_shelf_life_days[item]) - np.float64(
-                        lot_age_days[r, s]
-                    )
-                    if chosen < 0 or remaining < chosen_remaining:
-                        chosen = s
-                        chosen_remaining = remaining
-                if chosen < 0:
-                    break  # no occupied slots left -- shouldn't happen if overflow_units > 0
-                remove = min(overflow_units, lot_quantity[r, chosen])
-                lot_quantity[r, chosen] -= remove
-                overflow_units -= remove
-                ts += remove
-                if lot_quantity[r, chosen] == 0:
-                    lot_item_id[r, chosen] = -1
+                        lot_item_id[r, s] = out_item
+                        lot_quantity[r, s] = out_qty
+                        lot_quality[r, s] = 2  # standard -- matches complete_jobs' hardcoded grade
+                        lot_age_days[r, s] = -1  # becomes 0 on tomorrow's aging pass
+                        inserted = True
+                        break
+                if not inserted:
+                    overflow_events[r] += 1
+                job_output_item_id[r, j] = -1
+                job_output_quantity[r, j] = 0
+
+            # -- storage: same-day re-trim (simulation/inventory.py:enforce_storage_capacity)
+            # -- a completing job's output is new inventory added after this day's
+            # aging/trim pass already ran, so without a second pass here, overflow it
+            # causes wouldn't spoil until tomorrow, letting today's sale use inventory
+            # that should already be gone (matches the real engine's own #19 fix) --
+            ts += _trim_to_capacity(
+                lot_item_id[r],
+                lot_quantity[r],
+                lot_age_days[r],
+                effective_shelf_life_days,
+                storage_capacity,
+            )
+
+            # -- processing: agent starts jobs (component C's choose_processing,
+            # simplified -- see this module's docstring) -- fixed recipe-order
+            # preference, same policy for all 3 strategies, matching "sell
+            # everything"'s no-per-strategy-branching precedent: try each recipe in
+            # config order, start it if a job slot is free and there's enough input
+            # inventory (at the recipe's min quality) and cash --
+            for rec in range(num_recipes):
+                free_slot = -1
+                for j in range(num_job_slots):
+                    if job_output_item_id[r, j] < 0:
+                        free_slot = j
+                        break
+                if free_slot < 0:
+                    break  # no free job slot -- nothing else can start today
+                in_item = recipe_input_item_idx[rec]
+                need = recipe_input_quantity[rec]
+                min_rank = recipe_min_quality_rank[rec]
+                cost = recipe_cost[rec]
+                if m < cost:
+                    continue
+                available = 0
+                for s in range(num_lot_slots):
+                    if lot_item_id[r, s] == in_item and lot_quality[r, s] >= min_rank:
+                        available += lot_quantity[r, s]
+                if available < need:
+                    continue
+                remaining = need
+                for s in range(num_lot_slots):
+                    if remaining <= 0:
+                        break
+                    if lot_item_id[r, s] == in_item and lot_quality[r, s] >= min_rank:
+                        take = min(remaining, lot_quantity[r, s])
+                        lot_quantity[r, s] -= take
+                        remaining -= take
+                        if lot_quantity[r, s] == 0:
+                            lot_item_id[r, s] = -1
+                m -= cost
+                job_output_item_id[r, free_slot] = recipe_output_item_idx[rec]
+                job_output_quantity[r, free_slot] = recipe_output_quantity[rec]
+                job_completion_day[r, free_slot] = day + recipe_processing_days[rec]
 
             # -- markets: sell all matured lots (component C's choose_sales,
             # simplified -- see this module's docstring) -- every lot still
@@ -684,6 +845,7 @@ def _simulate_chunk_core(
         total_revenue[r] = np.float32(tr)
         total_spoiled[r] = np.float32(ts)
         total_storage_cost[r] = np.float32(tc)
+        total_processed[r] = np.float32(tp)
         rng_run_state[r] = run_state
 
 
@@ -718,6 +880,7 @@ def simulate_chunk(
         state.strategy_id,
         state.total_spoiled,
         state.total_storage_cost,
+        state.total_processed,
         state.moisture,
         state.nitrogen,
         state.phosphorus,
@@ -745,6 +908,9 @@ def simulate_chunk(
         state.lot_quality,
         state.lot_age_days,
         overflow_events,
+        state.job_output_item_id,
+        state.job_output_quantity,
+        state.job_completion_day,
         num_days,
         config.num_crops,
         config.seed_cost,
@@ -815,14 +981,23 @@ def simulate_chunk(
         float(config.storage_daily_cost),
         float(config.market_minimum_supply_multiplier),
         float(config.market_supply_decay),
+        config.recipe_input_item_idx,
+        config.recipe_input_quantity,
+        config.recipe_min_quality_rank,
+        config.recipe_output_item_idx,
+        config.recipe_output_quantity,
+        config.recipe_processing_days,
+        config.recipe_cost,
     )
 
     if np.any(overflow_events):
         raise RuntimeError(
             "vectorized/kernel.py: lot-slot overflow -- a plot needed more concurrent "
-            "storage lots than config_arrays.py's lots_per_plot bound provides for. "
+            "storage/job-completion lots than config_arrays.py's lots_per_plot + "
+            "base_capacity bound provides for. "
             f"overflow_events={overflow_events[overflow_events > 0]!r} at run indices "
             f"{np.nonzero(overflow_events)[0]!r}. This means config/crops.json's "
-            "shelf_life_days/growth_days ratio drifted past the assumption "
-            "lots_per_plot was sized for -- see config_arrays.py's VectorConfig."
+            "shelf_life_days/growth_days ratio, or config/processing.json's "
+            "base_capacity, drifted past the assumption lots_per_plot was sized for "
+            "-- see config_arrays.py's VectorConfig."
         )

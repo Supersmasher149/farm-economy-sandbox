@@ -24,10 +24,21 @@ market variation, matching `simulation/derived.py:_build_market_profiles`'s
 `item.get("price_variation", default_variation)`) was already read in
 Phase 1 for the harvest-time price roll it's replacing.
 
+Phase 4 ("processing") added `config/processing.json` and, with it, a
+unified **item space**: `base_price`/`price_variation`/`seasonal_demand`/
+`effective_shelf_life_days` grew from crop-only arrays (length `num_crops`)
+to item arrays (length `num_items = num_crops + num_products`), index
+0..num_crops-1 still meaning exactly what it always has (`crop_type[r,p]`
+values are unchanged), index num_crops..num_items-1 meaning a processed
+product -- the same unification `simulation/derived.py`'s `items_by_id`
+already does for the real engine, so `lot_item_id` can hold either a crop
+or a product without a second lot-array system. See `kernel.py`'s module
+docstring for the processing mechanics this enables.
+
 Still NOT read here: `config/contracts.json`, `config/buyers.json`,
-`config/processing.json`, `config/upgrades.json`. Those subsystems aren't
-ported yet -- see vectorized/README.md's roadmap -- so loading their config
-now would be dead weight that silently goes stale.
+`config/upgrades.json`. Those subsystems aren't ported yet -- see
+vectorized/README.md's roadmap -- so loading their config now would be
+dead weight that silently goes stale.
 
 Only `unlock_requirement.type == "total_revenue"` is understood (the only
 type any shipped crop uses). A crop with a different unlock type fails to
@@ -52,6 +63,10 @@ CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 # immediately, so a crop with this sentinel is unlocked from day one.
 NO_UNLOCK_REQUIREMENT = np.float32(0.0)
 
+# Matches simulation/state.py:QUALITY_ORDER exactly -- a recipe's
+# min_quality gates which lots it can consume as input.
+_QUALITY_RANK = {"rejected": 0, "processing": 1, "standard": 2, "premium": 3}
+
 
 @dataclass(frozen=True)
 class VectorConfig:
@@ -62,8 +77,11 @@ class VectorConfig:
     growth_days: np.ndarray  # int16
     min_yield: np.ndarray  # int32 (roll_yield is an inclusive randint, not continuous)
     max_yield: np.ndarray  # int32
-    base_price: np.ndarray  # float32
-    price_variation: np.ndarray  # float32
+    # float32, ITEM-space (length num_items, Phase 4): index 0..num_crops-1 is
+    # this crop's own base_price, index num_crops.. is a processed product's
+    # processed_base_price -- see this module's docstring
+    base_price: np.ndarray
+    price_variation: np.ndarray  # float32, item-space (Phase 4), same layout as base_price
     loss_chance: np.ndarray  # float32
     water_interval_days: np.ndarray  # int16
     min_moisture: np.ndarray  # float32
@@ -79,12 +97,35 @@ class VectorConfig:
     family_id: np.ndarray  # int8, index into `families`
     unlock_total_revenue: np.ndarray  # float32, NO_UNLOCK_REQUIREMENT if none
     families: tuple
-    shelf_life_days: np.ndarray  # int16, c.get("shelf_life_days", 7)
-    # int16, derived: max(1, round(shelf_life_days * storage_shelf_life_multiplier))
+    shelf_life_days: np.ndarray  # int16, c.get("shelf_life_days", 7) -- crop-space only
+    # int16, ITEM-space (Phase 4): max(1, round(shelf_life_days * multiplier)) for
+    # crops (index < num_crops), or the producing recipe's own shelf_life_days for
+    # products (index >= num_crops) -- see this module's docstring
     effective_shelf_life_days: np.ndarray
-    # float32 (num_crops, 4), season order spring/summer/autumn/winter, from
-    # c.get("seasonal_demand", {}).get(season, 1.0)
+    # float32 (num_items, 4), ITEM-space (Phase 4), season order
+    # spring/summer/autumn/winter, from c.get("seasonal_demand", {}).get(season, 1.0)
     seasonal_demand: np.ndarray
+
+    # -- products (config/processing.json's "products" list), Phase 4, one
+    # entry per index num_crops..num_items-1 in the item-space arrays above --
+    num_products: int
+    num_items: int  # num_crops + num_products
+    product_ids: tuple
+
+    # -- recipes (config/processing.json's "recipes" list), Phase 4 --
+    num_recipes: int
+    recipe_input_item_idx: np.ndarray  # int8, item-space index (always a crop today)
+    recipe_input_quantity: np.ndarray  # int32
+    recipe_min_quality_rank: (
+        np.ndarray
+    )  # int8, QUALITY_ORDER rank, r.get("min_quality","processing")
+    recipe_output_item_idx: np.ndarray  # int8, item-space index (always a product today)
+    recipe_output_quantity: np.ndarray  # int32
+    recipe_processing_days: np.ndarray  # int16
+    recipe_cost: np.ndarray  # float32
+    # Concurrent processing job slots, global (not per-plot) -- see kernel.py's
+    # module docstring for why this is a tiny, provably-safe bound.
+    base_capacity: int
 
     # Preference rankings for the 3 fixed strategies (component C): crop
     # indices ordered by that strategy's preference, best first. The kernel
@@ -188,6 +229,7 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
     settings = _load_json(config_dir, "simulation_settings.json")
     storage = _load_json(config_dir, "storage.json")
     markets = _load_json(config_dir, "markets.json")
+    processing = _load_json(config_dir, "processing.json")
 
     crop_ids = tuple(c["id"] for c in crops)
     num_crops = len(crop_ids)
@@ -285,6 +327,94 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
         )
         + 1
     )
+
+    # -- item space (Phase 4): crops (0..num_crops-1) + products
+    # (num_crops..num_items-1) -- see this module's docstring --
+    products = processing.get("products", [])
+    product_ids = tuple(p["id"] for p in products)
+    num_products = len(product_ids)
+    num_items = num_crops + num_products
+    item_ids = crop_ids + product_ids
+    item_index = {item_id: i for i, item_id in enumerate(item_ids)}
+
+    recipes = processing.get("recipes", [])
+    # A product's shelf life is recipe-specific in simulation/state.py's
+    # ProcessingJob (each job stores its own shelf_life_days from the recipe
+    # that started it), not a per-item constant -- but this module's
+    # item-space arrays need exactly one value per item. That's only sound
+    # if every product has exactly one producing recipe (true of every
+    # shipped recipe today); a second recipe producing the same output with
+    # a different shelf_life_days would silently pick whichever recipe's
+    # value happened to be seen last, so that case fails loudly instead.
+    product_shelf_life_days: dict = {}
+    for r in recipes:
+        out_id = r["output_item_id"]
+        life = r.get("shelf_life_days", 30)
+        if out_id in product_shelf_life_days and product_shelf_life_days[out_id] != life:
+            raise NotImplementedError(
+                f"product {out_id!r} is produced by recipes with different "
+                f"shelf_life_days ({product_shelf_life_days[out_id]!r} vs {life!r}) -- "
+                "vectorized/config_arrays.py's item-space effective_shelf_life_days "
+                "assumes one shelf life per product, matching every shipped recipe "
+                "today; add per-recipe shelf life tracking before loading this config."
+            )
+        product_shelf_life_days[out_id] = life
+
+    product_base_price = np.array(
+        [p.get("processed_base_price", p.get("base_price", 1.0)) for p in products],
+        dtype=np.float32,
+    )
+    product_price_variation = np.array(
+        [p.get("price_variation", 0.12) for p in products], dtype=np.float32
+    )
+    product_seasonal_demand = np.array(
+        [[p.get("seasonal_demand", {}).get(s, 1.0) for s in season_names] for p in products],
+        dtype=np.float32,
+    ).reshape(num_products, 4)
+    product_shelf_life = np.array(
+        [product_shelf_life_days.get(pid, 30) for pid in product_ids], dtype=np.int16
+    )
+    product_effective_shelf_life_days = np.maximum(
+        1,
+        np.round(product_shelf_life.astype(np.float64) * float(storage_shelf_life_multiplier)),
+    ).astype(np.int16)
+
+    base_price = np.concatenate([base_price, product_base_price])
+    price_variation = np.concatenate([price_variation, product_price_variation])
+    seasonal_demand = np.concatenate([seasonal_demand, product_seasonal_demand], axis=0)
+    effective_shelf_life_days = np.concatenate(
+        [effective_shelf_life_days, product_effective_shelf_life_days]
+    )
+
+    def _resolve_item(item_id: str, recipe_id: str, field: str) -> int:
+        if item_id not in item_index:
+            raise NotImplementedError(
+                f"recipe {recipe_id!r}'s {field}={item_id!r} is not a known crop or "
+                "product id -- vectorized/config_arrays.py's item space only covers "
+                "config/crops.json + config/processing.json's products list; add it "
+                "there before loading this config."
+            )
+        return item_index[item_id]
+
+    num_recipes = len(recipes)
+    recipe_input_item_idx = np.array(
+        [_resolve_item(r["input_item_id"], r["id"], "input_item_id") for r in recipes],
+        dtype=np.int8,
+    )
+    recipe_input_quantity = np.array([r["input_quantity"] for r in recipes], dtype=np.int32)
+    recipe_min_quality_rank = np.array(
+        [_QUALITY_RANK[r.get("min_quality", "processing")] for r in recipes], dtype=np.int8
+    )
+    recipe_output_item_idx = np.array(
+        [_resolve_item(r["output_item_id"], r["id"], "output_item_id") for r in recipes],
+        dtype=np.int8,
+    )
+    recipe_output_quantity = np.array([r["output_quantity"] for r in recipes], dtype=np.int32)
+    recipe_processing_days = np.array(
+        [r.get("processing_days", 1) for r in recipes], dtype=np.int16
+    )
+    recipe_cost = np.array([r.get("cost", 0.0) for r in recipes], dtype=np.float32)
+    base_capacity = int(processing.get("base_capacity", 1))
 
     return VectorConfig(
         crop_ids=crop_ids,
@@ -385,5 +515,17 @@ def load_vector_config(config_dir: Path = CONFIG_DIR) -> VectorConfig:
         lots_per_plot=lots_per_plot,
         market_minimum_supply_multiplier=market_minimum_supply_multiplier,
         market_supply_decay=market_supply_decay,
+        num_products=num_products,
+        num_items=num_items,
+        product_ids=product_ids,
+        num_recipes=num_recipes,
+        recipe_input_item_idx=recipe_input_item_idx,
+        recipe_input_quantity=recipe_input_quantity,
+        recipe_min_quality_rank=recipe_min_quality_rank,
+        recipe_output_item_idx=recipe_output_item_idx,
+        recipe_output_quantity=recipe_output_quantity,
+        recipe_processing_days=recipe_processing_days,
+        recipe_cost=recipe_cost,
+        base_capacity=base_capacity,
         start_money=np.float32(settings.get("start_money", 100)),
     )

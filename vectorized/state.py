@@ -28,6 +28,20 @@ per-run scratch, reset fresh each run, see `kernel.py`'s docstring). No new
 `BatchState` fields were needed for this: Phase 2's lot-slot dimension and
 `total_spoiled`/`total_storage_cost`/`total_harvest`/`total_revenue` fields
 already covered everything Phase 3 needed to report.
+
+Phase 4 ("processing") added a fixed-size per-run job-slot dimension
+`(B, J)`, `J = config.base_capacity` -- the real engine's own processing
+capacity, not a per-plot bound the way lot slots are, since a processing
+job is a global (not per-plot) resource, mirroring
+`simulation/state.py`'s `ProcessingJob` list the same bounded-array way
+Phase 2 bounded `InventoryLot`. A completed job's output becomes an
+ordinary lot in the *existing* lot-slot array (see `config_arrays.py`'s
+item-space docstring for why crops and processed products share one
+array) -- callers now size `num_lot_slots` as `num_plots *
+config.lots_per_plot + config.base_capacity`, reserving one extra lot
+slot per concurrent job so a completing job's output always has
+somewhere to go (at most `base_capacity` jobs can be in flight, so at
+most that many product lots can be pending at once).
 """
 
 from __future__ import annotations
@@ -49,6 +63,9 @@ class BatchState:
     total_spoiled: np.ndarray  # float32 (B,) -- cumulative units lost to age-out + capacity trim
     # float32 (B,) -- cumulative storage liability charged (shadow: not subtracted from money)
     total_storage_cost: np.ndarray
+    # float32 (B,) -- cumulative processed-product units completed (Phase 4),
+    # matches simulation/state.py's player.total_processed
+    total_processed: np.ndarray
 
     # -- plot-level: soil --
     moisture: np.ndarray  # float32 (B, P)
@@ -90,6 +107,11 @@ class BatchState:
     lot_quality: np.ndarray
     lot_age_days: np.ndarray  # int16 (B, L)
 
+    # -- job-level: processing (Phase 4), shape (B, J), J = config.base_capacity --
+    job_output_item_id: np.ndarray  # int8 (B, J), -1 == empty slot
+    job_output_quantity: np.ndarray  # int32 (B, J)
+    job_completion_day: np.ndarray  # int32 (B, J) -- absolute day the job's output is ready
+
     @property
     def num_runs(self) -> int:
         return self.money.shape[0]
@@ -102,18 +124,24 @@ class BatchState:
     def num_lot_slots(self) -> int:
         return self.lot_item_id.shape[1]
 
+    @property
+    def num_job_slots(self) -> int:
+        return self.job_output_item_id.shape[1]
 
-def bytes_per_run(num_plots: int, num_lot_slots: int) -> int:
+
+def bytes_per_run(num_plots: int, num_lot_slots: int, num_job_slots: int) -> int:
     """Bytes/run this layout costs, for `run_millions`' memory-budget chunking.
 
     Closed-form sum kept in sync with the dataclass fields above by hand --
     exact because it's small and reviewed alongside the fields, not because
     it's introspected. `num_lot_slots` is normally `num_plots *
-    config.lots_per_plot` (see `config_arrays.py`), passed explicitly here
+    config.lots_per_plot + config.base_capacity` and `num_job_slots` is
+    `config.base_capacity` (see `config_arrays.py`), passed explicitly here
     rather than derived so this module doesn't need a `VectorConfig` import.
     """
-    # money, total_harvest, total_revenue, strategy_id, rng_run, total_spoiled, total_storage_cost
-    per_run = 4 + 4 + 4 + 1 + 8 + 4 + 4
+    # money, total_harvest, total_revenue, strategy_id, rng_run, total_spoiled,
+    # total_storage_cost, total_processed
+    per_run = 4 + 4 + 4 + 1 + 8 + 4 + 4 + 4
     per_plot = (
         4 * 8  # moisture, nitrogen, phosphorus, potassium, ph, soil_health, pest, disease (f4)
         + 1 * 4  # crop_type, growth_stage, previous_crop_family, fertilized (i1)
@@ -125,10 +153,15 @@ def bytes_per_run(num_plots: int, num_lot_slots: int) -> int:
     per_lot_slot = (
         1 + 4 + 1 + 2
     )  # lot_item_id(i1) + lot_quantity(i4) + lot_quality(i1) + lot_age_days(i2)
-    return per_run + num_plots * per_plot + num_lot_slots * per_lot_slot
+    per_job_slot = (
+        1 + 4 + 4
+    )  # job_output_item_id(i1) + job_output_quantity(i4) + completion_day(i4)
+    return (
+        per_run + num_plots * per_plot + num_lot_slots * per_lot_slot + num_job_slots * per_job_slot
+    )
 
 
-def allocate(num_runs: int, num_plots: int, num_lot_slots: int) -> BatchState:
+def allocate(num_runs: int, num_plots: int, num_lot_slots: int, num_job_slots: int) -> BatchState:
     """Allocate an uninitialized chunk. Call `init_runs` before simulating."""
     f4 = lambda: np.empty((num_runs, num_plots), dtype=np.float32)  # noqa: E731
     i1 = lambda: np.empty((num_runs, num_plots), dtype=np.int8)  # noqa: E731
@@ -140,6 +173,7 @@ def allocate(num_runs: int, num_plots: int, num_lot_slots: int) -> BatchState:
         strategy_id=np.empty(num_runs, dtype=np.int8),
         total_spoiled=np.empty(num_runs, dtype=np.float32),
         total_storage_cost=np.empty(num_runs, dtype=np.float32),
+        total_processed=np.empty(num_runs, dtype=np.float32),
         moisture=f4(),
         nitrogen=f4(),
         phosphorus=f4(),
@@ -166,6 +200,9 @@ def allocate(num_runs: int, num_plots: int, num_lot_slots: int) -> BatchState:
         lot_quantity=np.empty((num_runs, num_lot_slots), dtype=np.int32),
         lot_quality=np.empty((num_runs, num_lot_slots), dtype=np.int8),
         lot_age_days=np.empty((num_runs, num_lot_slots), dtype=np.int16),
+        job_output_item_id=np.empty((num_runs, num_job_slots), dtype=np.int8),
+        job_output_quantity=np.empty((num_runs, num_job_slots), dtype=np.int32),
+        job_completion_day=np.empty((num_runs, num_job_slots), dtype=np.int32),
     )
 
 
@@ -214,6 +251,7 @@ def init_runs(
     state.total_revenue[:] = 0.0
     state.strategy_id[:] = strategy_of_run
     state.total_spoiled[:] = 0.0
+    state.total_processed[:] = 0.0
     state.total_storage_cost[:] = 0.0
 
     state.moisture[:, :] = config.initial_moisture
@@ -244,3 +282,7 @@ def init_runs(
     state.lot_quantity[:, :] = 0
     state.lot_quality[:, :] = 0
     state.lot_age_days[:, :] = 0
+
+    state.job_output_item_id[:, :] = -1
+    state.job_output_quantity[:, :] = 0
+    state.job_completion_day[:, :] = 0
