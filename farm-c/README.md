@@ -9,6 +9,15 @@ loader, `FarmState` day loop, weather, crop growth). No `farm-c` code runs
 inside a real batch yet -- there is no engine here, only the agent decision
 surface and what it needs.
 
+Also here, as the first piece of the actual engine port (Phase 0 of
+`../docs/c-port-plan.md`'s "full engine" follow-up): `src/rng.c`, a
+bit-exact MT19937 port of `random.Random`, the single-generator RNG
+`../simulation/random_events.py:RandomEvents` wraps and every physics/market/
+contract module downstream of it depends on. It doesn't run inside the
+agent port above (agents never touch the RNG directly) -- it's staged here
+ahead of Phase 1 (weather/crop_growth), which is the first module that
+actually calls it.
+
 ## Scope boundary
 
 **Faithful, full-fidelity port** (pure functions, no engine/physics
@@ -62,14 +71,15 @@ calls any of these directly.
 ```
 include/            farm_types.h, config.h, state.h, agent.h, economy.h,
                      markets.h, inventory.h, contracts.h, derived.h,
-                     rng_hash.h, blake2b.h, vec_util.h
+                     rng.h, rng_hash.h, blake2b.h, vec_util.h
 src/                 economy_rules.c, markets.c, inventory.c, contracts.c,
-                     derived.c, rng_hash.c, blake2b.c, config.c, state.c,
-                     vec_util.c, agent.c, agent_registry.c
+                     derived.c, rng.c, rng_hash.c, blake2b.c, config.c,
+                     state.c, vec_util.c, agent.c, agent_registry.c
 src/agents/          base.c (shared defaults + route_sales_by_best_price),
                      one file per agent, matching ../agents/*.py 1:1
-tests/               test_agents.c (fixture-driven parity test),
-                     fixtures/agents.json (generated, checked in),
+tests/               test_agents.c (fixture-driven parity test for the
+                     agent port), test_rng.c (same, for rng.c),
+                     fixtures/{agents,rng}.json (generated, checked in),
                      third_party/cJSON.{h,c} (vendored, MIT -- fixture
                      parsing only, not a production config loader)
 ```
@@ -78,15 +88,28 @@ tests/               test_agents.c (fixture-driven parity test),
 
 ```bash
 cd farm-c
-make fixtures   # regenerates tests/fixtures/agents.json from the real
-                # Python agents (needs the repo's venv; see
-                # ../tools/export_agent_fixtures.py)
-make test       # builds and runs tests/test_agents under
-                # -fsanitize=address,undefined
+make fixtures      # regenerates tests/fixtures/agents.json from the real
+                    # Python agents (needs the repo's venv; see
+                    # ../tools/export_agent_fixtures.py)
+make fixtures-rng   # regenerates tests/fixtures/rng.json from CPython's
+                    # random.Random (see ../tools/export_rng_fixtures.py)
+make test           # builds and runs every tests/test_* binary under
+                    # -fsanitize=address,undefined
 ```
 
 `make test` alone (no Python needed) re-runs against whatever fixtures are
 already checked in.
+
+Every compile/link rule builds with `-ffp-contract=off`. Without it, a
+compiler may legally fuse an expression shaped like `a + (b - a) * x` (e.g.
+`rng_uniform`) into a single-rounded FMA instead of two separately-rounded
+IEEE-754 operations -- Python never does this, so it silently produces
+1-ulp divergences that only `-ffp-contract=off` prevents. This is exactly
+what caught `rng_uniform`/`rng_roll_price` drifting from the Python oracle
+in ~2% of `test_rng.c`'s cases before the flag was added (see
+`docs/c-port-plan.md` Section 7, and `../simulation/_fastplotmodule.c`'s
+header comment for the same requirement on the existing weather/crop-growth
+kernel).
 
 ## Verification
 
@@ -113,6 +136,18 @@ fixture-based instead, with the real Python agents as the oracle:
    **real** `config/crops.json` (not the synthetic fixture world) into both
    languages and compared day-0 `choose_crop` for six agents directly against
    the real Python classes -- exact match on every one.
+4. `src/rng.c` is verified the same way, against `random.Random` as the
+   oracle instead of the agents: `tools/export_rng_fixtures.py` seeds a real
+   `RandomEvents` for 8 seeds (chosen to cover both the single- and
+   two-32-bit-word branches of Python's integer seeding) and records a
+   long, fixed-order, 2800-call-per-seed sequence across all 7
+   `RandomEvents` operations; `tests/test_rng.c` replays the identical
+   sequence through one `FarmRng` seeded the same way and asserts every
+   result matches with `==`, not an epsilon -- currently **22400 checks, 0
+   failed**. The sequence length deliberately crosses MT19937's 624-word
+   regeneration boundary several times per seed, and includes `choice`
+   calls over a length-1 sequence to force `_randbelow`'s rejection-sampling
+   loop to actually reject and redraw.
 
 ## Known simplifications / follow-ups
 
