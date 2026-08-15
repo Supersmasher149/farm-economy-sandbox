@@ -1,0 +1,3293 @@
+{
+  "cases": [
+    {
+      "agent": "fast_seller",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [
+        {
+          "contract_id": 0,
+          "quantity": 4
+        }
+      ],
+      "method": "choose_contract_deliveries",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [
+        {
+          "channel_id": 0,
+          "item_id": 0,
+          "quality": null,
+          "quantity": 6
+        },
+        {
+          "channel_id": 0,
+          "item_id": 1,
+          "quality": null,
+          "quantity": 5
+        },
+        {
+          "channel_id": 0,
+          "item_id": 3,
+          "quality": null,
+          "quantity": 2
+        }
+      ],
+      "method": "choose_sales",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [
+        {
+          "contract_id": 0,
+          "quantity": 4
+        }
+      ],
+      "method": "choose_contract_deliveries",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [
+        {
+          "batches": 2,
+          "recipe_id": 0
+        }
+      ],
+      "method": "choose_processing",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [
+        {
+          "channel_id": 1,
+          "item_id": 0,
+          "quality": 2,
+          "quantity": 6
+        },
+        {
+          "channel_id": 1,
+          "item_id": 1,
+          "quality": 2,
+          "quantity": 5
+        },
+        {
+          "channel_id": 1,
+          "item_id": 3,
+          "quality": 2,
+          "quantity": 2
+        }
+      ],
+      "method": "choose_sales",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [
+        {
+          "contract_id": 0,
+          "quantity": 4
+        }
+      ],
+      "method": "choose_contract_deliveries",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [
+        {
+          "batches": 2,
+          "recipe_id": 0
+        }
+      ],
+      "method": "choose_processing",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [
+        {
+          "channel_id": 1,
+          "item_id": 0,
+          "quality": 2,
+          "quantity": 6
+        },
+        {
+          "channel_id": 1,
+          "item_id": 1,
+          "quality": 2,
+          "quantity": 5
+        },
+        {
+          "channel_id": 1,
+          "item_id": 3,
+          "quality": 2,
+          "quantity": 2
+        }
+      ],
+      "method": "choose_sales",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": 2,
+      "method": "choose_crop",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [
+        {
+          "contract_id": 0,
+          "quantity": 4
+        }
+      ],
+      "method": "choose_contract_deliveries",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [
+        {
+          "channel_id": 0,
+          "item_id": 0,
+          "quality": null,
+          "quantity": 6
+        },
+        {
+          "channel_id": 0,
+          "item_id": 1,
+          "quality": null,
+          "quantity": 5
+        },
+        {
+          "channel_id": 0,
+          "item_id": 3,
+          "quality": null,
+          "quantity": 2
+        }
+      ],
+      "method": "choose_sales",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [
+        {
+          "contract_id": 0,
+          "quantity": 4
+        }
+      ],
+      "method": "choose_contract_deliveries",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [
+        {
+          "channel_id": 0,
+          "item_id": 0,
+          "quality": null,
+          "quantity": 6
+        },
+        {
+          "channel_id": 0,
+          "item_id": 1,
+          "quality": null,
+          "quantity": 5
+        },
+        {
+          "channel_id": 0,
+          "item_id": 3,
+          "quality": null,
+          "quantity": 2
+        }
+      ],
+      "method": "choose_sales",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "diversifier",
+      "expected": 2,
+      "method": "choose_crop",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "diversifier",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "diversifier",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "diversifier",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "diversifier",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [
+        {
+          "contract_id": 0,
+          "quantity": 4
+        }
+      ],
+      "method": "choose_contract_deliveries",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [
+        {
+          "channel_id": 1,
+          "item_id": 0,
+          "quality": 2,
+          "quantity": 6
+        },
+        {
+          "channel_id": 1,
+          "item_id": 1,
+          "quality": 2,
+          "quantity": 5
+        },
+        {
+          "channel_id": 1,
+          "item_id": 3,
+          "quality": 2,
+          "quantity": 2
+        }
+      ],
+      "method": "choose_sales",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [
+        {
+          "contract_id": 0,
+          "quantity": 4
+        }
+      ],
+      "method": "choose_contract_deliveries",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [
+        {
+          "channel_id": 1,
+          "item_id": 0,
+          "quality": 2,
+          "quantity": 6
+        },
+        {
+          "channel_id": 1,
+          "item_id": 1,
+          "quality": 2,
+          "quantity": 5
+        },
+        {
+          "channel_id": 1,
+          "item_id": 3,
+          "quality": 2,
+          "quantity": 2
+        }
+      ],
+      "method": "choose_sales",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "progression_player",
+      "expected": 1,
+      "method": "choose_crop",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "progression_player",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "progression_player",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "progression_player",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "progression_player",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [
+        {
+          "contract_id": 0,
+          "quantity": 4
+        }
+      ],
+      "method": "choose_contract_deliveries",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [
+        {
+          "channel_id": 1,
+          "item_id": 0,
+          "quality": 2,
+          "quantity": 6
+        },
+        {
+          "channel_id": 1,
+          "item_id": 1,
+          "quality": 2,
+          "quantity": 5
+        },
+        {
+          "channel_id": 1,
+          "item_id": 3,
+          "quality": 2,
+          "quantity": 2
+        }
+      ],
+      "method": "choose_sales",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [
+        {
+          "contract_id": 0,
+          "quantity": 4
+        }
+      ],
+      "method": "choose_contract_deliveries",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [
+        {
+          "batches": 2,
+          "recipe_id": 0
+        }
+      ],
+      "method": "choose_processing",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [
+        {
+          "channel_id": 1,
+          "item_id": 0,
+          "quality": 2,
+          "quantity": 6
+        },
+        {
+          "channel_id": 1,
+          "item_id": 1,
+          "quality": 2,
+          "quantity": 5
+        },
+        {
+          "channel_id": 1,
+          "item_id": 3,
+          "quality": 2,
+          "quantity": 2
+        }
+      ],
+      "method": "choose_sales",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [
+        {
+          "contract_id": 0,
+          "quantity": 4
+        }
+      ],
+      "method": "choose_contract_deliveries",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [
+        {
+          "batches": 2,
+          "recipe_id": 0
+        }
+      ],
+      "method": "choose_processing",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [
+        {
+          "channel_id": 1,
+          "item_id": 0,
+          "quality": 2,
+          "quantity": 6
+        },
+        {
+          "channel_id": 1,
+          "item_id": 1,
+          "quality": 2,
+          "quantity": 5
+        },
+        {
+          "channel_id": 1,
+          "item_id": 3,
+          "quality": 2,
+          "quantity": 2
+        }
+      ],
+      "method": "choose_sales",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "random_agent",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "random_agent",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "random_agent",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "random_agent",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "random_agent",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [
+        {
+          "contract_id": 0,
+          "quantity": 4
+        }
+      ],
+      "method": "choose_contract_deliveries",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [
+        {
+          "channel_id": 0,
+          "item_id": 0,
+          "quality": null,
+          "quantity": 6
+        },
+        {
+          "channel_id": 0,
+          "item_id": 1,
+          "quality": null,
+          "quantity": 5
+        },
+        {
+          "channel_id": 0,
+          "item_id": 3,
+          "quality": null,
+          "quantity": 2
+        }
+      ],
+      "method": "choose_sales",
+      "scenario": "base_happy_path"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "diversifier",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "diversifier",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "diversifier",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "diversifier",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "diversifier",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "progression_player",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "progression_player",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "progression_player",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "progression_player",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "progression_player",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "random_agent",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "random_agent",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "random_agent",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "random_agent",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "random_agent",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "recovery_low_money"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": 2,
+      "method": "choose_crop",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "diversifier",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "diversifier",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "diversifier",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "diversifier",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "diversifier",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "progression_player",
+      "expected": 1,
+      "method": "choose_crop",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "progression_player",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "progression_player",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "progression_player",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "progression_player",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "random_agent",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "random_agent",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "random_agent",
+      "expected": false,
+      "method": "should_water",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "random_agent",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "random_agent",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "low_soil_health_critical"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fast_seller",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "no_upgrade_player",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "neglectful_grower",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": 1,
+      "method": "choose_crop",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "reckless_spender",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "risk_averse_grower",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "diversifier",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "diversifier",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "diversifier",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "diversifier",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "diversifier",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "diversifier",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": true,
+      "method": "should_buy_upgrade",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "upgrade_rusher",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "progression_player",
+      "expected": 1,
+      "method": "choose_crop",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "progression_player",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "progression_player",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "progression_player",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "progression_player",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "progression_player",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "profit_optimizer",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": true,
+      "method": "should_fertilize",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": true,
+      "method": "should_use_fertilizer",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "fertilizer_maximalist",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "random_agent",
+      "expected": 0,
+      "method": "choose_crop",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "random_agent",
+      "expected": false,
+      "method": "should_buy_upgrade",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "random_agent",
+      "expected": true,
+      "method": "should_water",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "random_agent",
+      "expected": false,
+      "method": "should_fertilize",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "random_agent",
+      "expected": false,
+      "method": "should_use_fertilizer",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_contracts",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_contract_deliveries",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_processing",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    },
+    {
+      "agent": "random_agent",
+      "expected": [],
+      "method": "choose_sales",
+      "scenario": "upgrade_cooldown_and_spend_cap"
+    }
+  ],
+  "config": {
+    "buyers": [
+      {
+        "external_id": "local_buyer",
+        "id": 0
+      },
+      {
+        "external_id": "regional_buyer",
+        "id": 1
+      }
+    ],
+    "channels": [
+      {
+        "channel_id": 0,
+        "daily_capacity": null,
+        "external_id": "spot",
+        "fee_rate": 0.0,
+        "flat_fee": 0.0,
+        "min_quality": "rejected",
+        "min_reputation": 0,
+        "price_multiplier": 1.0,
+        "reputation_bonus": 0.002
+      },
+      {
+        "channel_id": 1,
+        "daily_capacity": 20,
+        "external_id": "farm_stand",
+        "fee_rate": 0.02,
+        "flat_fee": 1.0,
+        "min_quality": "standard",
+        "min_reputation": 0,
+        "price_multiplier": 1.4,
+        "reputation_bonus": 0.002
+      }
+    ],
+    "contracts_config": {
+      "fallback_price_multiplier": 1.15,
+      "offer_expiry_days": 3,
+      "production_safety_factor": 0.45
+    },
+    "crops": [
+      {
+        "external_id": "cornsilk",
+        "family": "grain",
+        "growth_days": 3,
+        "item_id": 0,
+        "loss_chance": 0.05,
+        "max_yield": 4,
+        "min_yield": 2,
+        "nutrient_demand": {
+          "nitrogen": 0.01,
+          "phosphorus": 0.01,
+          "potassium": 0.01
+        },
+        "role": "fast",
+        "seed_cost": 5.0,
+        "unlock_requirement": {
+          "type": "none"
+        },
+        "water_interval_days": 1
+      },
+      {
+        "external_id": "purplehaze",
+        "family": "flower",
+        "growth_days": 6,
+        "item_id": 1,
+        "loss_chance": 0.1,
+        "max_yield": 4,
+        "min_yield": 2,
+        "nutrient_demand": {
+          "nitrogen": 0.03,
+          "phosphorus": 0.02,
+          "potassium": 0.02
+        },
+        "role": "standard",
+        "seed_cost": 20.0,
+        "unlock_requirement": {
+          "type": "none"
+        },
+        "water_interval_days": 2
+      },
+      {
+        "external_id": "goldenwheat",
+        "family": "grain",
+        "growth_days": 10,
+        "item_id": 2,
+        "loss_chance": 0.08,
+        "max_yield": 9,
+        "min_yield": 5,
+        "nutrient_demand": {
+          "nitrogen": 0.02,
+          "phosphorus": 0.02,
+          "potassium": 0.02
+        },
+        "role": "standard",
+        "seed_cost": 40.0,
+        "unlock_requirement": {
+          "revenue_threshold": 500,
+          "type": "total_revenue"
+        },
+        "water_interval_days": 3
+      }
+    ],
+    "fertilizer": {
+      "cost": 4.0,
+      "loss_chance_reduction": 0.04,
+      "yield_bonus_pct": 0.15
+    },
+    "items": [
+      {
+        "base_price": 3.0,
+        "external_id": "cornsilk",
+        "id": 0,
+        "price_variation": 0.1,
+        "type": "crop"
+      },
+      {
+        "base_price": 8.0,
+        "external_id": "purplehaze",
+        "id": 1,
+        "price_variation": 0.1,
+        "type": "crop"
+      },
+      {
+        "base_price": 6.0,
+        "external_id": "goldenwheat",
+        "id": 2,
+        "price_variation": 0.1,
+        "type": "crop"
+      },
+      {
+        "base_price": 15.0,
+        "external_id": "flour",
+        "id": 3,
+        "price_variation": 0.1,
+        "type": "product"
+      }
+    ],
+    "recipes": [
+      {
+        "cost": 2.0,
+        "external_id": "mill_cornsilk",
+        "id": 0,
+        "input_item_id": 0,
+        "input_quantity": 3,
+        "min_quality": "processing",
+        "output_item_id": 3,
+        "output_quantity": 1,
+        "processing_days": 2
+      }
+    ],
+    "upgrades": [
+      {
+        "cost": 60.0,
+        "effect": {
+          "amount": 0.2,
+          "type": "growth_time_reduction"
+        },
+        "external_id": "irrigation_system",
+        "id": 0
+      },
+      {
+        "cost": 40.0,
+        "effect": {
+          "amount": 2,
+          "type": "capacity"
+        },
+        "external_id": "storage_shed",
+        "id": 1
+      }
+    ]
+  },
+  "scenarios": [
+    {
+      "active_contracts": [
+        {
+          "accepted": false,
+          "buyer_id": 0,
+          "deadline_day": 20,
+          "delivered": 2,
+          "item_id": 1,
+          "min_quality": "standard",
+          "offered_day": 0,
+          "penalty_rate": 0.15,
+          "quantity": 6,
+          "resolved": false,
+          "unit_price": 12.0
+        }
+      ],
+      "buyer_relationships": {},
+      "channel_capacity_used": {},
+      "contract_offers": [
+        {
+          "accepted": false,
+          "buyer_id": 1,
+          "deadline_day": 25,
+          "delivered": 0,
+          "item_id": 0,
+          "min_quality": "standard",
+          "offered_day": 8,
+          "penalty_rate": 0.1,
+          "quantity": 5,
+          "resolved": false,
+          "unit_price": 4.5
+        },
+        {
+          "accepted": false,
+          "buyer_id": 0,
+          "deadline_day": 40,
+          "delivered": 0,
+          "item_id": 1,
+          "min_quality": "standard",
+          "offered_day": 8,
+          "penalty_rate": 0.15,
+          "quantity": 8,
+          "resolved": false,
+          "unit_price": 9.0
+        }
+      ],
+      "crop_plant_counts": {
+        "0": 1,
+        "1": 3
+      },
+      "day": 10,
+      "expenses_by_category": {},
+      "focus": {
+        "crop_item_id": 1,
+        "planted_index": 0,
+        "upgrade_id": 0
+      },
+      "has_highest_money": true,
+      "has_processing_capacity": true,
+      "has_run_seed": true,
+      "highest_money": 220.0,
+      "inventory_lots": [
+        {
+          "age_days": 0,
+          "effective_shelf_life_days": null,
+          "item_id": 1,
+          "item_type": "crop",
+          "produced_day": 0,
+          "quality": "standard",
+          "quantity": 5,
+          "shelf_life_days": 7,
+          "unit_cost": 0.0
+        },
+        {
+          "age_days": 0,
+          "effective_shelf_life_days": null,
+          "item_id": 0,
+          "item_type": "crop",
+          "produced_day": 0,
+          "quality": "standard",
+          "quantity": 6,
+          "shelf_life_days": 7,
+          "unit_cost": 0.0
+        },
+        {
+          "age_days": 0,
+          "effective_shelf_life_days": null,
+          "item_id": 3,
+          "item_type": "product",
+          "produced_day": 0,
+          "quality": "standard",
+          "quantity": 2,
+          "shelf_life_days": 7,
+          "unit_cost": 0.0
+        }
+      ],
+      "market_prices": {
+        "0": 3.2,
+        "1": 8.5,
+        "3": 15.5
+      },
+      "money": 200.0,
+      "name": "base_happy_path",
+      "operating_reserve": 20.0,
+      "planted": [
+        {
+          "accrued_cost": 0.0,
+          "crop_item_id": 1,
+          "day_planted": 4,
+          "disease_stress": 0.0,
+          "fertilized": false,
+          "growth_days_required": 6,
+          "last_watered_day": 9,
+          "neglect_days": 0,
+          "nutrient_stress": 0.0,
+          "pest_stress": 0.0,
+          "plot_index": 0,
+          "temperature_stress": 0.0,
+          "water_stress": 0.0
+        }
+      ],
+      "plots": [
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.75,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.75,
+          "potassium": 0.75,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        },
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.75,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.75,
+          "potassium": 0.75,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        },
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.75,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.75,
+          "potassium": 0.75,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        },
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.75,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.75,
+          "potassium": 0.75,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        }
+      ],
+      "processing_capacity": 2,
+      "processing_jobs": [],
+      "reputation": 50.0,
+      "run_seed": 42,
+      "seed_inventory": {},
+      "slots_total": 4,
+      "total_days": 60,
+      "total_planted": 15,
+      "total_revenue": 1200.0,
+      "upgrade_purchase_days": {},
+      "upgrades_owned": []
+    },
+    {
+      "active_contracts": [],
+      "buyer_relationships": {},
+      "channel_capacity_used": {},
+      "contract_offers": [],
+      "crop_plant_counts": {},
+      "day": 2,
+      "expenses_by_category": {},
+      "focus": {
+        "crop_item_id": 0,
+        "planted_index": 0,
+        "upgrade_id": 0
+      },
+      "has_highest_money": true,
+      "has_processing_capacity": true,
+      "has_run_seed": true,
+      "highest_money": 12.0,
+      "inventory_lots": [],
+      "market_prices": {
+        "0": 3.0,
+        "1": 8.0,
+        "3": 14.0
+      },
+      "money": 12.0,
+      "name": "recovery_low_money",
+      "operating_reserve": 10.0,
+      "planted": [
+        {
+          "accrued_cost": 0.0,
+          "crop_item_id": 0,
+          "day_planted": 0,
+          "disease_stress": 0.0,
+          "fertilized": false,
+          "growth_days_required": 3,
+          "last_watered_day": 0,
+          "neglect_days": 0,
+          "nutrient_stress": 0.0,
+          "pest_stress": 0.0,
+          "plot_index": -1,
+          "temperature_stress": 0.0,
+          "water_stress": 0.0
+        }
+      ],
+      "plots": [
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.75,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.75,
+          "potassium": 0.75,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        },
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.75,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.75,
+          "potassium": 0.75,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        },
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.75,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.75,
+          "potassium": 0.75,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        }
+      ],
+      "processing_capacity": 1,
+      "processing_jobs": [],
+      "reputation": 10.0,
+      "run_seed": 7,
+      "seed_inventory": {},
+      "slots_total": 3,
+      "total_days": 45,
+      "total_planted": 0,
+      "total_revenue": 0.0,
+      "upgrade_purchase_days": {},
+      "upgrades_owned": []
+    },
+    {
+      "active_contracts": [],
+      "buyer_relationships": {},
+      "channel_capacity_used": {},
+      "contract_offers": [],
+      "crop_plant_counts": {},
+      "day": 20,
+      "expenses_by_category": {},
+      "focus": {
+        "crop_item_id": 1,
+        "planted_index": 0,
+        "upgrade_id": 1
+      },
+      "has_highest_money": true,
+      "has_processing_capacity": true,
+      "has_run_seed": true,
+      "highest_money": 150.0,
+      "inventory_lots": [],
+      "market_prices": {
+        "0": 3.1,
+        "1": 8.2,
+        "3": 14.5
+      },
+      "money": 150.0,
+      "name": "low_soil_health_critical",
+      "operating_reserve": 15.0,
+      "planted": [
+        {
+          "accrued_cost": 0.0,
+          "crop_item_id": 1,
+          "day_planted": 18,
+          "disease_stress": 0.0,
+          "fertilized": false,
+          "growth_days_required": 6,
+          "last_watered_day": 19,
+          "neglect_days": 0,
+          "nutrient_stress": 0.0,
+          "pest_stress": 0.0,
+          "plot_index": 0,
+          "temperature_stress": 0.0,
+          "water_stress": 0.0
+        }
+      ],
+      "plots": [
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.1,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.1,
+          "potassium": 0.1,
+          "previous_crop_family": "flower",
+          "soil_health": 0.7
+        },
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.1,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.1,
+          "potassium": 0.1,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        },
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.1,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.1,
+          "potassium": 0.1,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        }
+      ],
+      "processing_capacity": 1,
+      "processing_jobs": [],
+      "reputation": 30.0,
+      "run_seed": 2024,
+      "seed_inventory": {},
+      "slots_total": 3,
+      "total_days": 60,
+      "total_planted": 8,
+      "total_revenue": 600.0,
+      "upgrade_purchase_days": {},
+      "upgrades_owned": []
+    },
+    {
+      "active_contracts": [],
+      "buyer_relationships": {},
+      "channel_capacity_used": {},
+      "contract_offers": [],
+      "crop_plant_counts": {},
+      "day": 15,
+      "expenses_by_category": {
+        "upgrades": 55.0
+      },
+      "focus": {
+        "crop_item_id": 0,
+        "planted_index": 0,
+        "upgrade_id": 1
+      },
+      "has_highest_money": true,
+      "has_processing_capacity": true,
+      "has_run_seed": true,
+      "highest_money": 100.0,
+      "inventory_lots": [],
+      "market_prices": {
+        "0": 3.0,
+        "1": 8.0,
+        "3": 14.0
+      },
+      "money": 100.0,
+      "name": "upgrade_cooldown_and_spend_cap",
+      "operating_reserve": 10.0,
+      "planted": [
+        {
+          "accrued_cost": 0.0,
+          "crop_item_id": 0,
+          "day_planted": 13,
+          "disease_stress": 0.0,
+          "fertilized": false,
+          "growth_days_required": 3,
+          "last_watered_day": 13,
+          "neglect_days": 0,
+          "nutrient_stress": 0.0,
+          "pest_stress": 0.0,
+          "plot_index": -1,
+          "temperature_stress": 0.0,
+          "water_stress": 0.0
+        }
+      ],
+      "plots": [
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.75,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.75,
+          "potassium": 0.75,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        },
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.75,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.75,
+          "potassium": 0.75,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        },
+        {
+          "disease_pressure": 0.03,
+          "moisture": 0.65,
+          "nitrogen": 0.75,
+          "pest_pressure": 0.05,
+          "ph": 6.5,
+          "phosphorus": 0.75,
+          "potassium": 0.75,
+          "previous_crop_family": null,
+          "soil_health": 0.7
+        }
+      ],
+      "processing_capacity": 1,
+      "processing_jobs": [],
+      "reputation": 20.0,
+      "run_seed": 99,
+      "seed_inventory": {},
+      "slots_total": 3,
+      "total_days": 60,
+      "total_planted": 5,
+      "total_revenue": 300.0,
+      "upgrade_purchase_days": {
+        "0": 13
+      },
+      "upgrades_owned": [
+        0
+      ]
+    }
+  ]
+}
