@@ -306,11 +306,42 @@ shrinks the chunk to compensate.
 `(run_index, plot_index)` pair gets its own `splitmix64` stream, seeded
 deterministically from `(master_seed, run_index)` and then `(run_seed,
 plot_index)`. Because each run's stream depends on nothing but its own global
-index, **results are provably independent of chunk size and chunk offset** —
-`scripts/vectorized_validate.py`'s `check_chunk_size_independence` runs the
-same global run index inside three different chunk shapes and checks they
-agree, and `run_millions` relies on exactly this property to stream chunks
-without changing what a given run's outcome is.
+index, **given the same strategy, results are provably independent of chunk
+size and chunk offset** — `scripts/vectorized_validate.py`'s
+`check_chunk_size_independence` runs the same global run index, *with an
+explicit fixed strategy array*, inside three different chunk shapes and
+checks they agree at the state/kernel layer.
+
+**That guarantee doesn't extend to which strategy `run_millions` itself
+assigns a given global run index.** `run_millions`'s strategy-of-run
+bucketing (the `fractions = (np.arange(this_chunk) + 0.5) / this_chunk` line)
+is deliberately computed *within* each chunk, not from each run's global
+index over `total_runs` — the goal is that any prefix of processed chunks
+stays a representative, correctly-weighted sample even if a run is
+interrupted partway (see that line's comment), not that global run index 5
+gets the same strategy every time. One consequence: re-running `run_millions`
+with the same `total_runs`/`master_seed`/`strategy_weights` but a different
+`max_chunk` (or a different `max_memory_gb`, since that feeds
+`choose_chunk_size`) assigns a different global-index-to-strategy mapping,
+so the aggregate `BatchResult` stats — `overall_money.mean` included — come
+out numerically different, not just float-summation-order noise, because a
+different subset of runs actually got simulated as each strategy. This is
+harmless for what the public API actually promises (each chunking still
+produces a valid, representative sample of the same population, and
+`by_strategy_*` counts stay proportional to `strategy_weights` in every
+chunk), but it does mean **`run_millions`'s aggregate output is not
+reproducible across different chunk sizes for the same seed** the way the
+raw kernel/state layer is — `tests/test_vectorized.py`'s
+`TestRunMillions.test_multi_chunk_matches_single_chunk` (formerly a
+too-strong "matches exactly" assertion that this section's earlier wording
+predicted and that a real run immediately falsified) checks the accurate,
+weaker property: per-chunk representativeness and total counts, not
+numerical equality across chunkings. If exact reproducibility independent of
+`max_chunk`/`max_memory_gb` is ever needed, the fix is to key
+`strategy_of_run` off each run's global index over `total_runs` instead of
+its chunk-local position — a real behavior change to weigh against the
+interrupted-partway property it would give up, not a one-line correction,
+so it's left as a documented limitation rather than changed here.
 
 Draw counts per plot per day are no longer fixed (Phase 1 branches on real
 plot state rather than always drawing a fixed sequence): an empty plot draws
@@ -358,7 +389,14 @@ with `total_runs`.
 
 ## Validation (component E)
 
-`scripts/vectorized_validate.py` checks six things, not one:
+`scripts/vectorized_validate.py` checks six things, not one. Its check
+functions are also wrapped as regular pytest tests in
+`tests/test_vectorized.py` (`pytest.importorskip`-gated on numpy/numba, same
+pattern `tests/test_visualize.py` uses for matplotlib) so they run as part of
+`python3 -m pytest` whenever `requirements-fast.txt` is installed, and CI's
+`vectorized` job (`.github/workflows/ci.yml`) installs it and runs them on
+every push -- this module is no longer validated only when someone
+remembers to run the script by hand.
 
 1. **Kernel ≡ reference**: `vectorized.kernel`'s numba `prange`-parallel core
    and `vectorized.reference`'s pure-Python scalar per-run loop are two

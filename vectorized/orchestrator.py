@@ -186,8 +186,15 @@ def run_millions(
             config.num_upgrades,
         )
         # Deterministic strategy assignment: cumulative-weight bucketing of
-        # each row's fractional position in [0, 1), not per-row RNG draws --
-        # keeps the mix exact and independent of chunk boundaries.
+        # each row's fractional position in [0, 1) *within this chunk*, not
+        # per-row RNG draws -- keeps the mix exactly proportional to
+        # strategy_weights in every chunk, not just over the whole batch, so
+        # a run interrupted partway still holds a representative sample.
+        # Deliberate tradeoff, not an oversight: because this is chunk-local
+        # rather than keyed off each run's global index over total_runs, a
+        # given global run index's strategy (and thus outcome) is NOT
+        # invariant to max_chunk/max_memory_gb -- see vectorized/README.md's
+        # "RNG strategy" section before assuming otherwise.
         fractions = (np.arange(this_chunk, dtype=np.float64) + 0.5) / this_chunk
         cum_weights = np.cumsum(weights)
         strategy_of_run = np.searchsorted(cum_weights, fractions).astype(np.int8)
