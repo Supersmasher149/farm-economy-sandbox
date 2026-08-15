@@ -165,3 +165,31 @@ jobs:
 
       - name: Render every chart
         run: python3 -m pytest tests/test_visualize.py
+
+  # tests/test_vectorized.py skips itself when numpy/numba are absent, which
+  # is every job above -- vectorized/ is optional, see requirements-fast.txt
+  # and vectorized/README.md's "Why this is a separate tool". Without this
+  # job, scripts/vectorized_validate.py's kernel-vs-reference checks would
+  # never actually run in CI, only whenever someone remembers to run the
+  # script by hand.
+  vectorized:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dev and vectorized-sampler dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -r requirements-fast.txt
+
+      - name: Fail loudly if numpy/numba are missing
+        # Otherwise the importorskip guard in tests/test_vectorized.py turns
+        # a broken install into a green run with every check skipped.
+        run: python3 -c "import numba, numpy; print(numpy.__version__, numba.__version__)"
+
+      - name: Kernel-vs-reference validation (component E)
+        run: python3 -m pytest tests/test_vectorized.py

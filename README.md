@@ -118,7 +118,17 @@ affected by its absence. See `vectorized/README.md`.
 ```bash
 python3 scripts/vectorized_validate.py    # kernel vs. reference agreement
 python3 scripts/vectorized_benchmark.py   # runs/sec, projected to 1M
+python3 -m pytest tests/test_vectorized.py  # same checks, as pytest -- skips itself without numpy/numba
 ```
+
+`tests/test_vectorized.py` wraps `vectorized_validate.py`'s six checks as
+regular pytest tests, `pytest.importorskip`-gated the same way
+`tests/test_visualize.py` gates on matplotlib: absent by default, so
+`python3 -m pytest` stays dependency-free, but part of the same run once
+`requirements-fast.txt` is installed rather than a script only run by hand.
+CI's `vectorized` job (`.github/workflows/ci.yml`) installs
+`requirements-fast.txt` and runs it on every push, matching the `charts`
+job's pattern for matplotlib.
 
 ## Quick start
 
