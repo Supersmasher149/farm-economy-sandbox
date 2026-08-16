@@ -9,14 +9,33 @@ loader, `FarmState` day loop, weather, crop growth). No `farm-c` code runs
 inside a real batch yet -- there is no engine here, only the agent decision
 surface and what it needs.
 
-Also here, as the first piece of the actual engine port (Phase 0 of
-`../docs/c-port-plan.md`'s "full engine" follow-up): `src/rng.c`, a
-bit-exact MT19937 port of `random.Random`, the single-generator RNG
-`../simulation/random_events.py:RandomEvents` wraps and every physics/market/
-contract module downstream of it depends on. It doesn't run inside the
-agent port above (agents never touch the RNG directly) -- it's staged here
-ahead of Phase 1 (weather/crop_growth), which is the first module that
-actually calls it.
+Also here, as the first two pieces of the actual engine port (Phases 0-1 of
+`../docs/c-port-plan.md`'s "full engine" follow-up, tracked in
+`.claude/plans/shimmying-singing-dragonfly.md`):
+
+- **Phase 0**, `src/rng.c`: a bit-exact MT19937 port of `random.Random`, the
+  single-generator RNG `../simulation/random_events.py:RandomEvents` wraps
+  and every physics/market/contract module downstream of it depends on. It
+  doesn't run inside the agent port above (agents never touch the RNG
+  directly) -- it was staged ahead of Phase 1 as the first module that
+  actually calls it.
+- **Phase 1**, `src/crop_growth.c` + `src/weather.c` (+ `src/pyfloat.c` for
+  shared float-semantics helpers): a bit-exact port of
+  `../simulation/crop_growth.py` and `../simulation/weather.py` --
+  per-plot daily stress accumulation, harvest yield/quality multipliers and
+  grading, and season/weather generation. `crop_growth_update_stress` and
+  `weather_apply`'s per-plot loop reuse the arithmetic already proven in
+  `../simulation/_fastplotmodule.c` (same Neumaier summation, same literal
+  `max`/`min` clamp forms); `harvest_multipliers`, `quality_grade`, and
+  `compute_harvest_outcome` are fresh ports, since the fastplot kernel
+  doesn't cover them. `weather.py`'s `round(x, ndigits)` calls are ported as
+  a `snprintf("%.*f")` + `strtod` round-trip (`pyfloat.c:py_round_ndigits`)
+  rather than a from-scratch port of CPython's David Gay dtoa -- both target
+  libcs implement correctly-rounded decimal conversion, which is the
+  property CPython's own dtoa/strtod pair relies on, and this is checked
+  against real recorded `round()` output rather than assumed (see
+  Verification below). Still doesn't run inside a real batch -- there is no
+  `FarmState` day loop wiring it in yet (that's Phase 4).
 
 ## Scope boundary
 
@@ -44,13 +63,21 @@ dependency):
   (Python's `min`/`max` keep the first element on an exact tie; every C loop
   here replaces its running best only on a *strict* inequality to match).
 
+- `../simulation/crop_growth.py`'s `update_crop_stress`, `harvest_multipliers`,
+  `quality_grade`, and `compute_harvest_outcome` (`src/crop_growth.c`).
+- `../simulation/weather.py`'s `season_for_day`, `generate_weather`, and the
+  plain (non-`_fastplot`-accelerated) body of `apply_weather`
+  (`src/weather.c`) -- ported line-for-line from the reference Python loop,
+  not from the optional accelerator, so every conditional field write
+  matches Python's `if regen_x: plot.x = ...` exactly.
+
 **Explicitly simplified stand-in** (documented, not silently approximated):
 
 `contracts_is_offer_feasible` and `contracts_forecast_committed_supply`
 (`src/contracts.c`) depend on `../simulation/contracts.py`'s
 `_future_crop_arrivals` → `_best_possible_grade`, which calls
 `crop_growth.harvest_multipliers` -- live weather/soil stress physics this
-agents-only port doesn't have. The stand-in
+agents-only port didn't have until Phase 1 landed. The stand-in
 (`best_possible_grade_SIMPLIFIED` in `src/contracts.c`, marked with a
 `SIMPLIFIED` comment) assumes every already-planted crop of the matching
 item can reach `QUALITY_STANDARD`, dropping the real stress-based grade
@@ -59,8 +86,9 @@ ceiling. This only ever *undercounts* forecast risk for above-standard
 `_future_crop_arrivals` / `_input_supply` / `_schedule_batches` /
 `_slot_free_days` (the timeline-aware processing-forecast machinery
 `docs/c-port-plan.md` Section 8 warns not to oversimplify) is a faithful,
-unsimplified port. Reconcile this one stand-in once `crop_growth`/`weather`
-are ported.
+unsimplified port. **Still not reconciled** -- `crop_growth.c` now exists,
+but wiring `contracts.c` to call it is Phase 2 work
+(`.claude/plans/shimmying-singing-dragonfly.md`), not done here.
 
 **Out of scope entirely:** `update_daily_prices`, `sell`, `generate_offers`,
 `accept`, `deliver`, `resolve_expired`, `age_and_spoil` -- no ported agent
@@ -71,16 +99,19 @@ calls any of these directly.
 ```
 include/            farm_types.h, config.h, state.h, agent.h, economy.h,
                      markets.h, inventory.h, contracts.h, derived.h,
-                     rng.h, rng_hash.h, blake2b.h, vec_util.h
+                     rng.h, rng_hash.h, blake2b.h, vec_util.h, pyfloat.h,
+                     crop_growth.h, weather.h
 src/                 economy_rules.c, markets.c, inventory.c, contracts.c,
                      derived.c, rng.c, rng_hash.c, blake2b.c, config.c,
-                     state.c, vec_util.c, agent.c, agent_registry.c
+                     state.c, vec_util.c, agent.c, agent_registry.c,
+                     pyfloat.c, crop_growth.c, weather.c
 src/agents/          base.c (shared defaults + route_sales_by_best_price),
                      one file per agent, matching ../agents/*.py 1:1
 tests/               test_agents.c (fixture-driven parity test for the
                      agent port), test_rng.c (same, for rng.c),
-                     fixtures/{agents,rng}.json (generated, checked in),
-                     third_party/cJSON.{h,c} (vendored, MIT -- fixture
+                     test_physics.c (same, for crop_growth.c/weather.c),
+                     fixtures/{agents,rng,physics}.json (generated, checked
+                     in), third_party/cJSON.{h,c} (vendored, MIT -- fixture
                      parsing only, not a production config loader)
 ```
 
@@ -88,13 +119,16 @@ tests/               test_agents.c (fixture-driven parity test for the
 
 ```bash
 cd farm-c
-make fixtures      # regenerates tests/fixtures/agents.json from the real
-                    # Python agents (needs the repo's venv; see
-                    # ../tools/export_agent_fixtures.py)
-make fixtures-rng   # regenerates tests/fixtures/rng.json from CPython's
-                    # random.Random (see ../tools/export_rng_fixtures.py)
-make test           # builds and runs every tests/test_* binary under
-                    # -fsanitize=address,undefined
+make fixtures          # regenerates tests/fixtures/agents.json from the
+                        # real Python agents (needs the repo's venv; see
+                        # ../tools/export_agent_fixtures.py)
+make fixtures-rng      # regenerates tests/fixtures/rng.json from CPython's
+                        # random.Random (see ../tools/export_rng_fixtures.py)
+make fixtures-physics  # regenerates tests/fixtures/physics.json from the
+                        # real crop_growth.py/weather.py (see
+                        # ../tools/export_physics_fixtures.py)
+make test              # builds and runs every tests/test_* binary under
+                        # -fsanitize=address,undefined
 ```
 
 `make test` alone (no Python needed) re-runs against whatever fixtures are
@@ -148,6 +182,23 @@ fixture-based instead, with the real Python agents as the oracle:
    regeneration boundary several times per seed, and includes `choice`
    calls over a length-1 sequence to force `_randbelow`'s rejection-sampling
    loop to actually reject and redraw.
+5. `src/crop_growth.c`/`src/weather.c` are verified the same way, against
+   the real `simulation/crop_growth.py`/`simulation/weather.py` as the
+   oracle: `tools/export_physics_fixtures.py` builds a small synthetic crop
+   catalog plus hand-picked edge-case scenarios (moisture/pH/temperature on
+   both sides of a crop's tolerance band, clamp-saturating accumulated
+   stress, fertilized vs. not, same-family rotation penalty vs. mismatch vs.
+   no-family, `plot=None`, a 40-seed sweep of `compute_harvest_outcome`, and
+   a full `apply_weather` day over fallow/growing/regen/no-regen plots) and
+   records every input/output as `float.hex()`; `tests/test_physics.c`
+   replays each case and asserts `==` -- currently **542 checks, 0 failed**.
+   `compute_harvest_outcome`'s cases are RNG-adjacent: each uses a fresh
+   seed, and the C side seeds a fresh `FarmRng` with the same seed rather
+   than replaying raw draws, relying on Phase 0's already-proven bit-exact
+   RNG. `py_round_ndigits` (weather.py's `round(x, ndigits)`) was
+   additionally stress-tested standalone against 200,000 random values
+   across `round(x, 2)`/`round(x, 3)` with 0 mismatches, beyond what the
+   fixture set alone happens to exercise.
 
 ## Known simplifications / follow-ups
 
@@ -160,3 +211,9 @@ fixture-based instead, with the real Python agents as the oracle:
 - Config loading here is fixture-JSON-only (`tests/test_agents.c` +
   vendored `cJSON`), not a production loader for `config/*.json` --
   `docs/c-port-plan.md` Section 10 covers that decision for the full port.
+- `py_round_ndigits` (`src/pyfloat.c`) relies on the host libc's `%f`
+  formatting and `strtod` both being correctly-rounded, rather than porting
+  CPython's dtoa outright. Verified on this repo's development platform
+  (see Verification above); has not been checked against a libc that isn't
+  correctly-rounded for decimal conversion, which would be a real
+  platform-portability gap if this port is ever built somewhere else.

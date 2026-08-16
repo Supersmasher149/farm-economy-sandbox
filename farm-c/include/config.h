@@ -88,6 +88,22 @@ typedef struct {
     NutrientDemand nutrient_demand;
 
     UnlockRequirement unlock_requirement; /* .type == UNLOCK_NONE if absent */
+
+    /* simulation/derived.py:101-152 CropProfile's remaining fields (every
+     * one CropProfile resolves besides water_interval_days/min_moisture,
+     * already present above/below, and nutrient_demand, already above) --
+     * folded directly onto CropDef rather than a separate profile struct,
+     * matching how nutrient_demand's own default is already resolved here
+     * at load time instead of read lazily per call. Defaults, applied when
+     * the JSON field is absent: temperature_range [10, 30], ph_range
+     * [5.8, 7.0], min_moisture 0.35, *_susceptibility 1.0. */
+    double temperature_low;
+    double temperature_high;
+    double ph_low;
+    double ph_high;
+    double min_moisture;
+    double pest_susceptibility;
+    double disease_susceptibility;
 } CropDef;
 
 typedef enum {
@@ -174,7 +190,92 @@ typedef struct {
     double cost;
     double loss_chance_reduction;
     double yield_bonus_pct;
+    /* config/fertilizer.json's "quality_bonus"; crop_growth.harvest_multipliers
+     * falls back to DEFAULT_FERTILIZER_QUALITY_BONUS (0.05) when the JSON
+     * field is absent, folded in at load time same as every other default
+     * on this page. Agents never read this field (see farm-c/README.md's
+     * scope note), which is why it wasn't here before crop_growth.c needed
+     * it. */
+    double quality_bonus;
 } FertilizerConfig;
+
+/* config/watering_settings.json, read by crop_growth.compute_harvest_outcome
+ * (the first four fields) and simulation/actions.py's water_crop/harvest_mature
+ * (all six -- cost_per_plot/moisture_added are Phase 2 (actions.c) fields,
+ * kept here alongside the rest of the same JSON file rather than splitting
+ * one config object across two structs). */
+typedef struct {
+    double neglect_loss_chance_penalty_per_day;
+    double neglect_yield_penalty_per_day;
+    double max_neglect_loss_chance_bonus;
+    double max_neglect_yield_penalty;
+    double cost_per_plot;
+    double moisture_added;
+} WateringConfig;
+
+/* config/soil.json's "dynamics" section (simulation/derived.py:62-81
+ * DEFAULT_SOIL_DYNAMICS) -- resolved with every default already folded in,
+ * same discipline as the rest of this file. Field order matches
+ * DEFAULT_SOIL_DYNAMICS exactly, though nothing here depends on that order. */
+typedef struct {
+    double harvest_soil_health_cost;
+    double min_soil_health;
+    double fallow_pest_decay;
+    double fallow_disease_decay;
+    double fallow_soil_health_regen;
+    double pest_growth_per_day;
+    double disease_growth_per_rainfall;
+    double max_pest_pressure;
+    double max_disease_pressure;
+    double same_family_yield_penalty;
+    double same_family_quality_penalty;
+    double soil_health_yield_floor;
+    double soil_health_yield_span;
+} SoilDynamics;
+
+/* config/soil.json's "regen_per_day" section (simulation/weather.py:84-91).
+ * Every field defaults to 0.0 when the JSON key (or the whole "soil"
+ * section) is absent, matching `plot_regen.get(name, 0.0) if plot_regen
+ * else 0.0` exactly -- a zero-valued field and an absent one are always
+ * treated identically downstream, so no separate "has_*" flags are needed. */
+typedef struct {
+    double moisture;
+    double nitrogen;
+    double phosphorus;
+    double potassium;
+    double soil_health;
+    double pest_pressure;
+    double disease_pressure;
+} PlotRegen;
+
+/* simulation/weather.py:5 SEASONS -- order is load-bearing (indexes
+ * WeatherParams.by_season and is itself derived from `day // season_length
+ * % 4`, matching Python's tuple indexing exactly). */
+typedef enum {
+    SEASON_SPRING,
+    SEASON_SUMMER,
+    SEASON_AUTUMN,
+    SEASON_WINTER,
+    SEASON_COUNT
+} Season;
+
+/* One config/weather.json "seasons.<name>" entry, resolved
+ * (simulation/derived.py:349-369 WeatherParams.by_season's per-season
+ * 6-tuple) with defaults folded in: temperature_range [12, 24], rain_chance
+ * 0.25, rainfall_range [0.08, 0.25], evaporation 0.08. */
+typedef struct {
+    double temperature_low;
+    double temperature_high;
+    double rain_chance;
+    double rainfall_low;
+    double rainfall_high;
+    double evaporation;
+} SeasonWeather;
+
+typedef struct {
+    int season_length_days; /* default 15 */
+    SeasonWeather by_season[SEASON_COUNT];
+} WeatherParams;
 
 /* simulation/contracts.py module-level defaults, the subset ported agents'
  * feasibility/profitability checks read via `player.contract_config.get(...)`:
@@ -210,6 +311,10 @@ typedef struct {
 
     FertilizerConfig fertilizer;
     ContractsConfig contracts;
+    WateringConfig watering;
+    SoilDynamics soil_dynamics;
+    PlotRegen plot_regen;
+    WeatherParams weather;
 } ResolvedConfig;
 
 /* --- Lookups (linear scan; config is small and this is test/decision-time

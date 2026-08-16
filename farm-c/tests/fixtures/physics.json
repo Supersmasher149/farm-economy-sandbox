@@ -1,0 +1,3231 @@
+{
+ "apply_weather_cases": [
+  {
+   "after": [
+    {
+     "crop": null,
+     "disease_pressure": "0x1.4bc6a7ef9db24p-4",
+     "moisture": "0x1.f5c28f5c28f5ep-2",
+     "nitrogen": "0x1.7ae147ae147aep-2",
+     "pest_pressure": "0x1.676c8b4395811p-3",
+     "ph": "0x1.8666666666666p+2",
+     "phosphorus": "0x1.47ae147ae147bp-1",
+     "potassium": "0x1.147ae147ae148p-1",
+     "previous_crop_family": null,
+     "soil_health": "0x1.07ae147ae147bp-1"
+    },
+    {
+     "crop": {
+      "crop_id": "sunwheat",
+      "crop_index": 0,
+      "day_planted": 0,
+      "disease_stress": "0x1.6872b020c49bbp-7",
+      "fertilized": true,
+      "growth_days_required": 6,
+      "last_watered_day": -2,
+      "neglect_days": 10,
+      "nutrient_stress": "0x1.70a3d70a3d70dp-4",
+      "pest_stress": "0x1.26e978d4fdf3cp-5",
+      "temperature_stress": "0x0.0p+0",
+      "water_stress": "0x0.0p+0"
+     },
+     "disease_pressure": "0x1.8fc504816f006p-6",
+     "moisture": "0x1.d1eb851eb851fp-1",
+     "nitrogen": "0x1.e147ae147ae14p-1",
+     "pest_pressure": "0x1.999999999999ap-5",
+     "ph": "0x1.f99999999999ap+2",
+     "phosphorus": "0x1.d99999999999ap-1",
+     "potassium": "0x1.d70a3d70a3d71p-1",
+     "previous_crop_family": "grain",
+     "soil_health": "0x1.eb851eb851eb8p-1"
+    },
+    {
+     "crop": {
+      "crop_id": "dustroot",
+      "crop_index": 2,
+      "day_planted": 0,
+      "disease_stress": "0x1.147ae147ae148p-2",
+      "fertilized": false,
+      "growth_days_required": 4,
+      "last_watered_day": -5,
+      "neglect_days": 12,
+      "nutrient_stress": "0x1.0000000000000p-2",
+      "pest_stress": "0x1.30a3d70a3d70ap-2",
+      "temperature_stress": "0x1.999999999999ap-4",
+      "water_stress": "0x1.3333333333333p-2"
+     },
+     "disease_pressure": "0x1.1bda5119ce076p-1",
+     "moisture": "0x1.1eb851eb851ebp-3",
+     "nitrogen": "0x1.3333333333334p-3",
+     "pest_pressure": "0x1.3333333333333p-1",
+     "ph": "0x1.2000000000000p+2",
+     "phosphorus": "0x1.47ae147ae147bp-4",
+     "potassium": "0x1.47ae147ae147bp-4",
+     "previous_crop_family": "berry",
+     "soil_health": "0x1.47ae147ae147bp-3"
+    }
+   ],
+   "before": [
+    {
+     "crop": null,
+     "disease_pressure": "0x1.999999999999ap-4",
+     "moisture": "0x1.999999999999ap-2",
+     "nitrogen": "0x1.3333333333333p-2",
+     "pest_pressure": "0x1.999999999999ap-3",
+     "ph": "0x1.8666666666666p+2",
+     "phosphorus": "0x1.3333333333333p-1",
+     "potassium": "0x1.0000000000000p-1",
+     "previous_crop_family": null,
+     "soil_health": "0x1.0000000000000p-1"
+    },
+    {
+     "crop": {
+      "crop_id": "sunwheat",
+      "crop_index": 0,
+      "day_planted": 0,
+      "disease_stress": "0x0.0p+0",
+      "fertilized": true,
+      "growth_days_required": 6,
+      "last_watered_day": -2,
+      "neglect_days": 1,
+      "nutrient_stress": "0x0.0p+0",
+      "pest_stress": "0x0.0p+0",
+      "temperature_stress": "0x0.0p+0",
+      "water_stress": "0x0.0p+0"
+     },
+     "disease_pressure": "0x1.47ae147ae147bp-6",
+     "moisture": "0x1.ccccccccccccdp-1",
+     "nitrogen": "0x1.ccccccccccccdp-1",
+     "pest_pressure": "0x1.999999999999ap-5",
+     "ph": "0x1.f99999999999ap+2",
+     "phosphorus": "0x1.ccccccccccccdp-1",
+     "potassium": "0x1.ccccccccccccdp-1",
+     "previous_crop_family": "grain",
+     "soil_health": "0x1.e666666666666p-1"
+    },
+    {
+     "crop": {
+      "crop_id": "dustroot",
+      "crop_index": 2,
+      "day_planted": 0,
+      "disease_stress": "0x0.0p+0",
+      "fertilized": false,
+      "growth_days_required": 4,
+      "last_watered_day": -5,
+      "neglect_days": 0,
+      "nutrient_stress": "0x1.999999999999ap-3",
+      "pest_stress": "0x0.0p+0",
+      "temperature_stress": "0x1.999999999999ap-4",
+      "water_stress": "0x1.3333333333333p-2"
+     },
+     "disease_pressure": "0x1.199999999999ap-1",
+     "moisture": "0x1.999999999999ap-5",
+     "nitrogen": "0x1.999999999999ap-4",
+     "pest_pressure": "0x1.3333333333333p-1",
+     "ph": "0x1.2000000000000p+2",
+     "phosphorus": "0x1.999999999999ap-5",
+     "potassium": "0x1.999999999999ap-5",
+     "previous_crop_family": "berry",
+     "soil_health": "0x1.3333333333333p-3"
+    }
+   ],
+   "day": 10,
+   "name": "typical_day_with_regen",
+   "plot_regen": {
+    "disease_pressure": 0.01,
+    "moisture": 0.0,
+    "nitrogen": 0.07,
+    "pest_pressure": 0.005,
+    "phosphorus": 0.04,
+    "potassium": 0.04,
+    "soil_health": 0.01
+   },
+   "soil_dynamics": {
+    "disease_growth_per_rainfall": 0.08,
+    "fallow_disease_decay": 0.9,
+    "fallow_pest_decay": 0.9,
+    "fallow_soil_health_regen": 0.005,
+    "harvest_soil_health_cost": 0.02,
+    "max_disease_pressure": 0.8,
+    "max_pest_pressure": 0.8,
+    "min_soil_health": 0.1,
+    "pest_growth_per_day": 0.005,
+    "same_family_quality_penalty": 0.8,
+    "same_family_yield_penalty": 0.72,
+    "soil_health_yield_floor": 0.85,
+    "soil_health_yield_span": 0.25
+   },
+   "weather": {
+    "evaporation": "0x1.70a3d70a3d70ap-4",
+    "rainfall": "0x1.70a3d70a3d70ap-3",
+    "temperature": "0x1.5800000000000p+4"
+   }
+  },
+  {
+   "after": [
+    {
+     "crop": null,
+     "disease_pressure": "0x1.70a3d70a3d70bp-4",
+     "moisture": "0x1.0a3d70a3d70a4p-2",
+     "nitrogen": "0x1.3333333333333p-2",
+     "pest_pressure": "0x1.70a3d70a3d70bp-3",
+     "ph": "0x1.8666666666666p+2",
+     "phosphorus": "0x1.3333333333333p-1",
+     "potassium": "0x1.0000000000000p-1",
+     "previous_crop_family": null,
+     "soil_health": "0x1.028f5c28f5c29p-1"
+    },
+    {
+     "crop": {
+      "crop_id": "sunwheat",
+      "crop_index": 0,
+      "day_planted": 0,
+      "disease_stress": "0x1.6872b020c49bbp-6",
+      "fertilized": true,
+      "growth_days_required": 6,
+      "last_watered_day": -2,
+      "neglect_days": 11,
+      "nutrient_stress": "0x1.70a3d70a3d70dp-4",
+      "pest_stress": "0x1.47ae147ae147cp-5",
+      "temperature_stress": "0x1.0000000000000p-2",
+      "water_stress": "0x0.0p+0"
+     },
+     "disease_pressure": "0x1.47ae147ae147bp-6",
+     "moisture": "0x1.851eb851eb852p-1",
+     "nitrogen": "0x1.bd70a3d70a3d7p-1",
+     "pest_pressure": "0x1.c28f5c28f5c29p-5",
+     "ph": "0x1.f99999999999ap+2",
+     "phosphorus": "0x1.c51eb851eb852p-1",
+     "potassium": "0x1.c28f5c28f5c29p-1",
+     "previous_crop_family": "grain",
+     "soil_health": "0x1.e666666666666p-1"
+    },
+    {
+     "crop": {
+      "crop_id": "dustroot",
+      "crop_index": 2,
+      "day_planted": 0,
+      "disease_stress": "0x1.199999999999ap-2",
+      "fertilized": false,
+      "growth_days_required": 4,
+      "last_watered_day": -5,
+      "neglect_days": 13,
+      "nutrient_stress": "0x1.0000000000000p-2",
+      "pest_stress": "0x1.3333333333333p-2",
+      "temperature_stress": "0x1.999999999999ap-4",
+      "water_stress": "0x1.9999999999999p-2"
+     },
+     "disease_pressure": "0x1.199999999999ap-1",
+     "moisture": "0x0.0p+0",
+     "nitrogen": "0x1.47ae147ae147bp-4",
+     "pest_pressure": "0x1.35c28f5c28f5cp-1",
+     "ph": "0x1.2000000000000p+2",
+     "phosphorus": "0x1.47ae147ae147bp-5",
+     "potassium": "0x1.47ae147ae147bp-5",
+     "previous_crop_family": "berry",
+     "soil_health": "0x1.3333333333333p-3"
+    }
+   ],
+   "before": [
+    {
+     "crop": null,
+     "disease_pressure": "0x1.999999999999ap-4",
+     "moisture": "0x1.999999999999ap-2",
+     "nitrogen": "0x1.3333333333333p-2",
+     "pest_pressure": "0x1.999999999999ap-3",
+     "ph": "0x1.8666666666666p+2",
+     "phosphorus": "0x1.3333333333333p-1",
+     "potassium": "0x1.0000000000000p-1",
+     "previous_crop_family": null,
+     "soil_health": "0x1.0000000000000p-1"
+    },
+    {
+     "crop": {
+      "crop_id": "sunwheat",
+      "crop_index": 0,
+      "day_planted": 0,
+      "disease_stress": "0x0.0p+0",
+      "fertilized": true,
+      "growth_days_required": 6,
+      "last_watered_day": -2,
+      "neglect_days": 1,
+      "nutrient_stress": "0x0.0p+0",
+      "pest_stress": "0x0.0p+0",
+      "temperature_stress": "0x0.0p+0",
+      "water_stress": "0x0.0p+0"
+     },
+     "disease_pressure": "0x1.47ae147ae147bp-6",
+     "moisture": "0x1.ccccccccccccdp-1",
+     "nitrogen": "0x1.ccccccccccccdp-1",
+     "pest_pressure": "0x1.999999999999ap-5",
+     "ph": "0x1.f99999999999ap+2",
+     "phosphorus": "0x1.ccccccccccccdp-1",
+     "potassium": "0x1.ccccccccccccdp-1",
+     "previous_crop_family": "grain",
+     "soil_health": "0x1.e666666666666p-1"
+    },
+    {
+     "crop": {
+      "crop_id": "dustroot",
+      "crop_index": 2,
+      "day_planted": 0,
+      "disease_stress": "0x0.0p+0",
+      "fertilized": false,
+      "growth_days_required": 4,
+      "last_watered_day": -5,
+      "neglect_days": 0,
+      "nutrient_stress": "0x1.999999999999ap-3",
+      "pest_stress": "0x0.0p+0",
+      "temperature_stress": "0x1.999999999999ap-4",
+      "water_stress": "0x1.3333333333333p-2"
+     },
+     "disease_pressure": "0x1.199999999999ap-1",
+     "moisture": "0x1.999999999999ap-5",
+     "nitrogen": "0x1.999999999999ap-4",
+     "pest_pressure": "0x1.3333333333333p-1",
+     "ph": "0x1.2000000000000p+2",
+     "phosphorus": "0x1.999999999999ap-5",
+     "potassium": "0x1.999999999999ap-5",
+     "previous_crop_family": "berry",
+     "soil_health": "0x1.3333333333333p-3"
+    }
+   ],
+   "day": 11,
+   "name": "no_rain_no_regen",
+   "plot_regen": {
+    "disease_pressure": 0.0,
+    "moisture": 0.0,
+    "nitrogen": 0.0,
+    "pest_pressure": 0.0,
+    "phosphorus": 0.0,
+    "potassium": 0.0,
+    "soil_health": 0.0
+   },
+   "soil_dynamics": {
+    "disease_growth_per_rainfall": 0.08,
+    "fallow_disease_decay": 0.9,
+    "fallow_pest_decay": 0.9,
+    "fallow_soil_health_regen": 0.005,
+    "harvest_soil_health_cost": 0.02,
+    "max_disease_pressure": 0.8,
+    "max_pest_pressure": 0.8,
+    "min_soil_health": 0.1,
+    "pest_growth_per_day": 0.005,
+    "same_family_quality_penalty": 0.8,
+    "same_family_yield_penalty": 0.72,
+    "soil_health_yield_floor": 0.85,
+    "soil_health_yield_span": 0.25
+   },
+   "weather": {
+    "evaporation": "0x1.1eb851eb851ecp-3",
+    "rainfall": "0x0.0p+0",
+    "temperature": "0x1.0800000000000p+5"
+   }
+  },
+  {
+   "after": [
+    {
+     "crop": null,
+     "disease_pressure": "0x1.4bc6a7ef9db24p-4",
+     "moisture": "0x1.570a3d70a3d70p-1",
+     "nitrogen": "0x1.7ae147ae147aep-2",
+     "pest_pressure": "0x1.676c8b4395811p-3",
+     "ph": "0x1.8666666666666p+2",
+     "phosphorus": "0x1.47ae147ae147bp-1",
+     "potassium": "0x1.147ae147ae148p-1",
+     "previous_crop_family": null,
+     "soil_health": "0x1.07ae147ae147bp-1"
+    },
+    {
+     "crop": {
+      "crop_id": "sunwheat",
+      "crop_index": 0,
+      "day_planted": 0,
+      "disease_stress": "0x1.6872b020c49bbp-7",
+      "fertilized": true,
+      "growth_days_required": 6,
+      "last_watered_day": -2,
+      "neglect_days": 45,
+      "nutrient_stress": "0x1.70a3d70a3d70dp-4",
+      "pest_stress": "0x1.26e978d4fdf3cp-5",
+      "temperature_stress": "0x1.6666666666666p-1",
+      "water_stress": "0x0.0p+0"
+     },
+     "disease_pressure": "0x1.1d14e3bcd35a8p-5",
+     "moisture": "0x1.eb851eb851eb8p-1",
+     "nitrogen": "0x1.e147ae147ae14p-1",
+     "pest_pressure": "0x1.999999999999ap-5",
+     "ph": "0x1.f99999999999ap+2",
+     "phosphorus": "0x1.d99999999999ap-1",
+     "potassium": "0x1.d70a3d70a3d71p-1",
+     "previous_crop_family": "grain",
+     "soil_health": "0x1.eb851eb851eb8p-1"
+    },
+    {
+     "crop": {
+      "crop_id": "dustroot",
+      "crop_index": 2,
+      "day_planted": 0,
+      "disease_stress": "0x1.147ae147ae148p-2",
+      "fertilized": false,
+      "growth_days_required": 4,
+      "last_watered_day": -5,
+      "neglect_days": 47,
+      "nutrient_stress": "0x1.0000000000000p-2",
+      "pest_stress": "0x1.30a3d70a3d70ap-2",
+      "temperature_stress": "0x1.cccccccccccccp-2",
+      "water_stress": "0x1.3333333333333p-2"
+     },
+     "disease_pressure": "0x1.212d77318fc51p-1",
+     "moisture": "0x1.47ae147ae147bp-2",
+     "nitrogen": "0x1.3333333333334p-3",
+     "pest_pressure": "0x1.3333333333333p-1",
+     "ph": "0x1.2000000000000p+2",
+     "phosphorus": "0x1.47ae147ae147bp-4",
+     "potassium": "0x1.47ae147ae147bp-4",
+     "previous_crop_family": "berry",
+     "soil_health": "0x1.47ae147ae147bp-3"
+    }
+   ],
+   "before": [
+    {
+     "crop": null,
+     "disease_pressure": "0x1.999999999999ap-4",
+     "moisture": "0x1.999999999999ap-2",
+     "nitrogen": "0x1.3333333333333p-2",
+     "pest_pressure": "0x1.999999999999ap-3",
+     "ph": "0x1.8666666666666p+2",
+     "phosphorus": "0x1.3333333333333p-1",
+     "potassium": "0x1.0000000000000p-1",
+     "previous_crop_family": null,
+     "soil_health": "0x1.0000000000000p-1"
+    },
+    {
+     "crop": {
+      "crop_id": "sunwheat",
+      "crop_index": 0,
+      "day_planted": 0,
+      "disease_stress": "0x0.0p+0",
+      "fertilized": true,
+      "growth_days_required": 6,
+      "last_watered_day": -2,
+      "neglect_days": 1,
+      "nutrient_stress": "0x0.0p+0",
+      "pest_stress": "0x0.0p+0",
+      "temperature_stress": "0x0.0p+0",
+      "water_stress": "0x0.0p+0"
+     },
+     "disease_pressure": "0x1.47ae147ae147bp-6",
+     "moisture": "0x1.ccccccccccccdp-1",
+     "nitrogen": "0x1.ccccccccccccdp-1",
+     "pest_pressure": "0x1.999999999999ap-5",
+     "ph": "0x1.f99999999999ap+2",
+     "phosphorus": "0x1.ccccccccccccdp-1",
+     "potassium": "0x1.ccccccccccccdp-1",
+     "previous_crop_family": "grain",
+     "soil_health": "0x1.e666666666666p-1"
+    },
+    {
+     "crop": {
+      "crop_id": "dustroot",
+      "crop_index": 2,
+      "day_planted": 0,
+      "disease_stress": "0x0.0p+0",
+      "fertilized": false,
+      "growth_days_required": 4,
+      "last_watered_day": -5,
+      "neglect_days": 0,
+      "nutrient_stress": "0x1.999999999999ap-3",
+      "pest_stress": "0x0.0p+0",
+      "temperature_stress": "0x1.999999999999ap-4",
+      "water_stress": "0x1.3333333333333p-2"
+     },
+     "disease_pressure": "0x1.199999999999ap-1",
+     "moisture": "0x1.999999999999ap-5",
+     "nitrogen": "0x1.999999999999ap-4",
+     "pest_pressure": "0x1.3333333333333p-1",
+     "ph": "0x1.2000000000000p+2",
+     "phosphorus": "0x1.999999999999ap-5",
+     "potassium": "0x1.999999999999ap-5",
+     "previous_crop_family": "berry",
+     "soil_health": "0x1.3333333333333p-3"
+    }
+   ],
+   "day": 45,
+   "name": "cold_snap_heavy_rain",
+   "plot_regen": {
+    "disease_pressure": 0.01,
+    "moisture": 0.0,
+    "nitrogen": 0.07,
+    "pest_pressure": 0.005,
+    "phosphorus": 0.04,
+    "potassium": 0.04,
+    "soil_health": 0.01
+   },
+   "soil_dynamics": {
+    "disease_growth_per_rainfall": 0.08,
+    "fallow_disease_decay": 0.9,
+    "fallow_pest_decay": 0.9,
+    "fallow_soil_health_regen": 0.005,
+    "harvest_soil_health_cost": 0.02,
+    "max_disease_pressure": 0.8,
+    "max_pest_pressure": 0.8,
+    "min_soil_health": 0.1,
+    "pest_growth_per_day": 0.005,
+    "same_family_quality_penalty": 0.8,
+    "same_family_yield_penalty": 0.72,
+    "soil_health_yield_floor": 0.85,
+    "soil_health_yield_span": 0.25
+   },
+   "weather": {
+    "evaporation": "0x1.47ae147ae147bp-5",
+    "rainfall": "0x1.3d70a3d70a3d7p-2",
+    "temperature": "-0x1.0000000000000p+1"
+   }
+  }
+ ],
+ "crops": [
+  {
+   "disease_susceptibility": 1.1,
+   "family": "grain",
+   "growth_days": 6,
+   "id": "sunwheat",
+   "index": 0,
+   "loss_chance": 0.12,
+   "max_yield": 7,
+   "min_moisture": 0.4,
+   "min_yield": 3,
+   "nutrient_demand": {
+    "nitrogen": 0.03,
+    "phosphorus": 0.015,
+    "potassium": 0.02
+   },
+   "pest_susceptibility": 0.8,
+   "ph_range": [
+    6.0,
+    7.0
+   ],
+   "seed_cost": 10.0,
+   "temperature_range": [
+    12.0,
+    28.0
+   ],
+   "water_interval_days": 2
+  },
+  {
+   "disease_susceptibility": 0.9,
+   "family": "berry",
+   "growth_days": 9,
+   "id": "moonberry",
+   "index": 1,
+   "loss_chance": 0.2,
+   "max_yield": 5,
+   "min_moisture": 0.55,
+   "min_yield": 2,
+   "nutrient_demand": {
+    "nitrogen": 0.01,
+    "phosphorus": 0.03,
+    "potassium": 0.015
+   },
+   "pest_susceptibility": 1.4,
+   "ph_range": [
+    5.5,
+    6.5
+   ],
+   "seed_cost": 22.0,
+   "temperature_range": [
+    15.0,
+    24.0
+   ],
+   "water_interval_days": 1
+  },
+  {
+   "disease_susceptibility": 0.5,
+   "family": null,
+   "growth_days": 4,
+   "id": "dustroot",
+   "index": 2,
+   "loss_chance": 0.08,
+   "max_yield": 9,
+   "min_moisture": 0.15,
+   "min_yield": 4,
+   "nutrient_demand": {
+    "nitrogen": 0.02,
+    "phosphorus": 0.01,
+    "potassium": 0.01
+   },
+   "pest_susceptibility": 0.5,
+   "ph_range": [
+    5.0,
+    8.0
+   ],
+   "seed_cost": 5.0,
+   "temperature_range": [
+    5.0,
+    35.0
+   ],
+   "water_interval_days": 3
+  }
+ ],
+ "fertilizer": {
+  "cost": 15.0,
+  "loss_chance_reduction": 0.03,
+  "quality_bonus": 0.07,
+  "yield_bonus_pct": 0.25
+ },
+ "generate_weather_cases": [
+  {
+   "day": 0,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.4ab851eb851ecp+4",
+   "seed": 0
+  },
+  {
+   "day": 5,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.4ab851eb851ecp+4",
+   "seed": 0
+  },
+  {
+   "day": 15,
+   "expected_evaporation": "0x1.49ba5e353f7cfp-3",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.099999999999ap+5",
+   "seed": 0
+  },
+  {
+   "day": 20,
+   "expected_evaporation": "0x1.49ba5e353f7cfp-3",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.099999999999ap+5",
+   "seed": 0
+  },
+  {
+   "day": 30,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.6333333333333p+4",
+   "seed": 0
+  },
+  {
+   "day": 44,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.6333333333333p+4",
+   "seed": 0
+  },
+  {
+   "day": 45,
+   "expected_evaporation": "0x1.47ae147ae147bp-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "winter",
+   "expected_temperature": "0x1.6b851eb851eb8p+3",
+   "seed": 0
+  },
+  {
+   "day": 100,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.6333333333333p+4",
+   "seed": 0
+  },
+  {
+   "day": 200,
+   "expected_evaporation": "0x1.49ba5e353f7cfp-3",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.099999999999ap+5",
+   "seed": 0
+  },
+  {
+   "day": 0,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.40a3d70a3d70ap+3",
+   "seed": 1
+  },
+  {
+   "day": 5,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.40a3d70a3d70ap+3",
+   "seed": 1
+  },
+  {
+   "day": 15,
+   "expected_evaporation": "0x1.eb851eb851eb8p-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.46b851eb851ecp+4",
+   "seed": 1
+  },
+  {
+   "day": 20,
+   "expected_evaporation": "0x1.eb851eb851eb8p-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.46b851eb851ecp+4",
+   "seed": 1
+  },
+  {
+   "day": 30,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.2d70a3d70a3d7p+3",
+   "seed": 1
+  },
+  {
+   "day": 44,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.2d70a3d70a3d7p+3",
+   "seed": 1
+  },
+  {
+   "day": 45,
+   "expected_evaporation": "0x1.47ae147ae147bp-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "winter",
+   "expected_temperature": "-0x1.70a3d70a3d70ap-1",
+   "seed": 1
+  },
+  {
+   "day": 100,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.2d70a3d70a3d7p+3",
+   "seed": 1
+  },
+  {
+   "day": 200,
+   "expected_evaporation": "0x1.eb851eb851eb8p-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.46b851eb851ecp+4",
+   "seed": 1
+  },
+  {
+   "day": 0,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x1.6666666666666p-3",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.1970a3d70a3d7p+4",
+   "seed": 42
+  },
+  {
+   "day": 5,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x1.6666666666666p-3",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.1970a3d70a3d7p+4",
+   "seed": 42
+  },
+  {
+   "day": 15,
+   "expected_evaporation": "0x1.24dd2f1a9fbe7p-3",
+   "expected_rainfall": "0x1.fbe76c8b43958p-4",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.d828f5c28f5c3p+4",
+   "seed": 42
+  },
+  {
+   "day": 20,
+   "expected_evaporation": "0x1.24dd2f1a9fbe7p-3",
+   "expected_rainfall": "0x1.fbe76c8b43958p-4",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.d828f5c28f5c3p+4",
+   "seed": 42
+  },
+  {
+   "day": 30,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x1.3d70a3d70a3d7p-3",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.2828f5c28f5c3p+4",
+   "seed": 42
+  },
+  {
+   "day": 44,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x1.3d70a3d70a3d7p-3",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.2828f5c28f5c3p+4",
+   "seed": 42
+  },
+  {
+   "day": 45,
+   "expected_evaporation": "0x1.47ae147ae147bp-5",
+   "expected_rainfall": "0x1.95810624dd2f2p-4",
+   "expected_season": "winter",
+   "expected_temperature": "0x1.f7ae147ae147bp+2",
+   "seed": 42
+  },
+  {
+   "day": 100,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x1.3d70a3d70a3d7p-3",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.2828f5c28f5c3p+4",
+   "seed": 42
+  },
+  {
+   "day": 200,
+   "expected_evaporation": "0x1.24dd2f1a9fbe7p-3",
+   "expected_rainfall": "0x1.fbe76c8b43958p-4",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.d828f5c28f5c3p+4",
+   "seed": 42
+  },
+  {
+   "day": 0,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.6e147ae147ae1p+3",
+   "seed": 777
+  },
+  {
+   "day": 5,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.6e147ae147ae1p+3",
+   "seed": 777
+  },
+  {
+   "day": 15,
+   "expected_evaporation": "0x1.eb851eb851eb8p-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.62147ae147ae1p+4",
+   "seed": 777
+  },
+  {
+   "day": 20,
+   "expected_evaporation": "0x1.eb851eb851eb8p-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.62147ae147ae1p+4",
+   "seed": 777
+  },
+  {
+   "day": 30,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.6428f5c28f5c3p+3",
+   "seed": 777
+  },
+  {
+   "day": 44,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.6428f5c28f5c3p+3",
+   "seed": 777
+  },
+  {
+   "day": 45,
+   "expected_evaporation": "0x1.47ae147ae147bp-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "winter",
+   "expected_temperature": "0x1.ccccccccccccdp-1",
+   "seed": 777
+  },
+  {
+   "day": 100,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.6428f5c28f5c3p+3",
+   "seed": 777
+  },
+  {
+   "day": 200,
+   "expected_evaporation": "0x1.eb851eb851eb8p-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.62147ae147ae1p+4",
+   "seed": 777
+  },
+  {
+   "day": 0,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.19eb851eb851fp+4",
+   "seed": 123456789
+  },
+  {
+   "day": 5,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.19eb851eb851fp+4",
+   "seed": 123456789
+  },
+  {
+   "day": 15,
+   "expected_evaporation": "0x1.24dd2f1a9fbe7p-3",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.d8ccccccccccdp+4",
+   "seed": 123456789
+  },
+  {
+   "day": 20,
+   "expected_evaporation": "0x1.24dd2f1a9fbe7p-3",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.d8ccccccccccdp+4",
+   "seed": 123456789
+  },
+  {
+   "day": 30,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.28ccccccccccdp+4",
+   "seed": 123456789
+  },
+  {
+   "day": 44,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.28ccccccccccdp+4",
+   "seed": 123456789
+  },
+  {
+   "day": 45,
+   "expected_evaporation": "0x1.47ae147ae147bp-5",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "winter",
+   "expected_temperature": "0x1.f99999999999ap+2",
+   "seed": 123456789
+  },
+  {
+   "day": 100,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.28ccccccccccdp+4",
+   "seed": 123456789
+  },
+  {
+   "day": 200,
+   "expected_evaporation": "0x1.24dd2f1a9fbe7p-3",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.d8ccccccccccdp+4",
+   "seed": 123456789
+  },
+  {
+   "day": 0,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x1.6666666666666p-3",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.219999999999ap+3",
+   "seed": 55555
+  },
+  {
+   "day": 5,
+   "expected_evaporation": "0x1.eb851eb851eb8p-5",
+   "expected_rainfall": "0x1.6666666666666p-3",
+   "expected_season": "spring",
+   "expected_temperature": "0x1.219999999999ap+3",
+   "seed": 55555
+  },
+  {
+   "day": 15,
+   "expected_evaporation": "0x1.eb851eb851eb8p-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.3428f5c28f5c3p+4",
+   "seed": 55555
+  },
+  {
+   "day": 20,
+   "expected_evaporation": "0x1.eb851eb851eb8p-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.3428f5c28f5c3p+4",
+   "seed": 55555
+  },
+  {
+   "day": 30,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x1.3d70a3d70a3d7p-3",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.0851eb851eb85p+3",
+   "seed": 55555
+  },
+  {
+   "day": 44,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x1.3d70a3d70a3d7p-3",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.0851eb851eb85p+3",
+   "seed": 55555
+  },
+  {
+   "day": 45,
+   "expected_evaporation": "0x1.47ae147ae147bp-5",
+   "expected_rainfall": "0x1.95810624dd2f2p-4",
+   "expected_season": "winter",
+   "expected_temperature": "-0x1.cf5c28f5c28f6p+0",
+   "seed": 55555
+  },
+  {
+   "day": 100,
+   "expected_evaporation": "0x1.1eb851eb851ecp-4",
+   "expected_rainfall": "0x1.3d70a3d70a3d7p-3",
+   "expected_season": "autumn",
+   "expected_temperature": "0x1.0851eb851eb85p+3",
+   "seed": 55555
+  },
+  {
+   "day": 200,
+   "expected_evaporation": "0x1.eb851eb851eb8p-4",
+   "expected_rainfall": "0x0.0p+0",
+   "expected_season": "summer",
+   "expected_temperature": "0x1.3428f5c28f5c3p+4",
+   "seed": 55555
+  }
+ ],
+ "harvest_multipliers_cases": [
+  {
+   "crop_index": 0,
+   "expected_quality_multiplier": "0x1.0000000000000p+0",
+   "expected_yield_multiplier": "0x1.0000000000000p+0",
+   "name": "no_stress_no_plot",
+   "planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": null
+  },
+  {
+   "crop_index": 0,
+   "expected_quality_multiplier": "0x1.11eb851eb851fp+0",
+   "expected_yield_multiplier": "0x1.0000000000000p+0",
+   "name": "fertilized_no_plot",
+   "planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": true,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": null
+  },
+  {
+   "crop_index": 0,
+   "expected_quality_multiplier": "0x0.0p+0",
+   "expected_yield_multiplier": "0x1.3333333333333p-3",
+   "name": "heavy_stress_no_plot",
+   "planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x1.4000000000000p+2",
+    "fertilized": false,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 10,
+    "nutrient_stress": "0x1.4000000000000p+2",
+    "pest_stress": "0x1.4000000000000p+2",
+    "temperature_stress": "0x1.4000000000000p+2",
+    "water_stress": "0x1.4000000000000p+2"
+   },
+   "plot": null
+  },
+  {
+   "crop_index": 0,
+   "expected_quality_multiplier": "0x1.8000000000000p-1",
+   "expected_yield_multiplier": "0x1.5573eab367a0fp-1",
+   "name": "family_match_with_plot",
+   "planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x1.999999999999ap-4",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x1.999999999999ap-3"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": "grain",
+    "soil_health": "0x1.0000000000000p-1"
+   }
+  },
+  {
+   "crop_index": 0,
+   "expected_quality_multiplier": "0x1.e000000000000p-1",
+   "expected_yield_multiplier": "0x1.0570a3d70a3d7p+0",
+   "name": "family_mismatch_with_plot",
+   "planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x1.999999999999ap-4",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x1.999999999999ap-3"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": "berry",
+    "soil_health": "0x1.ccccccccccccdp-1"
+   }
+  },
+  {
+   "crop_index": 2,
+   "expected_quality_multiplier": "0x1.f5c28f5c28f5cp-1",
+   "expected_yield_multiplier": "0x1.d205bc01a36e2p-1",
+   "name": "crop_has_no_family",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x1.999999999999ap-4"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": "grain",
+    "soil_health": "0x1.3333333333333p-2"
+   }
+  },
+  {
+   "crop_index": 1,
+   "expected_quality_multiplier": "0x1.ee147ae147ae2p-1",
+   "expected_yield_multiplier": "0x1.e0b780346dc5dp-1",
+   "name": "fertilized_with_plot",
+   "planted": {
+    "crop_id": "moonberry",
+    "crop_index": 1,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": true,
+    "growth_days_required": 9,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x1.999999999999ap-3",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x1.3333333333333p-2"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.6666666666666p-1"
+   }
+  }
+ ],
+ "harvest_outcome_cases": [
+  {
+   "crop_index": 0,
+   "expected_lost": false,
+   "expected_yield": 3,
+   "name": "clean_harvest",
+   "planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.999999999999ap-1"
+   },
+   "seed": 1
+  },
+  {
+   "crop_index": 0,
+   "expected_lost": false,
+   "expected_yield": 3,
+   "name": "clean_harvest_alt_seed",
+   "planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.999999999999ap-1"
+   },
+   "seed": 42
+  },
+  {
+   "crop_index": 0,
+   "expected_lost": false,
+   "expected_yield": 8,
+   "name": "fertilized",
+   "planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": true,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.ccccccccccccdp-1"
+   },
+   "seed": 777
+  },
+  {
+   "crop_index": 1,
+   "expected_lost": false,
+   "expected_yield": 2,
+   "name": "heavy_neglect",
+   "planted": {
+    "crop_id": "moonberry",
+    "crop_index": 1,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 9,
+    "last_watered_day": 0,
+    "neglect_days": 8,
+    "nutrient_stress": "0x1.3333333333333p-2",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x1.999999999999ap-2"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.999999999999ap-2"
+   },
+   "seed": 123456789
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 9,
+   "name": "no_plot",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": null,
+   "seed": 2024
+  },
+  {
+   "crop_index": 1,
+   "expected_lost": true,
+   "expected_yield": 0,
+   "name": "high_loss_chance_crop",
+   "planted": {
+    "crop_id": "moonberry",
+    "crop_index": 1,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 9,
+    "last_watered_day": 0,
+    "neglect_days": 6,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.0000000000000p-1"
+   },
+   "seed": 99
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 6,
+   "name": "sweep_seed_3000",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3000
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 6,
+   "name": "sweep_seed_3001",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 1,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3001
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": true,
+   "expected_yield": 0,
+   "name": "sweep_seed_3002",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 2,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3002
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 4,
+   "name": "sweep_seed_3003",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 3,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3003
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 2,
+   "name": "sweep_seed_3004",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 4,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3004
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 7,
+   "name": "sweep_seed_3005",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3005
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 7,
+   "name": "sweep_seed_3006",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 1,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3006
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 4,
+   "name": "sweep_seed_3007",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 2,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3007
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": true,
+   "expected_yield": 0,
+   "name": "sweep_seed_3008",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 3,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3008
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 3,
+   "name": "sweep_seed_3009",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 4,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3009
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 8,
+   "name": "sweep_seed_3010",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3010
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 7,
+   "name": "sweep_seed_3011",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 1,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3011
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 4,
+   "name": "sweep_seed_3012",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 2,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3012
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 3,
+   "name": "sweep_seed_3013",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 3,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3013
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": true,
+   "expected_yield": 0,
+   "name": "sweep_seed_3014",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 4,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3014
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 9,
+   "name": "sweep_seed_3015",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3015
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 5,
+   "name": "sweep_seed_3016",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 1,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3016
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 2,
+   "name": "sweep_seed_3017",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 2,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3017
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 3,
+   "name": "sweep_seed_3018",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 3,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3018
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": true,
+   "expected_yield": 0,
+   "name": "sweep_seed_3019",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 4,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3019
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 7,
+   "name": "sweep_seed_3020",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3020
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 3,
+   "name": "sweep_seed_3021",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 1,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3021
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 3,
+   "name": "sweep_seed_3022",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 2,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3022
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 3,
+   "name": "sweep_seed_3023",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 3,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3023
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": true,
+   "expected_yield": 0,
+   "name": "sweep_seed_3024",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 4,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3024
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": true,
+   "expected_yield": 0,
+   "name": "sweep_seed_3025",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3025
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 7,
+   "name": "sweep_seed_3026",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 1,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3026
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": true,
+   "expected_yield": 0,
+   "name": "sweep_seed_3027",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 2,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3027
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 4,
+   "name": "sweep_seed_3028",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 3,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3028
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 2,
+   "name": "sweep_seed_3029",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 4,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3029
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 8,
+   "name": "sweep_seed_3030",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3030
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 6,
+   "name": "sweep_seed_3031",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 1,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3031
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": true,
+   "expected_yield": 0,
+   "name": "sweep_seed_3032",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 2,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3032
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 4,
+   "name": "sweep_seed_3033",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 3,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3033
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 4,
+   "name": "sweep_seed_3034",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 4,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3034
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 6,
+   "name": "sweep_seed_3035",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3035
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 3,
+   "name": "sweep_seed_3036",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 1,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3036
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": false,
+   "expected_yield": 2,
+   "name": "sweep_seed_3037",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 2,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3037
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": true,
+   "expected_yield": 0,
+   "name": "sweep_seed_3038",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 3,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3038
+  },
+  {
+   "crop_index": 2,
+   "expected_lost": true,
+   "expected_yield": 0,
+   "name": "sweep_seed_3039",
+   "planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 4,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.8cccccccccccdp+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "seed": 3039
+  }
+ ],
+ "plot_regen": {
+  "disease_pressure": 0.01,
+  "moisture": 0.0,
+  "nitrogen": 0.07,
+  "pest_pressure": 0.005,
+  "phosphorus": 0.04,
+  "potassium": 0.04,
+  "soil_health": 0.01
+ },
+ "quality_grade_cases": [
+  {
+   "expected_grade": "premium",
+   "score": "0x1.0000000000000p+0"
+  },
+  {
+   "expected_grade": "premium",
+   "score": "0x1.e666666666666p-1"
+  },
+  {
+   "expected_grade": "premium",
+   "score": "0x1.ccccccccccccdp-1"
+  },
+  {
+   "expected_grade": "standard",
+   "score": "0x1.ccccab3edd8b6p-1"
+  },
+  {
+   "expected_grade": "standard",
+   "score": "0x1.8000000000000p-1"
+  },
+  {
+   "expected_grade": "standard",
+   "score": "0x1.3d70a3d70a3d7p-1"
+  },
+  {
+   "expected_grade": "processing",
+   "score": "0x1.3d7082491afc0p-1"
+  },
+  {
+   "expected_grade": "processing",
+   "score": "0x1.ccccccccccccdp-2"
+  },
+  {
+   "expected_grade": "processing",
+   "score": "0x1.3333333333333p-2"
+  },
+  {
+   "expected_grade": "rejected",
+   "score": "0x1.3332f01754b06p-2"
+  },
+  {
+   "expected_grade": "rejected",
+   "score": "0x1.999999999999ap-4"
+  },
+  {
+   "expected_grade": "rejected",
+   "score": "0x0.0p+0"
+  },
+  {
+   "expected_grade": "rejected",
+   "score": "-0x1.0000000000000p-1"
+  }
+ ],
+ "season_cases": [
+  {
+   "day": 0,
+   "expected_season": "spring",
+   "season_length_days": 15
+  },
+  {
+   "day": 1,
+   "expected_season": "spring",
+   "season_length_days": 15
+  },
+  {
+   "day": 14,
+   "expected_season": "spring",
+   "season_length_days": 15
+  },
+  {
+   "day": 15,
+   "expected_season": "summer",
+   "season_length_days": 15
+  },
+  {
+   "day": 16,
+   "expected_season": "summer",
+   "season_length_days": 15
+  },
+  {
+   "day": 29,
+   "expected_season": "summer",
+   "season_length_days": 15
+  },
+  {
+   "day": 30,
+   "expected_season": "autumn",
+   "season_length_days": 15
+  },
+  {
+   "day": 44,
+   "expected_season": "autumn",
+   "season_length_days": 15
+  },
+  {
+   "day": 45,
+   "expected_season": "winter",
+   "season_length_days": 15
+  },
+  {
+   "day": 59,
+   "expected_season": "winter",
+   "season_length_days": 15
+  },
+  {
+   "day": 60,
+   "expected_season": "spring",
+   "season_length_days": 15
+  },
+  {
+   "day": 100,
+   "expected_season": "autumn",
+   "season_length_days": 15
+  },
+  {
+   "day": 365,
+   "expected_season": "spring",
+   "season_length_days": 15
+  },
+  {
+   "day": 1000,
+   "expected_season": "autumn",
+   "season_length_days": 15
+  },
+  {
+   "day": 0,
+   "expected_season": "spring",
+   "season_length_days": 1
+  },
+  {
+   "day": 5,
+   "expected_season": "summer",
+   "season_length_days": 1
+  },
+  {
+   "day": 12,
+   "expected_season": "spring",
+   "season_length_days": 1
+  },
+  {
+   "day": 40,
+   "expected_season": "spring",
+   "season_length_days": 1
+  },
+  {
+   "day": 90,
+   "expected_season": "autumn",
+   "season_length_days": 1
+  },
+  {
+   "day": 0,
+   "expected_season": "spring",
+   "season_length_days": 7
+  },
+  {
+   "day": 5,
+   "expected_season": "spring",
+   "season_length_days": 7
+  },
+  {
+   "day": 12,
+   "expected_season": "summer",
+   "season_length_days": 7
+  },
+  {
+   "day": 40,
+   "expected_season": "summer",
+   "season_length_days": 7
+  },
+  {
+   "day": 90,
+   "expected_season": "spring",
+   "season_length_days": 7
+  },
+  {
+   "day": 0,
+   "expected_season": "spring",
+   "season_length_days": 30
+  },
+  {
+   "day": 5,
+   "expected_season": "spring",
+   "season_length_days": 30
+  },
+  {
+   "day": 12,
+   "expected_season": "spring",
+   "season_length_days": 30
+  },
+  {
+   "day": 40,
+   "expected_season": "summer",
+   "season_length_days": 30
+  },
+  {
+   "day": 90,
+   "expected_season": "winter",
+   "season_length_days": 30
+  }
+ ],
+ "soil_dynamics": {
+  "disease_growth_per_rainfall": 0.08,
+  "fallow_disease_decay": 0.9,
+  "fallow_pest_decay": 0.9,
+  "fallow_soil_health_regen": 0.005,
+  "harvest_soil_health_cost": 0.02,
+  "max_disease_pressure": 0.8,
+  "max_pest_pressure": 0.8,
+  "min_soil_health": 0.1,
+  "pest_growth_per_day": 0.005,
+  "same_family_quality_penalty": 0.8,
+  "same_family_yield_penalty": 0.72,
+  "soil_health_yield_floor": 0.85,
+  "soil_health_yield_span": 0.25
+ },
+ "update_crop_stress_cases": [
+  {
+   "after_planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x1.c28f5c28f5c2ap-5",
+    "fertilized": false,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x1.47ae147ae147cp-4",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "after_plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0a3d70a3d70a4p-1",
+    "nitrogen": "0x1.e147ae147ae14p-2",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.999999999999ap+2",
+    "phosphorus": "0x1.f0a3d70a3d70ap-2",
+    "potassium": "0x1.eb851eb851eb8p-2",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "before_planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "before_plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.3333333333333p-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.999999999999ap+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "crop_index": 0,
+   "evaporation": "0x1.47ae147ae147bp-4",
+   "name": "comfortable",
+   "temperature": "0x1.4000000000000p+4"
+  },
+  {
+   "after_planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x1.c28f5c28f5c2ap-5",
+    "fertilized": false,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x1.c28f5c28f5c29p-4",
+    "pest_stress": "0x1.47ae147ae147cp-4",
+    "temperature_stress": "0x1.999999999999ap-2",
+    "water_stress": "0x1.3333333333334p-2"
+   },
+   "after_plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.999999999999ap-5",
+    "nitrogen": "0x1.47ae147ae147cp-6",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.4000000000000p+2",
+    "phosphorus": "0x1.47ae147ae147cp-8",
+    "potassium": "0x0.0p+0",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "before_planted": {
+    "crop_id": "sunwheat",
+    "crop_index": 0,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 6,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "before_plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.999999999999ap-4",
+    "nitrogen": "0x1.999999999999ap-5",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.4000000000000p+2",
+    "phosphorus": "0x1.47ae147ae147bp-6",
+    "potassium": "0x1.47ae147ae147bp-7",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "crop_index": 0,
+   "evaporation": "0x1.999999999999ap-5",
+   "name": "below_all_bands",
+   "temperature": "0x1.0000000000000p+2"
+  },
+  {
+   "after_planted": {
+    "crop_id": "moonberry",
+    "crop_index": 1,
+    "day_planted": 0,
+    "disease_stress": "0x1.147ae147ae148p-1",
+    "fertilized": false,
+    "growth_days_required": 9,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x1.0a3d70a3d70a3p-3",
+    "pest_stress": "0x1.f5c28f5c28f5bp-1",
+    "temperature_stress": "0x1.3333333333333p-2",
+    "water_stress": "0x0.0p+0"
+   },
+   "after_plot": {
+    "disease_pressure": "0x1.3333333333333p-1",
+    "moisture": "0x1.8f5c28f5c28f6p-1",
+    "nitrogen": "0x1.f5c28f5c28f5cp-2",
+    "pest_pressure": "0x1.6666666666666p-1",
+    "ph": "0x1.f333333333333p+2",
+    "phosphorus": "0x1.e147ae147ae14p-2",
+    "potassium": "0x1.f0a3d70a3d70ap-2",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "before_planted": {
+    "crop_id": "moonberry",
+    "crop_index": 1,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 9,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "before_plot": {
+    "disease_pressure": "0x1.3333333333333p-1",
+    "moisture": "0x1.ccccccccccccdp-1",
+    "nitrogen": "0x1.0000000000000p-1",
+    "pest_pressure": "0x1.6666666666666p-1",
+    "ph": "0x1.f333333333333p+2",
+    "phosphorus": "0x1.0000000000000p-1",
+    "potassium": "0x1.0000000000000p-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "crop_index": 1,
+   "evaporation": "0x1.eb851eb851eb8p-4",
+   "name": "above_all_bands",
+   "temperature": "0x1.e000000000000p+4"
+  },
+  {
+   "after_planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x1.999999999999ap-6",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x1.47ae147ae147bp-5",
+    "pest_stress": "0x1.999999999999ap-5",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "after_plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.e147ae147ae14p-2",
+    "nitrogen": "0x0.0p+0",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.a000000000000p+2",
+    "phosphorus": "0x0.0p+0",
+    "potassium": "0x0.0p+0",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "before_planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 0,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "before_plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.0000000000000p-1",
+    "nitrogen": "0x0.0p+0",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.a000000000000p+2",
+    "phosphorus": "0x0.0p+0",
+    "potassium": "0x0.0p+0",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "crop_index": 2,
+   "evaporation": "0x1.eb851eb851eb8p-6",
+   "name": "nutrients_depleted",
+   "temperature": "0x1.2000000000000p+4"
+  },
+  {
+   "after_planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x1.999999999999ap-6",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 3,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x1.999999999999ap-5",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "after_plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.a8f5c28f5c28fp-1",
+    "nitrogen": "0x1.f0a3d70a3d70ap-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.a000000000000p+2",
+    "phosphorus": "0x1.f5c28f5c28f5cp-1",
+    "potassium": "0x1.f5c28f5c28f5cp-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "before_planted": {
+    "crop_id": "dustroot",
+    "crop_index": 2,
+    "day_planted": 0,
+    "disease_stress": "0x0.0p+0",
+    "fertilized": false,
+    "growth_days_required": 4,
+    "last_watered_day": 0,
+    "neglect_days": 3,
+    "nutrient_stress": "0x0.0p+0",
+    "pest_stress": "0x0.0p+0",
+    "temperature_stress": "0x0.0p+0",
+    "water_stress": "0x0.0p+0"
+   },
+   "before_plot": {
+    "disease_pressure": "0x1.999999999999ap-5",
+    "moisture": "0x1.f5c28f5c28f5cp-1",
+    "nitrogen": "0x1.fae147ae147aep-1",
+    "pest_pressure": "0x1.999999999999ap-4",
+    "ph": "0x1.a000000000000p+2",
+    "phosphorus": "0x1.fae147ae147aep-1",
+    "potassium": "0x1.fae147ae147aep-1",
+    "previous_crop_family": null,
+    "soil_health": "0x1.3333333333333p-1"
+   },
+   "crop_index": 2,
+   "evaporation": "0x1.3333333333333p-3",
+   "name": "near_saturation",
+   "temperature": "0x1.6000000000000p+4"
+  }
+ ],
+ "watering": {
+  "cost_per_plot": 0.35,
+  "max_neglect_loss_chance_bonus": 0.43,
+  "max_neglect_yield_penalty": 0.53,
+  "moisture_added": 0.45,
+  "neglect_loss_chance_penalty_per_day": 0.09,
+  "neglect_yield_penalty_per_day": 0.19
+ },
+ "weather_world": {
+  "season_length_days": 15,
+  "seasons": {
+   "autumn": {
+    "evaporation": 0.07,
+    "rain_chance": 0.35,
+    "rainfall_range": [
+     0.1,
+     0.3
+    ],
+    "temperature_range": [
+     7,
+     25
+    ]
+   },
+   "spring": {
+    "evaporation": 0.06,
+    "rain_chance": 0.42,
+    "rainfall_range": [
+     0.12,
+     0.32
+    ],
+    "temperature_range": [
+     8,
+     23
+    ]
+   },
+   "summer": {
+    "evaporation": 0.12,
+    "rain_chance": 0.18,
+    "rainfall_range": [
+     0.08,
+     0.24
+    ],
+    "temperature_range": [
+     18,
+     36
+    ]
+   },
+   "winter": {
+    "evaporation": 0.04,
+    "rain_chance": 0.28,
+    "rainfall_range": [
+     0.06,
+     0.2
+    ],
+    "temperature_range": [
+     -3,
+     14
+    ]
+   }
+  }
+ }
+}

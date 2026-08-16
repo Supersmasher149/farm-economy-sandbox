@@ -1,3 +1,4 @@
 *.o
 tests/test_agents
 tests/test_rng
+tests/test_physics
