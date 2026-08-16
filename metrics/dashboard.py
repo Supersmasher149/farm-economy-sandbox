@@ -12,6 +12,12 @@ installed, render_dashboard_html() still writes a valid HTML page that says
 so, rather than leaving the artifact missing -- main.py publishes
 dashboard.html unconditionally on every batch, so reports/dashboard.html
 always resolves to *something* explainable rather than a broken link.
+
+When called with `current_summary_doc`/`reports_dir`, also bundles
+metrics.trends' cross-run charts into a "Run History" section on the same
+page -- same bundler role, just a second source (metrics/trends.py instead
+of metrics/visualize.py) feeding the same base64-embed loop. Both params
+default to None so existing callers get today's page unchanged.
 """
 
 import base64
@@ -54,6 +60,8 @@ PAGE_TEMPLATE = """<!doctype html>
   header {{ margin-bottom: 2rem; }}
   h1 {{ font-size: 1.5rem; margin: 0 0 0.25rem; }}
   .subtitle {{ color: var(--ink-secondary); font-size: 0.95rem; }}
+  section {{ margin-top: 2.5rem; }}
+  .section-title {{ font-size: 1.15rem; margin: 0 0 1rem; }}
   .grid {{
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
@@ -85,6 +93,7 @@ PAGE_TEMPLATE = """<!doctype html>
 <div class="grid">
 {figures}
 </div>
+{trends_section}
 </body>
 </html>
 """
@@ -93,6 +102,18 @@ FIGURE_TEMPLATE = """  <figure>
     <h2>{title}</h2>
     <img src="data:image/png;base64,{data}" alt="{title}">
   </figure>"""
+
+TRENDS_SECTION_TEMPLATE = """<section>
+  <h2 class="section-title">Run History</h2>
+  <div class="grid">
+{figures}
+  </div>
+</section>"""
+
+TRENDS_UNAVAILABLE_TEMPLATE = """<section>
+  <h2 class="section-title">Run History</h2>
+  <p class="subtitle">Fewer than 2 retained runs yet -- this fills in after the next batch.</p>
+</section>"""
 
 MISSING_MATPLOTLIB_TEMPLATE = """<!doctype html>
 <html lang="en">
@@ -153,12 +174,23 @@ def render_dashboard_html(
     title: str = "Farm Economy Batch Report",
     subtitle: str = "",
     dpi: int = 130,
+    *,
+    current_summary_doc: dict | None = None,
+    reports_dir: str | None = None,
 ) -> str:
     """Render every chart from `csv_path` into one self-contained HTML file
     at `out_html_path`. Always writes something -- a real dashboard if
     matplotlib is available and there is data to chart, otherwise a short
     explanatory page -- so callers never have to special-case a missing
     artifact.
+
+    `current_summary_doc` (the current, not-yet-published batch's
+    summary.json dict) and `reports_dir` (to look up already-published
+    runs under `reports_dir/runs/`) are both optional; supply both to add a
+    "Run History" section charting metrics across run history via
+    metrics.trends. Omit either (the default) and the page renders exactly
+    as it did before this parameter existed -- existing callers are
+    unaffected.
     """
     try:
         import matplotlib  # noqa: F401
@@ -178,10 +210,31 @@ def render_dashboard_html(
             with open(path, "rb") as f:
                 data = base64.b64encode(f.read()).decode("ascii")
             figures.append(FIGURE_TEMPLATE.format(title=chart_title, data=data))
+
+        trends_section = ""
+        if current_summary_doc is not None and reports_dir is not None:
+            from metrics import trends
+
+            history = trends.load_history(reports_dir)
+            history = trends.append_current(history, current_summary_doc)
+            trend_paths = trends.render_all(history, tmp_dir, dpi, show=False)
+            if trend_paths:
+                trend_figures = []
+                for path in trend_paths:
+                    field = os.path.splitext(os.path.basename(path))[0].removeprefix("trend_")
+                    chart_title = html.escape(trends.view.FIELD_LABELS.get(field, field))
+                    with open(path, "rb") as f:
+                        data = base64.b64encode(f.read()).decode("ascii")
+                    trend_figures.append(FIGURE_TEMPLATE.format(title=chart_title, data=data))
+                trends_section = TRENDS_SECTION_TEMPLATE.format(figures="\n".join(trend_figures))
+            else:
+                trends_section = TRENDS_UNAVAILABLE_TEMPLATE
+
         page = PAGE_TEMPLATE.format(
             title=html.escape(title),
             subtitle=html.escape(subtitle),
             figures="\n".join(figures),
+            trends_section=trends_section,
         )
         _write(out_html_path, page)
     finally:

@@ -280,6 +280,8 @@ def cmd_batch(args):
                     f"{args.runs} runs x {len(agents)} strategies, "
                     f"{config['days']} days, base seed {base_seed}"
                 ),
+                current_summary_doc=summary_doc,
+                reports_dir=REPORTS_DIR,
             )
         else:
             write_no_charts_placeholder(staged_dashboard_path)

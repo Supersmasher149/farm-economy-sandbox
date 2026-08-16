@@ -17,6 +17,7 @@ matplotlib.use("Agg")
 from metrics.dashboard import render_dashboard_html, write_no_charts_placeholder  # noqa: E402
 from metrics.run_results import write_csv  # noqa: E402
 from tests.test_aggregate_results import _make_run_result  # noqa: E402
+from tests.test_view import STRATEGIES, _write_run  # noqa: E402
 
 CROP_IDS = ["quickweed", "greenleaf"]
 
@@ -90,3 +91,87 @@ def test_write_no_charts_placeholder(tmp_path):
         content = f.read()
     assert "--no-charts" in content
     assert "Test Report" in content
+
+
+def test_dashboard_omits_run_history_without_trend_params(tmp_path):
+    """Backward compat: callers that don't pass current_summary_doc/
+    reports_dir (every caller before this feature existed) get exactly
+    today's page -- no "Run History" section at all."""
+    csv_path = _write_csv(tmp_path, _representative_results())
+    out_path = os.path.join(tmp_path, "dashboard.html")
+
+    render_dashboard_html(csv_path, out_path, title="Test Report")
+
+    with open(out_path) as f:
+        content = f.read()
+    assert "Run History" not in content
+
+
+def test_dashboard_includes_run_history_with_prior_runs(tmp_path):
+    reports_dir = os.path.join(tmp_path, "reports")
+    _write_run(reports_dir, "20260101T000000-a", STRATEGIES)
+    _write_run(reports_dir, "20260102T000000-b", STRATEGIES)
+    csv_path = _write_csv(tmp_path, _representative_results())
+    out_path = os.path.join(tmp_path, "dashboard.html")
+
+    render_dashboard_html(
+        csv_path,
+        out_path,
+        title="Test Report",
+        current_summary_doc={"strategies": STRATEGIES},
+        reports_dir=reports_dir,
+    )
+
+    with open(out_path) as f:
+        content = f.read()
+    assert "Run History" in content
+    assert "final_money" in content
+    # Single-run charts still render alongside the trend section.
+    assert "Bankruptcy rate" in content
+
+
+def test_dashboard_run_history_degrades_gracefully_with_no_prior_runs(tmp_path):
+    """Zero published runs yet (first-ever batch): the current in-memory
+    run alone is one point, not a trend -- the section explains why it's
+    empty instead of a broken/empty chart, and the rest of the page still
+    renders normally."""
+    reports_dir = os.path.join(tmp_path, "reports")
+    csv_path = _write_csv(tmp_path, _representative_results())
+    out_path = os.path.join(tmp_path, "dashboard.html")
+
+    render_dashboard_html(
+        csv_path,
+        out_path,
+        title="Test Report",
+        current_summary_doc={"strategies": STRATEGIES},
+        reports_dir=reports_dir,
+    )
+
+    with open(out_path) as f:
+        content = f.read()
+    assert "Run History" in content
+    assert "Fewer than 2 retained runs yet" in content
+    assert "Bankruptcy rate" in content  # single-run charts unaffected
+
+
+def test_dashboard_run_history_renders_with_exactly_one_prior_run(tmp_path):
+    """One prior run + the current in-memory run = 2 total points, the
+    real minimum for a line -- this should render an actual trend, not the
+    "fewer than 2" placeholder."""
+    reports_dir = os.path.join(tmp_path, "reports")
+    _write_run(reports_dir, "20260101T000000-a", STRATEGIES)
+    csv_path = _write_csv(tmp_path, _representative_results())
+    out_path = os.path.join(tmp_path, "dashboard.html")
+
+    render_dashboard_html(
+        csv_path,
+        out_path,
+        title="Test Report",
+        current_summary_doc={"strategies": STRATEGIES},
+        reports_dir=reports_dir,
+    )
+
+    with open(out_path) as f:
+        content = f.read()
+    assert "Fewer than 2 retained runs yet" not in content
+    assert "final_money" in content
