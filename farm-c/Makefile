@@ -8,10 +8,14 @@
 #   make fixtures-rng     - regenerate tests/fixtures/rng.json from
 #                            CPython's random.Random (see
 #                            ../tools/export_rng_fixtures.py)
-#   make fixtures-physics - regenerate tests/fixtures/physics.json from the
+#   make fixtures-physics  - regenerate tests/fixtures/physics.json from the
 #                            real simulation/crop_growth.py + weather.py
 #                            (see ../tools/export_physics_fixtures.py)
-#   make test             - build and run every fixture-driven parity test,
+#   make fixtures-mutation - regenerate tests/fixtures/mutation.json from
+#                            the real simulation/actions.py, inventory.py,
+#                            markets.py, processing.py, contracts.py (see
+#                            ../tools/export_mutation_fixtures.py)
+#   make test              - build and run every fixture-driven parity test,
 #                            under ASan+UBSan (docs/c-port-plan.md Section 9)
 #   make clean
 
@@ -32,7 +36,7 @@ LIBS = -lm
 LIB_SRCS = $(wildcard src/*.c) $(wildcard src/agents/*.c)
 LIB_OBJS = $(LIB_SRCS:.c=.o)
 
-.PHONY: all test fixtures fixtures-rng fixtures-physics clean
+.PHONY: all test fixtures fixtures-rng fixtures-physics fixtures-mutation clean
 
 all: test
 
@@ -51,6 +55,9 @@ tests/test_rng: tests/test_rng.c src/rng.o tests/third_party/cJSON.o
 tests/test_physics: tests/test_physics.c $(LIB_OBJS) tests/third_party/cJSON.o
 	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
+tests/test_mutation: tests/test_mutation.c $(LIB_OBJS) tests/third_party/cJSON.o
+	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+
 fixtures:
 	python3 ../tools/export_agent_fixtures.py
 
@@ -60,13 +67,17 @@ fixtures-rng:
 fixtures-physics:
 	python3 ../tools/export_physics_fixtures.py
 
+fixtures-mutation:
+	python3 ../tools/export_mutation_fixtures.py
+
 # `make test` alone (no Python needed) re-runs against whatever fixtures are
-# already checked in; `make fixtures fixtures-rng fixtures-physics test`
-# regenerates them first.
-test: tests/test_agents tests/test_rng tests/test_physics
+# already checked in; `make fixtures fixtures-rng fixtures-physics
+# fixtures-mutation test` regenerates them first.
+test: tests/test_agents tests/test_rng tests/test_physics tests/test_mutation
 	./tests/test_agents
 	./tests/test_rng
 	./tests/test_physics
+	./tests/test_mutation
 
 clean:
-	rm -f $(LIB_OBJS) tests/third_party/cJSON.o tests/test_agents tests/test_rng tests/test_physics
+	rm -f $(LIB_OBJS) tests/third_party/cJSON.o tests/test_agents tests/test_rng tests/test_physics tests/test_mutation

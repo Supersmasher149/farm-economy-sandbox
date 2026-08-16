@@ -1,12 +1,14 @@
 /* Immutable, indexed configuration -- loaded once, never mutated for the
  * lifetime of a ResolvedConfig. See docs/c-port-plan.md Sections 1 and 4.
  *
- * This header covers only what the 11 ported agents (and the shared
- * economy_rules/markets/inventory/contracts helpers they call) actually
- * read. It intentionally omits ItemDef.seasonal_demand's Weather/RNG
- * consumers, recipe validation fields, buyer offer-generation fields, etc.
- * -- those belong to the full engine port, not this agents-only slice.
- */
+ * Originally covered only what the 11 ported agents (and the shared
+ * economy_rules/markets/inventory/contracts decision helpers they call)
+ * read; Phase 1 (crop_growth.c/weather.c) and Phase 2 (actions.c/
+ * inventory.c/markets.c/processing.c/contracts.c's day-loop mutators) each
+ * added the further fields their own ported functions need -- see the
+ * per-field comments below for which phase introduced what. Recipe
+ * validation fields and anything only `config_validation.py`-equivalent
+ * loading logic would need are still out of scope (Phase 3). */
 #ifndef FARM_CONFIG_H
 #define FARM_CONFIG_H
 
@@ -18,6 +20,19 @@ typedef enum {
     ITEM_CROP,
     ITEM_PRODUCT
 } ItemType;
+
+/* simulation/weather.py:5 SEASONS -- order is load-bearing (indexes
+ * WeatherParams.by_season and ItemDef.seasonal_demand below, and is itself
+ * derived from `day // season_length % 4`, matching Python's tuple indexing
+ * exactly). Declared up here (rather than alongside WeatherParams further
+ * down) so ItemDef can size seasonal_demand by it. */
+typedef enum {
+    SEASON_SPRING,
+    SEASON_SUMMER,
+    SEASON_AUTUMN,
+    SEASON_WINTER,
+    SEASON_COUNT
+} Season;
 
 /* simulation/derived.py:52 DEFAULT_NUTRIENT_DEMAND order: nitrogen,
  * phosphorus, potassium. A crop whose config omits nutrient_demand gets
@@ -61,8 +76,13 @@ typedef struct {
 
     double base_price;
     double price_variation;
-    /* seasonal_demand omitted: agents never read it directly (only
-     * markets.update_daily_prices does, which is out of scope here). */
+    /* derived.py:_build_market_profiles: `item.get("seasonal_demand", {})`,
+     * indexed by Season (declared further down this file) and resolved to
+     * 1.0 per season the JSON doesn't mention -- markets.update_daily_prices
+     * reads `seasonal_demand.get(season, 1.0)`, so an entirely-absent dict
+     * and one naming every season at 1.0 are indistinguishable to any
+     * reader, and this stores the already-resolved result either way. */
+    double seasonal_demand[SEASON_COUNT];
 } ItemDef;
 
 typedef struct {
@@ -104,6 +124,10 @@ typedef struct {
     double min_moisture;
     double pest_susceptibility;
     double disease_susceptibility;
+
+    /* crop.get("shelf_life_days", 7) -- Phase 2 (actions.c) field:
+     * harvest_mature stamps a newly-harvested lot's shelf life with this. */
+    int shelf_life_days;
 } CropDef;
 
 typedef enum {
@@ -147,6 +171,9 @@ typedef struct {
     Quality min_quality; /* recipe.get("min_quality", "processing") */
 
     double cost;
+    /* recipe.get("shelf_life_days", 30) -- Phase 2 (processing.c) field:
+     * start_job stamps a completing job's output lot with this. */
+    int shelf_life_days;
 } RecipeDef;
 
 /* Exactly simulation/derived.py:155-186 ChannelProfile's fields --
@@ -177,10 +204,23 @@ typedef struct {
     const char *name;
     double min_reputation;
     double relationship_bonus_rate;
-    /* Offer-generation fields (quantity_range, contract_price_multiplier,
-     * deadline_days, penalty_rate, allowed items) are intentionally omitted:
-     * agents never generate offers, only evaluate ones already on
-     * FarmState.contract_offers -- see state.h ContractRecord. */
+
+    /* Offer-generation fields (simulation/contracts.py:58-106
+     * generate_offers), needed by Phase 2's contracts_generate_offers --
+     * the agent-decision slice never read these (agents only evaluate
+     * offers already on FarmState.contract_offers), which is why they
+     * weren't here before. */
+    ItemId *allowed_items; /* buyer.get("items", []), resolved to ids */
+    size_t allowed_item_count;
+    int quantity_min; /* buyer.get("quantity_range", [5, 12])[0] */
+    int quantity_max; /* buyer.get("quantity_range", [5, 12])[1] */
+    Quality min_quality;                /* buyer.get("min_quality", "standard") */
+    double contract_price_multiplier;   /* buyer.get("contract_price_multiplier", 1.2) */
+    int deadline_days;                  /* buyer.get("deadline_days", 10) */
+    /* buyer.get("penalty_rate", contract_config.get("default_penalty_rate",
+     * 0.35)) -- the ContractsConfig default is already folded in here at
+     * load time, so generate_offers never needs to consult it itself. */
+    double penalty_rate;
 } BuyerDef;
 
 /* simulation/economy_rules.py reads fertilizer_config["cost"],
@@ -197,7 +237,13 @@ typedef struct {
      * scope note), which is why it wasn't here before crop_growth.c needed
      * it. */
     double quality_bonus;
+    /* config/fertilizer.json's "nutrients_added"; actions.py's plant_seed
+     * and fertilize_crop both fall back to {"nitrogen": 0.25, "phosphorus":
+     * 0.15, "potassium": 0.15} when the JSON field is absent -- folded in at
+     * load time like every other default here. Phase 2 (actions.c) field. */
+    NutrientDemand nutrients_added;
 } FertilizerConfig;
+#define DEFAULT_FERTILIZER_NUTRIENTS_ADDED ((NutrientDemand){0.25, 0.15, 0.15})
 
 /* config/watering_settings.json, read by crop_growth.compute_harvest_outcome
  * (the first four fields) and simulation/actions.py's water_crop/harvest_mature
@@ -248,17 +294,6 @@ typedef struct {
     double disease_pressure;
 } PlotRegen;
 
-/* simulation/weather.py:5 SEASONS -- order is load-bearing (indexes
- * WeatherParams.by_season and is itself derived from `day // season_length
- * % 4`, matching Python's tuple indexing exactly). */
-typedef enum {
-    SEASON_SPRING,
-    SEASON_SUMMER,
-    SEASON_AUTUMN,
-    SEASON_WINTER,
-    SEASON_COUNT
-} Season;
-
 /* One config/weather.json "seasons.<name>" entry, resolved
  * (simulation/derived.py:349-369 WeatherParams.by_season's per-season
  * 6-tuple) with defaults folded in: temperature_range [12, 24], rain_chance
@@ -277,18 +312,42 @@ typedef struct {
     SeasonWeather by_season[SEASON_COUNT];
 } WeatherParams;
 
-/* simulation/contracts.py module-level defaults, the subset ported agents'
- * feasibility/profitability checks read via `player.contract_config.get(...)`:
+/* simulation/contracts.py module-level defaults, read via
+ * `player.contract_config.get(...)` throughout that module.
  * DEFAULT_FALLBACK_PRICE_MULTIPLIER (contracts.py:12),
- * PRODUCTION_SAFETY_FACTOR (contracts.py:7), DEFAULT_OFFER_EXPIRY_DAYS
- * (contracts.py:8). Relationship-bonus fields are omitted: nothing in the
- * ported agent decision surface reads them (only generate_offers/deliver do,
- * both out of scope -- see farm-c/README.md). */
+ * PRODUCTION_SAFETY_FACTOR (contracts.py:7), and DEFAULT_OFFER_EXPIRY_DAYS
+ * (contracts.py:8) were already here for the agent-decision slice's
+ * feasibility/profitability checks; the remaining five back Phase 2's
+ * generate_offers/deliver/resolve_expired, which the agent-decision slice
+ * never needed. */
 typedef struct {
     double fallback_price_multiplier; /* default 1.15 */
     double production_safety_factor;  /* default 0.45 */
     int offer_expiry_days;            /* default 3 */
+    int offer_interval_days;          /* default 7 -- contracts.py:62 */
+    double default_penalty_rate;      /* default 0.35 -- contracts.py:101 */
+    double relationship_gain_per_delivery;  /* default 6.0 -- DEFAULT_RELATIONSHIP_GAIN */
+    double relationship_loss_per_failure;   /* default 5.0 -- DEFAULT_RELATIONSHIP_LOSS */
+    double relationship_bonus_cap;          /* default 0.25 -- DEFAULT_RELATIONSHIP_BONUS_CAP */
 } ContractsConfig;
+
+/* config/markets.json's top-level fields (not per-channel -- see ChannelDef
+ * for those). Phase 2 (markets.c) field: markets_update_daily_prices reads
+ * both to compute each item's saturation-adjusted price. */
+typedef struct {
+    double minimum_supply_multiplier; /* default 0.65 */
+    double supply_decay;              /* default 0.75 */
+} MarketsConfig;
+
+/* config/storage.json (simulation/inventory.py's storage_config parameter).
+ * Phase 2 (inventory.c) fields: capture_storage_liability/age_and_spoil read
+ * daily_cost and shelf_life_multiplier; age_and_spoil/enforce_storage_capacity
+ * read capacity. */
+typedef struct {
+    double daily_cost;           /* default 0.0 */
+    int capacity;                /* default 100 */
+    double shelf_life_multiplier; /* default 1.0 */
+} StorageConfig;
 
 typedef struct {
     ItemDef *items;
@@ -315,6 +374,7 @@ typedef struct {
     SoilDynamics soil_dynamics;
     PlotRegen plot_regen;
     WeatherParams weather;
+    MarketsConfig markets;
 } ResolvedConfig;
 
 /* --- Lookups (linear scan; config is small and this is test/decision-time

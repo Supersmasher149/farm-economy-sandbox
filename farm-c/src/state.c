@@ -84,6 +84,11 @@ void farm_state_init(FarmState *state, const ResolvedConfig *config, double mone
     state->channel_capacity_used = calloc(config->channel_count, sizeof(int));
 
     state->has_highest_money = false;
+
+    /* --- Phase 2 fields --- */
+    state->market_supply = calloc(config->item_count, sizeof(double));
+    state->current_season = SEASON_SPRING; /* matches `.get("season", "spring")` */
+    state->revenue_by_channel = calloc(config->channel_count, sizeof(double));
 }
 
 void farm_state_destroy(FarmState *state) {
@@ -101,5 +106,60 @@ void farm_state_destroy(FarmState *state) {
     free(state->market_prices);
     free(state->has_market_price);
     free(state->channel_capacity_used);
+    free(state->market_supply);
+    free(state->revenue_by_channel);
     memset(state, 0, sizeof(*state));
+}
+
+/* --- Phase 2 mutation helpers --- */
+
+void farm_state_record_expense(FarmState *state, ExpenseCategory category, double amount) {
+    if (amount <= 0) {
+        return;
+    }
+    state->total_expenses += amount;
+    state->expenses_by_category[category] += amount;
+}
+
+void farm_state_track_peak_cash(FarmState *state) {
+    if (!state->has_highest_money || state->money > state->highest_money) {
+        state->highest_money = state->money;
+        state->has_highest_money = true;
+    }
+}
+
+bool farm_state_add_slots(FarmState *state, int amount) {
+    if (amount <= 0) {
+        /* Python's `add_slots` never guards this (a caller only ever passes
+         * a positive upgrade effect amount), but a no-op for <= 0 is a
+         * strict superset of that behaviour and keeps this safe to call
+         * defensively. */
+        state->slots_total += amount;
+        return true;
+    }
+    size_t new_count = state->plot_count + (size_t)amount;
+    PlotState *grown = realloc(state->plots, new_count * sizeof(PlotState));
+    if (grown == NULL) {
+        return false;
+    }
+    state->plots = grown;
+    for (size_t i = state->plot_count; i < new_count; i++) {
+        /* Same defaults as farm_state_init's initial plots (simulation/
+         * state.py PlotState field defaults, state.py:37-46). */
+        state->plots[i] = (PlotState){
+            .moisture = 0.65,
+            .nitrogen = 0.75,
+            .phosphorus = 0.75,
+            .potassium = 0.75,
+            .ph = 6.5,
+            .soil_health = 0.7,
+            .pest_pressure = 0.05,
+            .disease_pressure = 0.03,
+            .previous_crop_family = NULL,
+            .planted_index = -1,
+        };
+    }
+    state->plot_count = new_count;
+    state->slots_total += amount;
+    return true;
 }

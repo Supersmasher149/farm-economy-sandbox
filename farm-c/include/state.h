@@ -228,6 +228,68 @@ typedef struct {
      * (simulation/state.py:185). */
     bool has_run_seed;
     int64_t run_seed;
+
+    /* --- Phase 2 fields: the rest of simulation/state.py's PlayerState,
+     * read/written by actions.c/inventory.c/markets.c/processing.c/
+     * contracts.c's day-loop mutators. Nothing in Phase 0's agent-decision
+     * slice or Phase 1's physics needed these. --- */
+
+    /* Dense, config->item_count-sized array indexed by ItemId --
+     * PlayerState.market_supply. Every entry starts at 0.0, matching
+     * Python's dict-absence default (`.get(item_id, 0.0)`), so there is no
+     * separate has_* flag: 0.0 and "never touched" are the same state. */
+    double *market_supply;
+
+    /* PlayerState.current_weather["season"], defaulting to SEASON_SPRING to
+     * match `.get("season", "spring")` for a run whose first weather hasn't
+     * been generated yet. Set by weather_generate (Phase 1) each day in the
+     * real engine loop (Phase 4); markets_update_daily_prices reads it
+     * directly. */
+    Season current_season;
+
+    /* Dense, config->channel_count-sized array indexed by ChannelId --
+     * PlayerState.revenue_by_channel's real-channel entries
+     * (markets.sell). The two pseudo-channel string keys Python's dict also
+     * uses get their own scalar instead: "contract" (contracts.deliver)
+     * below; "spot" (the legacy actions.sell_all) is out of scope per the
+     * plan's scope decision, so it has no field here. */
+    double *revenue_by_channel;
+    double contract_channel_revenue;
+
+    double total_expenses; /* PlayerState.total_expenses; kept alongside
+                             * expenses_by_category rather than derived by
+                             * summing it, matching Python's own two
+                             * separately-updated fields exactly. */
+    int total_sold;
+    int idle_days;
+
+    int total_waterings;
+    int total_harvest_events;
+    int total_harvested; /* PlayerState.total_harvested: total units harvested */
+    int total_crops_lost;
+    int total_fertilizer_bought;
+    int total_fertilizer_applied;
+    int total_spoiled;
+    int total_processed;
+    double processing_revenue;
+
+    int contracts_completed;
+    int contracts_failed;
+    double contract_penalties;
+
+    /* PlayerState.quality_harvested, indexed by Quality (actions.
+     * harvest_mature only ever writes premium/standard/processing -- a
+     * rejected harvest takes the rejected_quality_units path below instead
+     * -- but the array is sized by QUALITY_COUNT for generality). */
+    int quality_harvested[QUALITY_COUNT];
+
+    /* PlayerState.losses_by_cause's three keys (actions.harvest_mature,
+     * inventory.age_and_spoil/enforce_storage_capacity) as fixed-index
+     * fields instead of a string-keyed dict -- same discipline as
+     * ExpenseCategory above. */
+    int crop_loss_events;
+    int rejected_quality_units;
+    int spoilage_units;
 } FarmState;
 
 /* --- Vector push/free, backed by vec_util.c (see its header for why these
@@ -257,5 +319,29 @@ void contract_vec_free(ContractVec *vec);
 void farm_state_init(FarmState *state, const ResolvedConfig *config, double money,
                       int slots_total);
 void farm_state_destroy(FarmState *state);
+
+/* --- Phase 2 mutation helpers, backed by state.c --- */
+
+/* simulation/state.py:204-208 PlayerState.record_expense. No-op for
+ * amount <= 0 (matching Python exactly: a zero-cost action, e.g. a free
+ * crop's seed purchase, must not record a spurious expense entry). */
+void farm_state_record_expense(FarmState *state, ExpenseCategory category, double amount);
+
+/* simulation/state.py:210-222 PlayerState.track_peak_cash. Must be called
+ * immediately after crediting `state->money` from any revenue source (sale,
+ * contract delivery, ...) -- see the Python docstring this mirrors. */
+void farm_state_track_peak_cash(FarmState *state);
+
+/* simulation/state.py:189-191 PlayerState.open_slots -- a property in
+ * Python, a plain function here since C has none. */
+static inline int farm_state_open_slots(const FarmState *state) {
+    return state->slots_total - (int)state->planted.count;
+}
+
+/* simulation/state.py:193-195 PlayerState.add_slots: grows slots_total and
+ * appends `amount` freshly-defaulted plots (state.c's farm_state_init
+ * plot-default values). Returns false only on allocation failure, leaving
+ * `state` unchanged, matching every other growable structure in this port. */
+bool farm_state_add_slots(FarmState *state, int amount);
 
 #endif /* FARM_STATE_H */

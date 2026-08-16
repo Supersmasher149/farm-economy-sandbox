@@ -1,5 +1,7 @@
 #include "markets.h"
 
+#include <stdlib.h>
+
 const double QUALITY_MULTIPLIERS[QUALITY_COUNT] = {
     [QUALITY_REJECTED] = 0.0,
     [QUALITY_PROCESSING] = 0.65,
@@ -9,6 +11,9 @@ const double QUALITY_MULTIPLIERS[QUALITY_COUNT] = {
 
 static double min2(double a, double b) {
     return a < b ? a : b;
+}
+static double max2(double a, double b) {
+    return a > b ? a : b;
 }
 
 bool markets_quote(const FarmState *state, ItemId item_id, Quality quality,
@@ -70,4 +75,158 @@ const ChannelDef *markets_best_channel(const FarmState *state, ItemId item_id, Q
         }
     }
     return best;
+}
+
+/* --- simulation/markets.py:15-39 update_daily_prices --- */
+
+void markets_update_daily_prices(FarmState *state, const ResolvedConfig *config, FarmRng *rng) {
+    double minimum_supply = config->markets.minimum_supply_multiplier;
+    double supply_decay = config->markets.supply_decay;
+
+    /* Draw order fixed: one rng_uniform per item, in config->items' array
+     * order -- the same order items_by_id iterates in Python, which is what
+     * makes the draw sequence (and therefore every recorded seed) agree. */
+    for (size_t i = 0; i < config->item_count; i++) {
+        const ItemDef *item = &config->items[i];
+        double seasonal = item->seasonal_demand[state->current_season];
+        double supply = state->market_supply[item->id];
+        double saturation = max2(minimum_supply, 1.0 - supply * 0.01);
+        double price = max2(0.01, item->base_price * seasonal * saturation *
+                                       rng_uniform(rng, 1 - item->price_variation,
+                                                   1 + item->price_variation));
+        state->market_prices[item->id] = price;
+        state->has_market_price[item->id] = true;
+        state->market_supply[item->id] = supply * supply_decay;
+    }
+    for (size_t i = 0; i < config->channel_count; i++) {
+        state->channel_capacity_used[config->channels[i].channel_id] = 0;
+    }
+}
+
+/* --- simulation/markets.py:87-168 sell --- */
+
+typedef struct {
+    size_t lot_index;
+    int remaining_shelf_life;
+    Quality quality;
+} SellCandidate;
+
+static int cmp_sell_candidate(const void *a, const void *b) {
+    const SellCandidate *ca = a;
+    const SellCandidate *cb = b;
+    /* Sort key (remaining_shelf_life, -QUALITY_ORDER[quality]) ascending:
+     * soonest-to-expire first, and on a shelf-life tie the *higher*-quality
+     * lot goes first -- the opposite tie-break from inventory.c's consume()
+     * (see that module's docstring on why the two rules differ). */
+    if (ca->remaining_shelf_life != cb->remaining_shelf_life) {
+        return ca->remaining_shelf_life < cb->remaining_shelf_life ? -1 : 1;
+    }
+    if (ca->quality != cb->quality) {
+        return ca->quality > cb->quality ? -1 : 1;
+    }
+    return (ca->lot_index > cb->lot_index) - (ca->lot_index < cb->lot_index);
+}
+
+double markets_sell(FarmState *state, ItemId item_id, int quantity, const ChannelDef *channel,
+                     bool has_quality, Quality quality, bool has_min_quality, Quality min_quality,
+                     int *out_sold) {
+    *out_sold = 0;
+    Quality minimum = has_min_quality ? min_quality : channel->min_quality_rank;
+
+    if (quantity <= 0 || !state->has_market_price[item_id] ||
+        state->reputation < channel->min_reputation ||
+        (has_quality && quality < channel->min_quality_rank)) {
+        return 0.0;
+    }
+
+    int used = state->channel_capacity_used[channel->channel_id];
+    int room = (channel->has_daily_capacity ? channel->daily_capacity : quantity) - used;
+    if (room < 0) {
+        room = 0;
+    }
+    quantity = quantity < room ? quantity : room;
+
+    size_t lot_count = state->inventory_lots.count;
+    SellCandidate *candidates = lot_count > 0 ? malloc(lot_count * sizeof(SellCandidate)) : NULL;
+    size_t candidate_count = 0;
+    for (size_t i = 0; i < lot_count; i++) {
+        const InventoryLot *lot = &state->inventory_lots.data[i];
+        if (lot->item_id != item_id) {
+            continue;
+        }
+        bool eligible = has_quality ? (lot->quality == quality) : (lot->quality >= minimum);
+        if (!eligible) {
+            continue;
+        }
+        candidates[candidate_count++] = (SellCandidate){
+            .lot_index = i,
+            .remaining_shelf_life = inventory_lot_remaining_shelf_life(lot),
+            .quality = lot->quality,
+        };
+    }
+    qsort(candidates, candidate_count, sizeof(SellCandidate), cmp_sell_candidate);
+
+    double reputation_multiplier = 1.0 + min2(0.25, state->reputation * channel->reputation_bonus);
+    int sold = 0;
+    double gross = 0.0;
+    /* Mirrors Python's `planned` list: (lot_index, take) pairs, applied only
+     * once the sale is confirmed profitable below -- a rejected sale (gross
+     * <= fee) must leave every lot untouched. */
+    size_t *planned_index = candidate_count > 0 ? malloc(candidate_count * sizeof(size_t)) : NULL;
+    int *planned_take = candidate_count > 0 ? malloc(candidate_count * sizeof(int)) : NULL;
+    size_t planned_count = 0;
+    bool first_is_product = false;
+
+    for (size_t i = 0; i < candidate_count && sold < quantity; i++) {
+        InventoryLot *lot = &state->inventory_lots.data[candidates[i].lot_index];
+        int take = lot->quantity < quantity - sold ? lot->quantity : quantity - sold;
+        double unit_price = state->market_prices[item_id] * channel->price_multiplier *
+                             QUALITY_MULTIPLIERS[lot->quality] * reputation_multiplier;
+        planned_index[planned_count] = candidates[i].lot_index;
+        planned_take[planned_count] = take;
+        planned_count++;
+        if (planned_count == 1) {
+            first_is_product = lot->item_type == ITEM_PRODUCT;
+        }
+        sold += take;
+        gross += unit_price * take;
+    }
+    free(candidates);
+
+    double revenue = 0.0;
+    if (sold) {
+        double fee = channel->flat_fee + gross * channel->fee_rate;
+        if (gross > fee) {
+            revenue = gross - fee;
+            for (size_t i = 0; i < planned_count; i++) {
+                state->inventory_lots.data[planned_index[i]].quantity -= planned_take[i];
+            }
+            /* `[lot for lot in inventory_lots if lot.quantity > 0]` */
+            size_t write = 0;
+            for (size_t read = 0; read < state->inventory_lots.count; read++) {
+                InventoryLot lot = state->inventory_lots.data[read];
+                if (lot.quantity > 0) {
+                    state->inventory_lots.data[write++] = lot;
+                }
+            }
+            state->inventory_lots.count = write;
+
+            state->channel_capacity_used[channel->channel_id] = used + sold;
+            state->money += revenue;
+            farm_state_track_peak_cash(state);
+            state->total_revenue += revenue;
+            state->total_sold += sold;
+            state->revenue_by_channel[channel->channel_id] += revenue;
+            if (first_is_product) {
+                state->processing_revenue += revenue;
+            }
+            state->market_supply[item_id] += sold;
+            *out_sold = sold;
+        } else {
+            sold = 0;
+        }
+    }
+    free(planned_index);
+    free(planned_take);
+    return sold ? revenue : 0.0;
 }

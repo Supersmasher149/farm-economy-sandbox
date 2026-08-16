@@ -1,17 +1,20 @@
-# farm-c: the 11 agents, ported to C
+# farm-c: a pure-C port of the farm-economy simulator (in progress)
 
-This is a self-contained, standalone slice of the pure-C port described in
-[`docs/c-port-plan.md`](../docs/c-port-plan.md): the 11 agent strategies in
-`../agents/*.py`, plus every shared "pure economics" helper they call, built
-against real (not placeholder) C types so `src/agents/*.c` compiles and is
-unit-tested in isolation *ahead of* the rest of the engine port (config
-loader, `FarmState` day loop, weather, crop growth). No `farm-c` code runs
-inside a real batch yet -- there is no engine here, only the agent decision
-surface and what it needs.
+This is a self-contained, standalone build of the pure-C port described in
+[`docs/c-port-plan.md`](../docs/c-port-plan.md), built up phase by phase
+against real (not placeholder) C types and checked at every phase against
+the real Python modules as the oracle -- see
+`.claude/plans/shimmying-singing-dragonfly.md` for the phase plan this
+follows. It started as just the 11 agent strategies in `../agents/*.py`
+(the decision surface) plus every shared "pure economics" helper they call,
+and has since grown the RNG, physics, and state-mutation layers underneath
+them (Phases 0-2, described below). No `farm-c` code runs inside a real
+batch yet -- there is still no config loader or day-loop engine wiring
+these pieces together (Phases 3-4), so this remains a standalone,
+independently-tested build rather than a drop-in replacement for
+`simulation/`.
 
-Also here, as the first two pieces of the actual engine port (Phases 0-1 of
-`../docs/c-port-plan.md`'s "full engine" follow-up, tracked in
-`.claude/plans/shimmying-singing-dragonfly.md`):
+The three phases so far:
 
 - **Phase 0**, `src/rng.c`: a bit-exact MT19937 port of `random.Random`, the
   single-generator RNG `../simulation/random_events.py:RandomEvents` wraps
@@ -34,13 +37,35 @@ Also here, as the first two pieces of the actual engine port (Phases 0-1 of
   libcs implement correctly-rounded decimal conversion, which is the
   property CPython's own dtoa/strtod pair relies on, and this is checked
   against real recorded `round()` output rather than assumed (see
-  Verification below). Still doesn't run inside a real batch -- there is no
-  `FarmState` day loop wiring it in yet (that's Phase 4).
+  Verification below).
+- **Phase 2**, `src/actions.c` (new) plus extensions to `src/inventory.c`,
+  `src/markets.c`, `src/contracts.c`, and a new `src/processing.c`: every
+  state-*mutating* function the modern (`world`-driven) `run_day` path
+  calls -- buying/planting/watering/fertilizing/harvesting crops, buying
+  upgrades, FEFO inventory consumption, storage aging/spoilage/capacity
+  enforcement, daily price updates, channel sales, processing jobs starting
+  and completing, and the full contract lifecycle (offer generation,
+  accept, deliver, expiry resolution). `FarmState` (`state.h`) grew the
+  rest of `PlayerState`'s fields these need (market supply/revenue-by-
+  channel, the various running totals, quality/loss breakdowns, ...), and
+  `config.h` grew the config fields Phase 0/1 never needed (buyer offer-
+  generation terms, storage/markets top-level config, recipe shelf life,
+  fertilizer nutrients-added, ...). This also let `contracts.c` retire its
+  one documented simplification: `_best_possible_grade`'s
+  `QUALITY_STANDARD` stand-in now calls the real
+  `crop_growth_harvest_multipliers`/`crop_growth_quality_grade`, since
+  Phase 1 supplies the stress physics it needs.
+
+Still doesn't run inside a real batch -- there is no `FarmState` day loop
+wiring these together yet (that's Phase 4, after Phase 3's config loader).
 
 ## Scope boundary
 
-**Faithful, full-fidelity port** (pure functions, no engine/physics
-dependency):
+**Faithful, full-fidelity port.** Everything below matches its Python
+source function-for-function, including tie-break behavior and rounding.
+Phases 0-1's functions are pure (no `FarmState` mutation); Phase 2's are
+the state-*mutating* functions the same "modern `run_day` path only" scope
+decision includes -- see the Phase 2 paragraph above:
 
 - All 18 functions of `../simulation/economy_rules.py` (`src/economy_rules.c`)
   -- the core of every agent's crop/upgrade/fertilizer decisions.
@@ -70,29 +95,29 @@ dependency):
   (`src/weather.c`) -- ported line-for-line from the reference Python loop,
   not from the optional accelerator, so every conditional field write
   matches Python's `if regen_x: plot.x = ...` exactly.
-
-**Explicitly simplified stand-in** (documented, not silently approximated):
-
-`contracts_is_offer_feasible` and `contracts_forecast_committed_supply`
-(`src/contracts.c`) depend on `../simulation/contracts.py`'s
-`_future_crop_arrivals` → `_best_possible_grade`, which calls
-`crop_growth.harvest_multipliers` -- live weather/soil stress physics this
-agents-only port didn't have until Phase 1 landed. The stand-in
-(`best_possible_grade_SIMPLIFIED` in `src/contracts.c`, marked with a
-`SIMPLIFIED` comment) assumes every already-planted crop of the matching
-item can reach `QUALITY_STANDARD`, dropping the real stress-based grade
-ceiling. This only ever *undercounts* forecast risk for above-standard
-(premium) contracts -- everything else in `_item_capacity` /
-`_future_crop_arrivals` / `_input_supply` / `_schedule_batches` /
-`_slot_free_days` (the timeline-aware processing-forecast machinery
-`docs/c-port-plan.md` Section 8 warns not to oversimplify) is a faithful,
-unsimplified port. **Still not reconciled** -- `crop_growth.c` now exists,
-but wiring `contracts.c` to call it is Phase 2 work
-(`.claude/plans/shimmying-singing-dragonfly.md`), not done here.
-
-**Out of scope entirely:** `update_daily_prices`, `sell`, `generate_offers`,
-`accept`, `deliver`, `resolve_expired`, `age_and_spoil` -- no ported agent
-calls any of these directly.
+- `../simulation/actions.py`'s modern-path functions -- `buy_seeds`,
+  `plant_seed`, `water_crop`, `buy_fertilizer`, `fertilize_crop`,
+  `harvest_mature`, `buy_upgrade`, `do_nothing` (`src/actions.c`).
+  `water_farm`/`sell_all` back only the legacy (`world=None`) `run_day`
+  path this port doesn't target (see `docs/c-port-plan.md`'s scope
+  decision) and are intentionally not ported.
+- `../simulation/inventory.py`'s remaining functions -- `consume` (FEFO),
+  `capture_storage_liability`, `collect_storage_liability`,
+  `enforce_storage_capacity`, `age_and_spoil` (`src/inventory.c`).
+- `../simulation/markets.py`'s `update_daily_prices` and `sell`
+  (`src/markets.c`).
+- `../simulation/processing.py`'s `start_job` and `complete_jobs`
+  (`src/processing.c`, new).
+- `../simulation/contracts.py`'s day-loop mutators -- `generate_offers`,
+  `accept`, `deliver`, `resolve_expired`, `visible_offers`,
+  `offer_expiry_day`, `is_offer_expired` (`src/contracts.c`). Also,
+  `_best_possible_grade` (used by `_future_crop_arrivals`, and therefore by
+  the already-ported `contracts_is_offer_feasible`/
+  `contracts_forecast_committed_supply`) is no longer the `QUALITY_STANDARD`
+  stand-in the agent-decision slice shipped with -- it now calls the real
+  `crop_growth_harvest_multipliers`/`crop_growth_quality_grade`, since
+  Phase 1 supplies the stress physics it needs. This retires the one
+  documented simplification the agent-only slice carried.
 
 ## Layout
 
@@ -100,19 +125,22 @@ calls any of these directly.
 include/            farm_types.h, config.h, state.h, agent.h, economy.h,
                      markets.h, inventory.h, contracts.h, derived.h,
                      rng.h, rng_hash.h, blake2b.h, vec_util.h, pyfloat.h,
-                     crop_growth.h, weather.h
+                     crop_growth.h, weather.h, actions.h, processing.h
 src/                 economy_rules.c, markets.c, inventory.c, contracts.c,
                      derived.c, rng.c, rng_hash.c, blake2b.c, config.c,
                      state.c, vec_util.c, agent.c, agent_registry.c,
-                     pyfloat.c, crop_growth.c, weather.c
+                     pyfloat.c, crop_growth.c, weather.c, actions.c,
+                     processing.c
 src/agents/          base.c (shared defaults + route_sales_by_best_price),
                      one file per agent, matching ../agents/*.py 1:1
 tests/               test_agents.c (fixture-driven parity test for the
                      agent port), test_rng.c (same, for rng.c),
                      test_physics.c (same, for crop_growth.c/weather.c),
-                     fixtures/{agents,rng,physics}.json (generated, checked
-                     in), third_party/cJSON.{h,c} (vendored, MIT -- fixture
-                     parsing only, not a production config loader)
+                     test_mutation.c (same, for actions.c/inventory.c/
+                     markets.c/processing.c/contracts.c's mutators),
+                     fixtures/{agents,rng,physics,mutation}.json (generated,
+                     checked in), third_party/cJSON.{h,c} (vendored, MIT --
+                     fixture parsing only, not a production config loader)
 ```
 
 ## Building and testing
@@ -127,6 +155,10 @@ make fixtures-rng      # regenerates tests/fixtures/rng.json from CPython's
 make fixtures-physics  # regenerates tests/fixtures/physics.json from the
                         # real crop_growth.py/weather.py (see
                         # ../tools/export_physics_fixtures.py)
+make fixtures-mutation # regenerates tests/fixtures/mutation.json from the
+                        # real actions.py/inventory.py/markets.py/
+                        # processing.py/contracts.py (see
+                        # ../tools/export_mutation_fixtures.py)
 make test              # builds and runs every tests/test_* binary under
                         # -fsanitize=address,undefined
 ```
@@ -150,7 +182,7 @@ kernel).
 There is no engine here yet, so there's no golden-replay run to check
 against (contrast `.claude/skills/replay-guard`, which is what verifies
 determinism once `simulation/` itself is touched). Verification is
-fixture-based instead, with the real Python agents as the oracle:
+fixture-based instead, with the real Python modules as the oracle:
 
 1. `tools/export_agent_fixtures.py` builds a handful of `PlayerState`
    scenarios in the same directly-constructed style as
@@ -199,18 +231,39 @@ fixture-based instead, with the real Python agents as the oracle:
    additionally stress-tested standalone against 200,000 random values
    across `round(x, 2)`/`round(x, 3)` with 0 mismatches, beyond what the
    fixture set alone happens to exercise.
+6. `src/actions.c`/`src/inventory.c`/`src/markets.c`/`src/processing.c`/
+   `src/contracts.c`'s Phase 2 mutators are verified the same way, against
+   the real Python modules as the oracle, but with a broader fixture shape
+   than Phases 0-1 use: `tools/export_mutation_fixtures.py` builds one
+   shared synthetic world (2 crops, a product, a recipe, 2 upgrades, 2
+   channels, 2 buyers) and 51 scenarios across the 22 ported functions
+   (success and rejection paths, FEFO tie-breaks, expired/insufficient/
+   over-capacity cases, contract accept/deliver/expiry, ...), and for each
+   one records a *full snapshot* of every mutable `PlayerState` field
+   before and after calling the real function -- not just that function's
+   own documented return value -- so `tests/test_mutation.c` catches an
+   incidental extra mutation the C port gets wrong, not only the ones a
+   docstring happened to think to check. Currently **4552 checks, 0
+   failed**. Two real bugs were caught and fixed this way before the suite
+   went green: `channel.get("daily_capacity", quantity)` in `sell` treats
+   an explicit `None` differently from an absent key (a Python gotcha, not
+   a port bug -- fixed in the fixture, not the C), and the test harness's
+   own `scatter_double` helper was reading `cJSON`'s `valuedouble` on
+   `float.hex()`-encoded *string* nodes instead of parsing `valuestring`
+   with `strtod` (a fixture-loader bug, not a `src/` one -- caught because
+   the snapshot diff surfaced a stale `market_supply`/`buyer_relationships`
+   read that a return-value-only check would have missed entirely).
 
 ## Known simplifications / follow-ups
 
-- The `_best_possible_grade` stand-in in `src/contracts.c` (see Scope
-  boundary above).
 - `RandomAgent`'s repr-formatting helper (`src/rng_hash.c`) implements
   Python's string-repr quoting algorithm in full, but is not a general
   `repr()` -- it only needs to (and only claims to) reproduce the tuple
   shapes `agents/random_agent.py`'s four call sites actually pass.
-- Config loading here is fixture-JSON-only (`tests/test_agents.c` +
-  vendored `cJSON`), not a production loader for `config/*.json` --
-  `docs/c-port-plan.md` Section 10 covers that decision for the full port.
+- Config loading here is fixture-JSON-only (each `tests/test_*.c`'s own
+  `load_config` + vendored `cJSON`), not a production loader for
+  `config/*.json` -- `docs/c-port-plan.md` Section 10 covers that decision
+  for the full port (Phase 3).
 - `py_round_ndigits` (`src/pyfloat.c`) relies on the host libc's `%f`
   formatting and `strtod` both being correctly-rounded, rather than porting
   CPython's dtoa outright. Verified on this repo's development platform

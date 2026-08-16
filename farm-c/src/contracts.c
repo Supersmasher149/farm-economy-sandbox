@@ -3,8 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "crop_growth.h"
 #include "derived.h"
 #include "economy.h"
+#include "inventory.h"
 #include "markets.h"
 #include "vec_util.h"
 
@@ -46,11 +48,16 @@ static double max2(double a, double b) {
     return a > b ? a : b;
 }
 
-/* --- simulation/contracts.py:24-33 offer expiry --- */
+/* --- simulation/contracts.py:24-33 offer expiry (public API -- see
+ * contracts.h) --- */
 
-static bool is_offer_expired(const FarmState *state, const ResolvedConfig *config,
-                              const ContractRecord *offer) {
-    return state->day > offer->offered_day + config->contracts.offer_expiry_days;
+int contracts_offer_expiry_day(const ResolvedConfig *config, const ContractRecord *offer) {
+    return offer->offered_day + config->contracts.offer_expiry_days;
+}
+
+bool contracts_is_offer_expired(const FarmState *state, const ResolvedConfig *config,
+                                 const ContractRecord *offer) {
+    return state->day > contracts_offer_expiry_day(config, offer);
 }
 
 /* --- simulation/contracts.py:155-169 _inventory_quantity. Distinct from
@@ -78,18 +85,24 @@ static int processing_capacity(const FarmState *state) {
 
 /* --- simulation/contracts.py:200-213 _best_possible_grade ---
  *
- * SIMPLIFIED (see contracts.h's scope note): the real grade ceiling needs
- * crop_growth.harvest_multipliers' stress-based quality score, which needs
- * live weather/soil physics this agents-only port doesn't have. Every
- * already-planted crop of the matching item is assumed capable of reaching
- * QUALITY_STANDARD. This only ever *undercounts* committed future supply
- * for contracts requiring above-standard grade (min_quality == premium),
- * since Python's real ceiling could be lower than standard when a crop is
- * already badly stressed -- reconcile once crop_growth/weather are ported.
- */
-static Quality best_possible_grade_SIMPLIFIED(const PlantedCrop *planted) {
-    (void)planted;
-    return QUALITY_STANDARD;
+ * No longer simplified: Phase 1 (farm-c/src/crop_growth.c) ported the real
+ * stress-based quality score, so this reads it directly instead of assuming
+ * every already-planted crop can reach QUALITY_STANDARD. `plot` mirrors
+ * Python's `player.plots[planted.plot_index] if planted.plot_index is not
+ * None and planted.plot_index < len(player.plots) else None`; `fertilizer`
+ * is passed as NULL to match contracts.py:210's call, which omits
+ * `fertilizer_config` entirely (crop_growth.harvest_multipliers then falls
+ * back to DEFAULT_FERTILIZER_QUALITY_BONUS, same as an absent dict would). */
+static Quality best_possible_grade(const FarmState *state, const ResolvedConfig *config,
+                                    const CropDef *crop, const PlantedCrop *planted) {
+    const PlotState *plot = (planted->plot_index >= 0 &&
+                              (size_t)planted->plot_index < state->plot_count)
+                                 ? &state->plots[planted->plot_index]
+                                 : NULL;
+    double yield_multiplier, quality_score;
+    crop_growth_harvest_multipliers(planted, crop, plot, NULL, &config->soil_dynamics,
+                                     &yield_multiplier, &quality_score);
+    return crop_growth_quality_grade(quality_score);
 }
 
 /* --- simulation/contracts.py:216-311 _future_crop_arrivals --- */
@@ -154,7 +167,7 @@ static void future_crop_arrivals(const FarmState *state, const ResolvedConfig *c
             if (days_until_free > days_available) {
                 continue;
             }
-            Quality best_grade = best_possible_grade_SIMPLIFIED(planted);
+            Quality best_grade = best_possible_grade(state, config, crop, planted);
             if (best_grade >= min_quality) {
                 int_vec_push(&out->guaranteed_days, state->day + days_until_free);
             }
@@ -562,7 +575,7 @@ double contracts_forecast_committed_supply(const FarmState *state, const Resolve
 
 bool contracts_is_offer_feasible(const FarmState *state, const ResolvedConfig *config,
                                   const ContractRecord *contract) {
-    if (is_offer_expired(state, config, contract)) {
+    if (contracts_is_offer_expired(state, config, contract)) {
         return false;
     }
     double current, future, funding;
@@ -583,4 +596,236 @@ bool contracts_is_offer_feasible(const FarmState *state, const ResolvedConfig *c
     double required =
         paid_future > 0 ? funding * (max2(0.0, missing - free_future) / paid_future) : 0.0;
     return required <= max2(0.0, state->money - economy_operating_reserve(state));
+}
+
+/* --- Phase 2: day-loop mutators --- */
+
+/* --- simulation/contracts.py:35-42 visible_offers --- */
+
+bool contracts_visible_offers(const FarmState *state, const ResolvedConfig *config,
+                               const ContractVec *source, ContractVec *out) {
+    *out = (ContractVec){0};
+    const ContractVec *src = source != NULL ? source : &state->contract_offers;
+    for (size_t i = 0; i < src->count; i++) {
+        const ContractRecord *offer = &src->data[i];
+        if (!offer->resolved && !contracts_is_offer_expired(state, config, offer)) {
+            if (!contract_vec_push(out, *offer)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/* --- simulation/contracts.py:45-55 _relationship_price_multiplier --- */
+
+static double relationship_price_multiplier(const FarmState *state, const ResolvedConfig *config,
+                                              const BuyerDef *buyer) {
+    double relationship = state->buyer_relationships[buyer->id];
+    return 1.0 + min2(config->contracts.relationship_bonus_cap,
+                       relationship * buyer->relationship_bonus_rate);
+}
+
+/* An unresolved offer/active contract already exists for this exact
+ * (buyer, item, day) triple -- the semantic content of Python's
+ * `f"{buyer['id']}-{item_id}-{player.day}"` identifier string, compared
+ * directly here instead of formatted and string-matched (see
+ * contracts_generate_offers' header comment in contracts.h). Distinct
+ * buyers can never collide on this check (buyer_id is part of the triple),
+ * so it is safe to probe `state->contract_offers` even though this port
+ * pushes each buyer's new offer into it immediately rather than batching
+ * new offers into a separate list the way Python's `offers` local does --
+ * see contracts_generate_offers below. */
+static bool unresolved_triple_exists(const ContractVec *offers, const ContractVec *active,
+                                      BuyerId buyer_id, ItemId item_id, int day) {
+    const ContractVec *vecs[2] = {offers, active};
+    for (int v = 0; v < 2; v++) {
+        for (size_t i = 0; i < vecs[v]->count; i++) {
+            const ContractRecord *c = &vecs[v]->data[i];
+            if (!c->resolved && c->buyer_id == buyer_id && c->item_id == item_id &&
+                c->offered_day == day) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* --- simulation/contracts.py:58-106 generate_offers --- */
+
+void contracts_generate_offers(FarmState *state, const ResolvedConfig *config, FarmRng *rng) {
+    int interval = config->contracts.offer_interval_days;
+    if (state->day == 0 || interval == 0 || state->day % interval != 0) {
+        return;
+    }
+
+    ContractVec visible;
+    contracts_visible_offers(state, config, NULL, &visible);
+    contract_vec_free(&state->contract_offers);
+    state->contract_offers = visible;
+
+    for (size_t b = 0; b < config->buyer_count; b++) {
+        const BuyerDef *buyer = &config->buyers[b];
+        if (state->reputation < buyer->min_reputation) {
+            continue;
+        }
+
+        ItemId *eligible =
+            buyer->allowed_item_count > 0 ? malloc(buyer->allowed_item_count * sizeof(ItemId)) : NULL;
+        size_t eligible_count = 0;
+        for (size_t i = 0; i < buyer->allowed_item_count; i++) {
+            if (config_find_item(config, buyer->allowed_items[i]) != NULL) {
+                eligible[eligible_count++] = buyer->allowed_items[i];
+            }
+        }
+        if (eligible_count == 0) {
+            free(eligible);
+            continue;
+        }
+
+        ItemId item_id = eligible[rng_choice_index(rng, (uint32_t)eligible_count)];
+        free(eligible);
+
+        if (unresolved_triple_exists(&state->contract_offers, &state->active_contracts, buyer->id,
+                                      item_id, state->day)) {
+            continue;
+        }
+
+        int quantity = rng_roll_yield(rng, buyer->quantity_min, buyer->quantity_max);
+        const ItemDef *item = config_find_item(config, item_id);
+        double price_multiplier =
+            buyer->contract_price_multiplier * relationship_price_multiplier(state, config, buyer);
+
+        ContractRecord offer = {
+            .id = (ContractId)state->contract_offers.count,
+            .buyer_id = buyer->id,
+            .item_id = item_id,
+            .quantity = quantity,
+            .delivered = 0,
+            .min_quality = buyer->min_quality,
+            .unit_price = item->base_price * price_multiplier,
+            .penalty_rate = buyer->penalty_rate,
+            .offered_day = state->day,
+            .deadline_day = state->day + buyer->deadline_days,
+            .accepted = false,
+            .resolved = false,
+        };
+        contract_vec_push(&state->contract_offers, offer);
+    }
+}
+
+/* --- simulation/contracts.py:109-126 accept --- */
+
+bool contracts_accept(FarmState *state, const ResolvedConfig *config, ContractId contract_id) {
+    size_t found = (size_t)-1;
+    for (size_t i = 0; i < state->contract_offers.count; i++) {
+        if (state->contract_offers.data[i].id == contract_id &&
+            !state->contract_offers.data[i].resolved) {
+            found = i;
+            break;
+        }
+    }
+    if (found == (size_t)-1) {
+        return false;
+    }
+
+    ContractRecord contract = state->contract_offers.data[found];
+    /* `player.contract_offers.remove(contract)` -- happens in both the
+     * expired and accepted branches below, so it is done once, up front. */
+    for (size_t i = found; i + 1 < state->contract_offers.count; i++) {
+        state->contract_offers.data[i] = state->contract_offers.data[i + 1];
+    }
+    state->contract_offers.count -= 1;
+
+    if (contracts_is_offer_expired(state, config, &contract)) {
+        return false;
+    }
+    contract.accepted = true;
+    contract_vec_push(&state->active_contracts, contract);
+    return true;
+}
+
+/* --- simulation/contracts.py:593-623 deliver --- */
+
+double contracts_deliver(FarmState *state, const ResolvedConfig *config, ContractId contract_id,
+                          int quantity, int *out_delivered) {
+    *out_delivered = 0;
+    if (quantity <= 0) {
+        return 0.0;
+    }
+
+    ContractRecord *contract = NULL;
+    for (size_t i = 0; i < state->active_contracts.count; i++) {
+        if (state->active_contracts.data[i].id == contract_id &&
+            !state->active_contracts.data[i].resolved) {
+            contract = &state->active_contracts.data[i];
+            break;
+        }
+    }
+    if (contract == NULL || state->day > contract->deadline_day) {
+        return 0.0;
+    }
+
+    int remaining = contract_remaining(contract);
+    int requested = quantity < remaining ? quantity : remaining;
+    int delivered;
+    double cost;
+    inventory_consume(state, contract->item_id, requested, contract->min_quality, &delivered, &cost);
+    if (delivered <= 0) {
+        return 0.0;
+    }
+
+    double revenue = delivered * contract->unit_price;
+    contract->delivered += delivered;
+    state->money += revenue;
+    farm_state_track_peak_cash(state);
+    state->total_revenue += revenue;
+    state->total_sold += delivered;
+    state->contract_channel_revenue += revenue;
+    if (contract_remaining(contract) == 0) {
+        contract->resolved = true;
+        state->contracts_completed += 1;
+        state->reputation = min2(100.0, state->reputation + 5.0);
+        double gain = config->contracts.relationship_gain_per_delivery;
+        state->buyer_relationships[contract->buyer_id] =
+            min2(100.0, state->buyer_relationships[contract->buyer_id] + gain);
+    }
+    *out_delivered = delivered;
+    return revenue;
+}
+
+/* --- simulation/contracts.py:626-663 resolve_expired --- */
+
+void contracts_resolve_expired(FarmState *state, const ResolvedConfig *config) {
+    for (size_t i = 0; i < state->active_contracts.count; i++) {
+        ContractRecord *contract = &state->active_contracts.data[i];
+        if (contract->resolved || state->day <= contract->deadline_day) {
+            continue;
+        }
+        double shortfall_value = (double)contract_remaining(contract) * contract->unit_price;
+        double penalty =
+            min2(max2(0.0, state->money), max2(0.0, shortfall_value * contract->penalty_rate));
+        state->money -= penalty;
+        farm_state_record_expense(state, EXPENSE_CONTRACT_PENALTIES, penalty);
+        state->contract_penalties += penalty;
+        state->contracts_failed += 1;
+        state->reputation = max2(0.0, state->reputation - 4.0);
+        double loss = config->contracts.relationship_loss_per_failure;
+        state->buyer_relationships[contract->buyer_id] =
+            max2(0.0, state->buyer_relationships[contract->buyer_id] - loss);
+        contract->resolved = true;
+    }
+
+    size_t write = 0;
+    for (size_t read = 0; read < state->active_contracts.count; read++) {
+        if (!state->active_contracts.data[read].resolved) {
+            state->active_contracts.data[write++] = state->active_contracts.data[read];
+        }
+    }
+    state->active_contracts.count = write;
+
+    ContractVec visible;
+    contracts_visible_offers(state, config, NULL, &visible);
+    contract_vec_free(&state->contract_offers);
+    state->contract_offers = visible;
 }
