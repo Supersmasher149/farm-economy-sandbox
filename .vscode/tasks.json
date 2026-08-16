@@ -1,0 +1,109 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Test: full suite",
+      "type": "shell",
+      "command": ".venv/bin/python3 -m pytest -q",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: dashboard + trends only",
+      "type": "shell",
+      "command": ".venv/bin/python3 -m pytest tests/test_trends.py tests/test_dashboard.py tests/test_view.py -v",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint: ruff check",
+      "type": "shell",
+      "command": ".venv/bin/python3 -m ruff check .",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint: ruff format check",
+      "type": "shell",
+      "command": ".venv/bin/python3 -m ruff format --check .",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Replay guard (determinism check)",
+      "type": "shell",
+      "command": ".venv/bin/python3 .claude/skills/replay-guard/scripts/golden_replay.py check",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run: single strategy (verbose)",
+      "type": "shell",
+      "command": ".venv/bin/python3 main.py single --strategy ${input:strategy} --seed ${input:seed} --verbose",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run: batch",
+      "type": "shell",
+      "command": ".venv/bin/python3 main.py batch --runs ${input:batchRuns}",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run: batch + open dashboard",
+      "type": "shell",
+      "command": ".venv/bin/python3 main.py batch --runs ${input:batchRuns} && open reports/dashboard.html",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Charts: regenerate from latest run_results.csv",
+      "type": "shell",
+      "command": ".venv/bin/python3 -m metrics.visualize --csv reports/run_results.csv --out reports/charts",
+      "detail": "Re-renders PNGs from the existing CSV without re-running a batch.",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Dashboard: open",
+      "type": "shell",
+      "command": "open reports/dashboard.html",
+      "group": "build",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "strategy",
+      "type": "pickString",
+      "description": "Agent strategy",
+      "default": "profit_optimizer",
+      "options": [
+        "fast_seller",
+        "profit_optimizer",
+        "progression_player",
+        "neglectful_grower",
+        "reckless_spender",
+        "random_agent",
+        "no_upgrade_player",
+        "fertilizer_maximalist",
+        "diversifier",
+        "risk_averse_grower",
+        "upgrade_rusher"
+      ]
+    },
+    {
+      "id": "seed",
+      "type": "promptString",
+      "description": "Seed (single run)",
+      "default": "42"
+    },
+    {
+      "id": "batchRuns",
+      "type": "promptString",
+      "description": "Runs per strategy (batch)",
+      "default": "1000"
+    }
+  ]
+}
