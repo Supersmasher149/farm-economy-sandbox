@@ -7,14 +7,14 @@ the real Python modules as the oracle -- see
 `.claude/plans/shimmying-singing-dragonfly.md` for the phase plan this
 follows. It started as just the 11 agent strategies in `../agents/*.py`
 (the decision surface) plus every shared "pure economics" helper they call,
-and has since grown the RNG, physics, and state-mutation layers underneath
-them (Phases 0-2, described below). No `farm-c` code runs inside a real
-batch yet -- there is still no config loader or day-loop engine wiring
-these pieces together (Phases 3-4), so this remains a standalone,
-independently-tested build rather than a drop-in replacement for
-`simulation/`.
+and has since grown the RNG, physics, state-mutation, production
+configuration, modern daily-engine, single-run, and batch layers underneath
+them (Phases 0-6, described below). The C engine is directly callable
+through `engine_run_day`; `farm-c single` runs one complete simulation and
+`farm-c batch` runs every strategy many times each. The legacy `world=None`
+path remains out of scope.
 
-The three phases so far:
+The six phases so far:
 
 - **Phase 0**, `src/rng.c`: a bit-exact MT19937 port of `random.Random`, the
   single-generator RNG `../simulation/random_events.py:RandomEvents` wraps
@@ -53,11 +53,42 @@ The three phases so far:
   fertilizer nutrients-added, ...). This also let `contracts.c` retire its
   one documented simplification: `_best_possible_grade`'s
   `QUALITY_STANDARD` stand-in now calls the real
-  `crop_growth_harvest_multipliers`/`crop_growth_quality_grade`, since
-  Phase 1 supplies the stress physics it needs.
+   `crop_growth_harvest_multipliers`/`crop_growth_quality_grade`, since
+   Phase 1 supplies the stress physics it needs.
+- **Phase 3**, `src/config_loader.c` plus the production cJSON vendor:
+  directory loading for the eleven world configuration files and separate
+  simulation settings, with resolved defaults, indexed references, and
+  schema/range/enum validation.
+- **Phase 4**, `src/engine.c`: the modern, world-driven 24-step daily engine.
+  It uses the existing mutators and Agent vtable, preserves their iteration
+  and RNG order, applies effective storage and processing upgrades, and keeps
+  decision buffers private to each phase. The legacy `water_farm` and
+  `sell_all` path is deliberately not implemented.
+- **Phase 5**, `src/runner.c` and `main.c`: the reusable single-run lifecycle
+  and `farm-c single` CLI, including explicit or generated seeds, optional
+  daily history, and human-readable final summaries.
+- **Phase 6**, `src/batch.c` and `farm-c batch`: the C analogue of
+  `../runner/batch_run.py` -- run every strategy `--runs` times each off one
+  base seed, sequentially (no process pool: nothing here is CPU-bound enough
+  on this engine to need one). Seed minting is bit-exact with Python's:
+  `rng_randrange_2_32` (`src/rng.c`) ports the `getrandbits(33)` path
+  `random.Random.randrange(2**32)` takes -- one bit past every other RNG
+  call in this port, which only ever needed `getrandbits(k<=32)` -- so a
+  `--seed` shared between `farm-c batch` and `python3 main.py batch` mints
+  the identical per-run seed sequence in the identical agent-major order,
+  letting the two be cross-checked run-for-run. Each run's outcome streams
+  through a callback as a flattened `BatchRunResult` (the scalar subset of
+  `metrics/run_results.py`'s `RunResult` -- no crop-count/percentage dicts)
+  and its `FarmState` is freed before the next run starts, so peak memory
+  stays bounded independent of batch size, same as `run_batch`'s own
+  streaming discipline. `farm-c batch` aggregates those into a per-strategy
+  summary table and, with `--csv`, a raw per-run CSV; the rest of the
+  Python reporting pipeline (`summary.json`, `summary_report.md`,
+  `dashboard.html`, warnings) is out of scope here.
 
-Still doesn't run inside a real batch -- there is no `FarmState` day loop
-wiring these together yet (that's Phase 4, after Phase 3's config loader).
+The engine is wired into a reusable single-run runner (`farm-c single`) and a
+batch driver (`farm-c batch`). Report artifacts beyond a CSV, and the legacy
+`world=None` path, remain out of scope.
 
 ## Scope boundary
 
@@ -125,12 +156,13 @@ decision includes -- see the Phase 2 paragraph above:
 include/            farm_types.h, config.h, state.h, agent.h, economy.h,
                      markets.h, inventory.h, contracts.h, derived.h,
                      rng.h, rng_hash.h, blake2b.h, vec_util.h, pyfloat.h,
-                     crop_growth.h, weather.h, actions.h, processing.h
+                     crop_growth.h, weather.h, actions.h, processing.h,
+                     engine.h, runner.h, batch.h
 src/                 economy_rules.c, markets.c, inventory.c, contracts.c,
                      derived.c, rng.c, rng_hash.c, blake2b.c, config.c,
                      state.c, vec_util.c, agent.c, agent_registry.c,
                      pyfloat.c, crop_growth.c, weather.c, actions.c,
-                     processing.c
+                     processing.c, engine.c, runner.c, batch.c
 src/agents/          base.c (shared defaults + route_sales_by_best_price),
                      one file per agent, matching ../agents/*.py 1:1
 tests/               test_agents.c (fixture-driven parity test for the
@@ -138,12 +170,40 @@ tests/               test_agents.c (fixture-driven parity test for the
                      test_physics.c (same, for crop_growth.c/weather.c),
                      test_mutation.c (same, for actions.c/inventory.c/
                      markets.c/processing.c/contracts.c's mutators),
+                     test_engine.c (24-step ordering, bookkeeping,
+                     failure cleanup, and repeatability), test_runner.c
+                     (single-run lifecycle), test_batch.c (seed minting
+                     against real Python `randrange(2**32)` output, job
+                     order, and batch-vs-single-run parity),
                      fixtures/{agents,rng,physics,mutation}.json (generated,
-                     checked in), third_party/cJSON.{h,c} (vendored, MIT --
-                     fixture parsing only, not a production config loader)
+                     checked in), third_party/cJSON.{h,c} (legacy fixture
+                     copy); include/cJSON.h and src/cJSON.c are the production
+                     vendored parser.
 ```
 
 ## Building and testing
+
+### Production configuration
+
+The production loader reads the eleven world files and the separate
+`simulation_settings.json` from a directory:
+
+```c
+ResolvedConfig world;
+SimulationSettings settings;
+ConfigError error;
+config_load_directory("../config", &world, &error);
+config_load_simulation_settings("../config", &settings, &error);
+config_destroy(&world);
+```
+
+`ResolvedConfig` owns its strings, arrays, and buyer item lists. Call
+`config_destroy` after both successful and failed loads; it is safe on a
+zeroed or failed object. The loader rejects unknown fields, invalid types,
+ ranges, enums, duplicate IDs, and unresolved references. The production
+ `src/cJSON.c` object is linked directly; the fixture
+loaders in the older parity tests remain test-only and are not used by this
+API.
 
 ```bash
 cd farm-c
@@ -159,12 +219,76 @@ make fixtures-mutation # regenerates tests/fixtures/mutation.json from the
                         # real actions.py/inventory.py/markets.py/
                         # processing.py/contracts.py (see
                         # ../tools/export_mutation_fixtures.py)
-make test              # builds and runs every tests/test_* binary under
-                        # -fsanitize=address,undefined
+ make test              # builds and runs every tests/test_* binary under
+                         # -fsanitize=address,undefined, including runner
+                         # and batch tests
+ make farm-c            # builds the single-run/batch CLI
 ```
 
 `make test` alone (no Python needed) re-runs against whatever fixtures are
 already checked in.
+
+### Single runs
+
+From `farm-c/`, run one configured simulation:
+
+```bash
+make farm-c
+./farm-c single --strategy profit_optimizer --seed 42
+./farm-c single --strategy fast_seller --seed 42 --verbose
+./farm-c single --config ../config --strategy random_agent
+```
+
+The default strategy is `profit_optimizer`, the default config directory is
+`../config`, and an omitted seed is generated and printed as `actual_seed`.
+Successful bankrupt runs still exit zero; invalid arguments, configuration,
+unknown strategies, and engine failures exit nonzero. Output is intended for
+humans and is not yet a stable machine-readable report.
+
+The public runner API is in `include/runner.h`. `runner_run_single` borrows
+the `ResolvedConfig` and `Agent`, but owns the `FarmState` stored in its
+`RunResult`. Call `runner_run_result_destroy` exactly once for every result,
+including a partially initialized result after failure. The per-day callback
+receives read-only state after each completed day; its context remains owned by
+the caller.
+
+### Batch runs
+
+From `farm-c/`, run every strategy `--runs` times each off one base seed:
+
+```bash
+make farm-c
+./farm-c batch --runs 1000 --seed 42
+./farm-c batch --runs 1000 --seed 42 --csv reports/run_results.csv
+./farm-c batch --runs 200 --strategy fast_seller --strategy profit_optimizer
+./farm-c batch --runs 100 --days 30 --start-money 300     # diagnostic overrides
+```
+
+An omitted `--strategy` runs the full 11-agent roster in `AGENT_REGISTRY`
+order; repeat `--strategy NAME` to run a subset. An omitted `--seed` mints a
+fresh base seed (`/dev/urandom`-backed) and prints it as `base_seed`, the
+batch analogue of `single`'s `actual_seed`. `--days`/`--start-money` override
+`simulation_settings.json` for this batch only, matching
+`python3 main.py batch --runs N --days N --start-money N`'s diagnostic
+overrides. `--csv PATH` writes one row per completed run (see
+`include/batch.h`'s `BatchRunResult` for the column set -- the scalar subset
+of `metrics/run_results.py`'s `RunResult`, no crop-count/percentage dicts);
+without it, only the per-strategy summary table prints. There is no
+`summary.json`/`summary_report.md`/`dashboard.html` equivalent here, and no
+process pool -- `farm-c batch` runs every job on one thread, sequentially,
+in the same agent-major order it mints seeds in.
+
+Seed minting is bit-exact with `runner/batch_run.py`'s
+`seed_rng.randrange(2**32)`: `rng_randrange_2_32` (`src/rng.c`) is the one
+place in this port that draws `getrandbits(33)` rather than the `k<=32` fast
+path every other RNG call uses (see its header comment for how CPython
+builds that extra bit). Practically, this means a `--seed` shared between
+`farm-c batch` and `python3 main.py batch` mints the identical per-run seed
+for the identical strategy at the identical position in the run list, so
+the two can be diffed run-for-run -- confirmed by hand for `fast_seller`
+seed 42 in `tests/test_batch.c` and again against a live `run_single` call
+during development (see git history), both bit-exact on `money`, `revenue`,
+`expenses`, and `total_harvested`.
 
 Every compile/link rule builds with `-ffp-contract=off`. Without it, a
 compiler may legally fuse an expression shaped like `a + (b - a) * x` (e.g.
@@ -179,10 +303,11 @@ kernel).
 
 ## Verification
 
-There is no engine here yet, so there's no golden-replay run to check
-against (contrast `.claude/skills/replay-guard`, which is what verifies
-determinism once `simulation/` itself is touched). Verification is
-fixture-based instead, with the real Python modules as the oracle:
+The engine has no separate golden-replay file yet (contrast
+`.claude/skills/replay-guard`, which verifies the Python `simulation/` package).
+Its focused test uses a recording agent for callback order and a registered
+agent for same-seed multi-day repeatability. Verification remains
+fixture-based for the lower layers, with the real Python modules as the oracle:
 
 1. `tools/export_agent_fixtures.py` builds a handful of `PlayerState`
    scenarios in the same directly-constructed style as
@@ -260,10 +385,6 @@ fixture-based instead, with the real Python modules as the oracle:
   Python's string-repr quoting algorithm in full, but is not a general
   `repr()` -- it only needs to (and only claims to) reproduce the tuple
   shapes `agents/random_agent.py`'s four call sites actually pass.
-- Config loading here is fixture-JSON-only (each `tests/test_*.c`'s own
-  `load_config` + vendored `cJSON`), not a production loader for
-  `config/*.json` -- `docs/c-port-plan.md` Section 10 covers that decision
-  for the full port (Phase 3).
 - `py_round_ndigits` (`src/pyfloat.c`) relies on the host libc's `%f`
   formatting and `strtod` both being correctly-rounded, rather than porting
   CPython's dtoa outright. Verified on this repo's development platform
