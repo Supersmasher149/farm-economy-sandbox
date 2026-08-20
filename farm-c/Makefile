@@ -33,8 +33,9 @@ SAN = -fsanitize=address,undefined -fno-omit-frame-pointer
 INCLUDE = -Iinclude
 LIBS = -lm
 
-LIB_SRCS = $(wildcard src/*.c) $(wildcard src/agents/*.c)
+LIB_SRCS = $(filter-out src/cJSON.c,$(wildcard src/*.c)) $(wildcard src/agents/*.c)
 LIB_OBJS = $(LIB_SRCS:.c=.o)
+CJSON_OBJ = src/cJSON.o
 
 .PHONY: all test fixtures fixtures-rng fixtures-physics fixtures-mutation clean
 
@@ -43,19 +44,19 @@ all: test
 %.o: %.c
 	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) -c $< -o $@
 
-tests/third_party/cJSON.o: tests/third_party/cJSON.c
+src/cJSON.o: src/cJSON.c include/cJSON.h
 	$(CC) $(CSTD) $(FP) $(SAN) $(INCLUDE) -c $< -o $@
 
-tests/test_agents: tests/test_agents.c $(LIB_OBJS) tests/third_party/cJSON.o
+tests/test_agents: tests/test_agents.c $(LIB_OBJS) $(CJSON_OBJ)
 	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
-tests/test_rng: tests/test_rng.c src/rng.o tests/third_party/cJSON.o
+tests/test_rng: tests/test_rng.c src/rng.o $(CJSON_OBJ)
 	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
-tests/test_physics: tests/test_physics.c $(LIB_OBJS) tests/third_party/cJSON.o
+tests/test_physics: tests/test_physics.c $(LIB_OBJS) $(CJSON_OBJ)
 	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
-tests/test_mutation: tests/test_mutation.c $(LIB_OBJS) tests/third_party/cJSON.o
+tests/test_mutation: tests/test_mutation.c $(LIB_OBJS) $(CJSON_OBJ)
 	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 fixtures:
@@ -73,11 +74,31 @@ fixtures-mutation:
 # `make test` alone (no Python needed) re-runs against whatever fixtures are
 # already checked in; `make fixtures fixtures-rng fixtures-physics
 # fixtures-mutation test` regenerates them first.
-test: tests/test_agents tests/test_rng tests/test_physics tests/test_mutation
+tests/test_config_loader: tests/test_config_loader.c $(LIB_OBJS) $(CJSON_OBJ)
+	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+
+tests/test_engine: tests/test_engine.c $(LIB_OBJS) $(CJSON_OBJ)
+	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+
+farm-c: main.c $(LIB_OBJS) $(CJSON_OBJ)
+	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+
+tests/test_runner: tests/test_runner.c $(LIB_OBJS) $(CJSON_OBJ)
+	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+
+tests/test_batch: tests/test_batch.c $(LIB_OBJS) $(CJSON_OBJ)
+	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+
+test: tests/test_agents tests/test_rng tests/test_physics tests/test_mutation tests/test_config_loader tests/test_engine tests/test_runner tests/test_batch farm-c
 	./tests/test_agents
 	./tests/test_rng
 	./tests/test_physics
 	./tests/test_mutation
+	./tests/test_config_loader
+	./tests/test_engine
+	./tests/test_runner
+	./tests/test_batch
+	sh tests/test_cli.sh
 
 clean:
-	rm -f $(LIB_OBJS) tests/third_party/cJSON.o tests/test_agents tests/test_rng tests/test_physics tests/test_mutation
+	rm -f $(LIB_OBJS) $(CJSON_OBJ) tests/test_agents tests/test_rng tests/test_physics tests/test_mutation tests/test_config_loader tests/test_engine tests/test_runner tests/test_batch farm-c

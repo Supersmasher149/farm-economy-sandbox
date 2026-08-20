@@ -72,4 +72,12 @@ bool rng_roll_watering(FarmRng *rng, double diligence);
 bool rng_chance(FarmRng *rng, double probability);
 double rng_uniform_event(FarmRng *rng, double minimum, double maximum);
 
+/* random.Random().randrange(2**32): the one draw runner/batch_run.py's
+ * seed_rng.randrange(2**32) makes per job to mint each run's seed from a
+ * batch's base seed (see src/batch.c). n = 2**32 has bit_length() 33, one
+ * bit past the k<=32 fast path everything else in this file uses -- see
+ * rng.c for how the two-word getrandbits(33) this needs is built from two
+ * genrand_uint32() draws. */
+uint32_t rng_randrange_2_32(FarmRng *rng);
+
 #endif /* FARM_RNG_H */

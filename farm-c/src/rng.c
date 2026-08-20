@@ -181,3 +181,21 @@ bool rng_chance(FarmRng *rng, double probability) {
 double rng_uniform_event(FarmRng *rng, double minimum, double maximum) {
     return rng_uniform(rng, minimum, maximum);
 }
+
+uint32_t rng_randrange_2_32(FarmRng *rng) {
+    /* random.py's _randbelow_with_getrandbits(2**32): n = 2**32 has
+     * bit_length() 33, so CPython draws getrandbits(33) and rejects/redraws
+     * whenever the result is >= n. _randommodule.c's k>32 path packs that
+     * 33-bit draw from two genrand_uint32() calls into a little-endian word
+     * array: word 0 holds a full 32 bits (k=33 >= 32, no shift), word 1
+     * holds the remaining k-32=1 bit, taken as that draw's top bit
+     * (`r >> (32 - k)` with k=1). Since n is an exact power of two, r >= n
+     * exactly when that top bit is 1 -- i.e. exactly when word 1 is
+     * nonzero -- so the reject/redraw loop reduces to: draw both words
+     * again whenever the second one's top bit is set. */
+    for (;;) {
+        uint32_t low = genrand_uint32(rng);
+        uint32_t high_bit = genrand_uint32(rng) >> 31;
+        if (high_bit == 0) return low;
+    }
+}
