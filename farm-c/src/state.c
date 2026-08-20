@@ -41,13 +41,16 @@ void contract_vec_free(ContractVec *vec) {
     *vec = (ContractVec){0};
 }
 
-void farm_state_init(FarmState *state, const ResolvedConfig *config, double money,
-                      int slots_total) {
+bool farm_state_init(FarmState *state, const ResolvedConfig *config, double money,
+                     int slots_total) {
+    if (state == NULL || config == NULL || slots_total < 0) return false;
     memset(state, 0, sizeof(*state));
     state->config = config;
     state->money = money;
     state->slots_total = slots_total;
     state->has_total_days = false;
+    state->lowest_money = money;
+    state->bankruptcy_day = INVALID_DAY;
 
     state->plot_count = (size_t)slots_total;
     state->plots = calloc(state->plot_count ? state->plot_count : 1, sizeof(PlotState));
@@ -89,6 +92,22 @@ void farm_state_init(FarmState *state, const ResolvedConfig *config, double mone
     state->market_supply = calloc(config->item_count, sizeof(double));
     state->current_season = SEASON_SPRING; /* matches `.get("season", "spring")` */
     state->revenue_by_channel = calloc(config->channel_count, sizeof(double));
+
+    if ((state->plot_count && state->plots == NULL) ||
+        (config->item_count && (state->seed_inventory == NULL ||
+                                state->crop_plant_counts == NULL ||
+                                state->market_prices == NULL ||
+                                state->has_market_price == NULL ||
+                                state->market_supply == NULL)) ||
+        (config->upgrade_count && (state->upgrades_owned == NULL ||
+                                   state->upgrade_purchase_days == NULL)) ||
+        (config->buyer_count && state->buyer_relationships == NULL) ||
+        (config->channel_count && (state->channel_capacity_used == NULL ||
+                                   state->revenue_by_channel == NULL))) {
+        farm_state_destroy(state);
+        return false;
+    }
+    return true;
 }
 
 void farm_state_destroy(FarmState *state) {
@@ -108,6 +127,7 @@ void farm_state_destroy(FarmState *state) {
     free(state->channel_capacity_used);
     free(state->market_supply);
     free(state->revenue_by_channel);
+    free(state->bankruptcy_reason);
     memset(state, 0, sizeof(*state));
 }
 

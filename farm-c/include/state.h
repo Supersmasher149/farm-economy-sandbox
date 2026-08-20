@@ -263,6 +263,14 @@ typedef struct {
     int total_sold;
     int idle_days;
 
+    /* Modern engine run bookkeeping, matching PlayerState/_finish_day. */
+    int slot_days;
+    int occupied_slot_days;
+    double lowest_money;
+    bool bankrupt;
+    int bankruptcy_day;
+    char *bankruptcy_reason;
+
     int total_waterings;
     int total_harvest_events;
     int total_harvested; /* PlayerState.total_harvested: total units harvested */
@@ -316,8 +324,8 @@ void contract_vec_free(ContractVec *vec);
  * (planted, inventory_lots, ...) start empty; callers push onto them
  * directly. `config` is borrowed, not copied or freed here.
  */
-void farm_state_init(FarmState *state, const ResolvedConfig *config, double money,
-                      int slots_total);
+bool farm_state_init(FarmState *state, const ResolvedConfig *config, double money,
+                     int slots_total);
 void farm_state_destroy(FarmState *state);
 
 /* --- Phase 2 mutation helpers, backed by state.c --- */

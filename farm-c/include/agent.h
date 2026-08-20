@@ -1,8 +1,8 @@
 /* Agent decision interface: a C vtable replacing Python inheritance, per
  * docs/c-port-plan.md Section 6. Agents receive `const FarmState *` and
  * `const ResolvedConfig *` and return decisions into buffers the caller
- * owns -- they must never mutate state (the engine, not yet ported, is the
- * only thing that applies decisions; see agents/base.py's own docstring,
+ * owns -- they must never mutate state (the engine is the only thing that
+ * applies decisions; see agents/base.py's own docstring,
  * which this mirrors).
  *
  * All 11 ported agents are stateless singletons (every Python subclass only
@@ -41,6 +41,7 @@ typedef struct {
     ContractId *data;
     size_t count;
     size_t capacity;
+    bool allocation_failed;
 } ContractDecisionBuffer;
 
 bool contract_decision_push(ContractDecisionBuffer *buffer, ContractId contract_id);
@@ -55,6 +56,7 @@ typedef struct {
     DeliveryDecision *data;
     size_t count;
     size_t capacity;
+    bool allocation_failed;
 } DeliveryDecisionBuffer;
 
 bool delivery_decision_push(DeliveryDecisionBuffer *buffer, DeliveryDecision decision);
@@ -69,6 +71,7 @@ typedef struct {
     ProcessingDecision *data;
     size_t count;
     size_t capacity;
+    bool allocation_failed;
 } ProcessingDecisionBuffer;
 
 bool processing_decision_push(ProcessingDecisionBuffer *buffer, ProcessingDecision decision);
@@ -93,6 +96,7 @@ typedef struct {
     SaleDecision *data;
     size_t count;
     size_t capacity;
+    bool allocation_failed;
 } SalesDecisionBuffer;
 
 bool sale_decision_push(SalesDecisionBuffer *buffer, SaleDecision decision);

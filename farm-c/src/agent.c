@@ -7,6 +7,7 @@
 
 bool contract_decision_push(ContractDecisionBuffer *buffer, ContractId contract_id) {
     if (!vec_grow((void **)&buffer->data, &buffer->capacity, buffer->count, sizeof(ContractId))) {
+        buffer->allocation_failed = true;
         return false;
     }
     buffer->data[buffer->count++] = contract_id;
@@ -21,6 +22,7 @@ void contract_decision_free(ContractDecisionBuffer *buffer) {
 bool delivery_decision_push(DeliveryDecisionBuffer *buffer, DeliveryDecision decision) {
     if (!vec_grow((void **)&buffer->data, &buffer->capacity, buffer->count,
                    sizeof(DeliveryDecision))) {
+        buffer->allocation_failed = true;
         return false;
     }
     buffer->data[buffer->count++] = decision;
@@ -35,6 +37,7 @@ void delivery_decision_free(DeliveryDecisionBuffer *buffer) {
 bool processing_decision_push(ProcessingDecisionBuffer *buffer, ProcessingDecision decision) {
     if (!vec_grow((void **)&buffer->data, &buffer->capacity, buffer->count,
                    sizeof(ProcessingDecision))) {
+        buffer->allocation_failed = true;
         return false;
     }
     buffer->data[buffer->count++] = decision;
@@ -49,6 +52,7 @@ void processing_decision_free(ProcessingDecisionBuffer *buffer) {
 bool sale_decision_push(SalesDecisionBuffer *buffer, SaleDecision decision) {
     if (!vec_grow((void **)&buffer->data, &buffer->capacity, buffer->count,
                    sizeof(SaleDecision))) {
+        buffer->allocation_failed = true;
         return false;
     }
     buffer->data[buffer->count++] = decision;
