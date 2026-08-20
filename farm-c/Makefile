@@ -32,20 +32,30 @@ FP = -ffp-contract=off
 SAN = -fsanitize=address,undefined -fno-omit-frame-pointer
 INCLUDE = -Iinclude
 LIBS = -lm
+# Emit a .d per object listing the headers it included, and -include them
+# below. Without this the only header dependency make knows about is the one
+# hand-written for cJSON, so editing include/*.h (or src/dashboard_js.h,
+# which carries the whole dashboard renderer) leaves every stale .o in place
+# and the next `make` quietly links the old code.
+DEPFLAGS = -MMD -MP
 
 LIB_SRCS = $(filter-out src/cJSON.c,$(wildcard src/*.c)) $(wildcard src/agents/*.c)
 LIB_OBJS = $(LIB_SRCS:.c=.o)
 CJSON_OBJ = src/cJSON.o
+TEST_BINS = tests/test_agents tests/test_rng tests/test_physics tests/test_mutation \
+            tests/test_config_loader tests/test_engine tests/test_runner tests/test_batch \
+            tests/test_dashboard
+DEPS = $(LIB_OBJS:.o=.d) $(CJSON_OBJ:.o=.d)
 
 .PHONY: all test fixtures fixtures-rng fixtures-physics fixtures-mutation clean
 
 all: test
 
 %.o: %.c
-	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) -c $< -o $@
+	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
 
 src/cJSON.o: src/cJSON.c include/cJSON.h
-	$(CC) $(CSTD) $(FP) $(SAN) $(INCLUDE) -c $< -o $@
+	$(CC) $(CSTD) $(FP) $(SAN) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
 
 tests/test_agents: tests/test_agents.c $(LIB_OBJS) $(CJSON_OBJ)
 	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
@@ -89,7 +99,10 @@ tests/test_runner: tests/test_runner.c $(LIB_OBJS) $(CJSON_OBJ)
 tests/test_batch: tests/test_batch.c $(LIB_OBJS) $(CJSON_OBJ)
 	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
-test: tests/test_agents tests/test_rng tests/test_physics tests/test_mutation tests/test_config_loader tests/test_engine tests/test_runner tests/test_batch farm-c
+tests/test_dashboard: tests/test_dashboard.c $(LIB_OBJS) $(CJSON_OBJ)
+	$(CC) $(CSTD) $(WARN) $(FP) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+
+test: $(TEST_BINS) farm-c
 	./tests/test_agents
 	./tests/test_rng
 	./tests/test_physics
@@ -98,7 +111,10 @@ test: tests/test_agents tests/test_rng tests/test_physics tests/test_mutation te
 	./tests/test_engine
 	./tests/test_runner
 	./tests/test_batch
+	./tests/test_dashboard
 	sh tests/test_cli.sh
 
 clean:
-	rm -f $(LIB_OBJS) $(CJSON_OBJ) tests/test_agents tests/test_rng tests/test_physics tests/test_mutation tests/test_config_loader tests/test_engine tests/test_runner tests/test_batch farm-c
+	rm -f $(LIB_OBJS) $(CJSON_OBJ) $(DEPS) $(TEST_BINS) farm-c
+
+-include $(DEPS)

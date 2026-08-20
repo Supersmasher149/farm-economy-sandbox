@@ -1,4 +1,6 @@
 *.o
+# Header-dependency files emitted by the Makefile's -MMD -MP.
+*.d
 tests/test_agents
 tests/test_rng
 tests/test_physics
@@ -7,6 +9,7 @@ tests/test_config_loader
 tests/test_engine
 tests/test_runner
 tests/test_batch
+tests/test_dashboard
 farm-c
 compile_commands.json
 .cache/

@@ -82,13 +82,21 @@ The six phases so far:
   and its `FarmState` is freed before the next run starts, so peak memory
   stays bounded independent of batch size, same as `run_batch`'s own
   streaming discipline. `farm-c batch` aggregates those into a per-strategy
-  summary table and, with `--csv`, a raw per-run CSV; the rest of the
-  Python reporting pipeline (`summary.json`, `summary_report.md`,
-  `dashboard.html`, warnings) is out of scope here.
+  summary table and, with `--csv`, a raw per-run CSV.
+- **Phase 7**, `src/aggregate.c`, `src/warnings.c`, `src/dashboard.c`: the
+  reporting layer `docs/c-port-plan.md` Section 12 lists as its Later
+  Version. `warnings.c` ports `metrics/warnings.py`'s threshold rules;
+  `dashboard.c` writes `--html`, a self-contained interactive report drawn
+  by vanilla JS from an embedded payload (no dependencies, opens offline).
+  Both read `aggregate.c`, which owns every derived per-strategy value so
+  the terminal table, the warnings and the page cannot disagree about what
+  an average means -- the same single-source-of-truth rule `../CLAUDE.md`
+  states for the Python reporting path. `summary.json` and
+  `summary_report.md` remain out of scope.
 
 The engine is wired into a reusable single-run runner (`farm-c single`) and a
-batch driver (`farm-c batch`). Report artifacts beyond a CSV, and the legacy
-`world=None` path, remain out of scope.
+batch driver (`farm-c batch`). The legacy `world=None` path remains out of
+scope.
 
 ## Scope boundary
 
@@ -157,12 +165,17 @@ include/            farm_types.h, config.h, state.h, agent.h, economy.h,
                      markets.h, inventory.h, contracts.h, derived.h,
                      rng.h, rng_hash.h, blake2b.h, vec_util.h, pyfloat.h,
                      crop_growth.h, weather.h, actions.h, processing.h,
-                     engine.h, runner.h, batch.h
+                     engine.h, runner.h, batch.h, aggregate.h, warnings.h,
+                     dashboard.h
 src/                 economy_rules.c, markets.c, inventory.c, contracts.c,
                      derived.c, rng.c, rng_hash.c, blake2b.c, config.c,
                      state.c, vec_util.c, agent.c, agent_registry.c,
                      pyfloat.c, crop_growth.c, weather.c, actions.c,
-                     processing.c, engine.c, runner.c, batch.c
+                     processing.c, engine.c, runner.c, batch.c,
+                     aggregate.c (per-strategy stats, one source of truth
+                     for every derived number), warnings.c (balance rules),
+                     dashboard.c + dashboard_js.h (the --html report; the
+                     .h holds its CSS/JS as string literals)
 src/agents/          base.c (shared defaults + route_sales_by_best_price),
                      one file per agent, matching ../agents/*.py 1:1
 tests/               test_agents.c (fixture-driven parity test for the
@@ -175,6 +188,11 @@ tests/               test_agents.c (fixture-driven parity test for the
                      (single-run lifecycle), test_batch.c (seed minting
                      against real Python `randrange(2**32)` output, job
                      order, and batch-vs-single-run parity),
+                     test_dashboard.c (--html payload well-formedness,
+                     agreement with the aggregator, escaping, and the
+                     self-contained property), test_cli.sh (CLI smoke
+                     tests, including that --html leaves batch results
+                     byte-identical for a fixed seed),
                      fixtures/{agents,rng,physics,mutation}.json (generated,
                      checked in), third_party/cJSON.{h,c} (legacy fixture
                      copy); include/cJSON.h and src/cJSON.c are the production
@@ -260,6 +278,7 @@ From `farm-c/`, run every strategy `--runs` times each off one base seed:
 make farm-c
 ./farm-c batch --runs 1000 --seed 42
 ./farm-c batch --runs 1000 --seed 42 --csv reports/run_results.csv
+./farm-c batch --runs 1000 --seed 42 --html reports/dashboard.html
 ./farm-c batch --runs 200 --strategy fast_seller --strategy profit_optimizer
 ./farm-c batch --runs 100 --days 30 --start-money 300     # diagnostic overrides
 ```
@@ -273,8 +292,33 @@ batch analogue of `single`'s `actual_seed`. `--days`/`--start-money` override
 overrides. `--csv PATH` writes one row per completed run (see
 `include/batch.h`'s `BatchRunResult` for the column set -- the scalar subset
 of `metrics/run_results.py`'s `RunResult`, no crop-count/percentage dicts);
-without it, only the per-strategy summary table prints. There is no
-`summary.json`/`summary_report.md`/`dashboard.html` equivalent here, and no
+without it, only the per-strategy summary table prints. Either way the
+summary is followed by the balance warnings `src/warnings.c` ports from
+`metrics/warnings.py` -- the signal `main.py batch`'s report leads with.
+
+`--html PATH` writes an interactive report (`src/dashboard.c`): a sortable
+overview table, the warnings, and five charts -- final-money distribution,
+bankruptcy rate, average profit per day, crop mix, and watering rate vs crop
+loss rate as one scatter panel per strategy. Clicking a strategy filters
+every panel at once; hovering a scatter point names its seed, and clicking
+one fills in the `farm-c single --strategy X --seed N --verbose` that
+reproduces exactly that run.
+
+Three things worth knowing about it. It is **fed from the batch, not from
+the CSV** -- `BatchRunResult` carries `crop_plant_counts`,
+`total_crops_lost`, `total_harvest_events` and `slot_days`, which the 22 CSV
+columns drop and the crop-mix and scatter panels need; the cost is that
+`--html` renders the batch you are running, not an archived one. It is
+**one self-contained file** with no CDN, no external stylesheet, and no
+network access at all -- charts are drawn by ~200 lines of vanilla JS
+(`src/dashboard_js.h`) building SVG from an embedded payload, the same
+opens-offline property `metrics/dashboard.py` gets by base64-inlining its
+PNGs. And the payload is a **display artifact**: doubles are written at
+`%.10g`, not the `%.17g` the CSV uses, so `run_results.csv` remains the
+exact record of a run. Page size is roughly 1.5 MB for a full
+`--runs 1000` batch (11,000 rows).
+
+There is still no `summary.json`/`summary_report.md` equivalent here, and no
 process pool -- `farm-c batch` runs every job on one thread, sequentially,
 in the same agent-major order it mints seeds in.
 

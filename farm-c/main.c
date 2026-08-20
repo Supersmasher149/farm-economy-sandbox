@@ -6,9 +6,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "aggregate.h"
 #include "batch.h"
 #include "config.h"
+#include "dashboard.h"
 #include "runner.h"
+#include "warnings.h"
 
 #define MAX_BATCH_STRATEGIES 64
 
@@ -31,13 +34,14 @@ typedef struct {
     bool has_start_money;
     double start_money;
     const char *csv_path;
+    const char *html_path;
 } BatchOptions;
 
 static void usage(FILE *stream) {
     fprintf(stream,
            "usage: farm-c single [--strategy NAME] [--seed INT] [--config DIR] [--verbose]\n"
            "       farm-c batch --runs N [--strategy NAME]... [--seed INT] [--config DIR]\n"
-           "                    [--days N] [--start-money N] [--csv PATH]\n");
+           "                    [--days N] [--start-money N] [--csv PATH] [--html PATH]\n");
 }
 
 static bool parse_seed(const char *text, uint64_t *seed) {
@@ -98,6 +102,7 @@ static bool parse_batch_args(int argc, char **argv, BatchOptions *options) {
         .has_start_money = false,
         .start_money = 0.0,
         .csv_path = NULL,
+        .html_path = NULL,
     };
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--runs") == 0 && i + 1 < argc) {
@@ -119,11 +124,25 @@ static bool parse_batch_args(int argc, char **argv, BatchOptions *options) {
             options->has_start_money = true;
         } else if (strcmp(argv[i], "--csv") == 0 && i + 1 < argc) {
             options->csv_path = argv[++i];
+        } else if (strcmp(argv[i], "--html") == 0 && i + 1 < argc) {
+            options->html_path = argv[++i];
         } else {
             return false;
         }
     }
     return options->has_runs;
+}
+
+static bool load_config_or_report(const char *dir, ResolvedConfig *config,
+                                  SimulationSettings *settings) {
+    ConfigError config_error;
+    if (!config_load_directory(dir, config, &config_error) ||
+        !config_load_simulation_settings(dir, settings, &config_error)) {
+        fprintf(stderr, "configuration error: %s\n", config_error.message);
+        config_destroy(config);
+        return false;
+    }
+    return true;
 }
 
 static void print_day(const FarmState *state, const WeatherDay *weather, void *context) {
@@ -180,13 +199,7 @@ static int cmd_single(int argc, char **argv) {
     }
     ResolvedConfig config = {0};
     SimulationSettings settings = {0};
-    ConfigError config_error;
-    if (!config_load_directory(options.config_dir, &config, &config_error) ||
-        !config_load_simulation_settings(options.config_dir, &settings, &config_error)) {
-        fprintf(stderr, "configuration error: %s\n", config_error.message);
-        config_destroy(&config);
-        return 1;
-    }
+    if (!load_config_or_report(options.config_dir, &config, &settings)) return 1;
     RunResult result = {0};
     RunnerError error;
     bool ok = runner_run_single(&config, &settings, agent, options.seed,
@@ -203,26 +216,18 @@ static int cmd_single(int argc, char **argv) {
     return 0;
 }
 
-/* Running per-strategy aggregates, kept alongside the batch instead of
- * materializing every BatchRunResult -- same bounded-memory reasoning as
- * batch_run's own streaming, one level up. */
-typedef struct {
-    long runs;
-    long bankrupt_count;
-    double sum_final_money;
-    double sum_net_profit;
-    double sum_revenue;
-    double sum_expenses;
-    double sum_days_simulated;
-    double sum_idle_days;
-} StrategyAgg;
+/* StrategyAgg and every value derived from it now live in
+ * include/aggregate.h -- the terminal table below, the balance warnings,
+ * and the HTML dashboard all read the same accumulators, so an average
+ * cannot mean one thing on stdout and another on the page. */
 
 typedef struct {
     FILE *csv;
+    DashboardWriter *html;
     StrategyAgg *agg;
+    const char *const *names;
     size_t agent_count;
-    size_t runs_per_strategy;
-    long seen;
+    const ResolvedConfig *config;
 } BatchContext;
 
 static void write_csv_row(FILE *csv, const BatchRunResult *r) {
@@ -244,32 +249,72 @@ static void write_csv_row(FILE *csv, const BatchRunResult *r) {
 static void on_batch_result(const BatchRunResult *r, void *context) {
     BatchContext *ctx = context;
     if (ctx->csv != NULL) write_csv_row(ctx->csv, r);
+    dashboard_add_run(ctx->html, r); /* no-op when --html was not passed */
 
-    size_t agent_index = (size_t)(ctx->seen) / ctx->runs_per_strategy;
-    if (agent_index >= ctx->agent_count) agent_index = ctx->agent_count - 1; /* defensive only */
-    StrategyAgg *agg = &ctx->agg[agent_index];
-    agg->runs++;
-    if (r->bankrupt) agg->bankrupt_count++;
-    agg->sum_final_money += r->final_money;
-    agg->sum_net_profit += r->net_profit;
-    agg->sum_revenue += r->total_revenue;
-    agg->sum_expenses += r->total_expenses;
-    agg->sum_days_simulated += r->days_simulated;
-    agg->sum_idle_days += r->idle_days;
-    ctx->seen++;
+    /* Match by the strategy name batch_run reports, not by run position:
+     * r->strategy is the same names[] pointer batch_run was given (see
+     * batch.c's snapshot_result), so this doesn't need to re-derive
+     * batch_run's agent-major traversal order the way dividing a running
+     * count by runs-per-strategy did. */
+    size_t agent_index = ctx->agent_count > 0 ? ctx->agent_count - 1 : 0;
+    for (size_t i = 0; i < ctx->agent_count; i++) {
+        if (strcmp(ctx->names[i], r->strategy) == 0) {
+            agent_index = i;
+            break;
+        }
+    }
+    aggregate_add_run(&ctx->agg[agent_index], r, ctx->config->crop_count);
 }
 
 static void print_batch_summary(const char *const *names, const StrategyAgg *agg,
-                                size_t agent_count) {
+                                size_t agent_count, size_t crop_count) {
     printf("%-24s %8s %10s %16s %16s %10s\n", "strategy", "runs", "bankrupt%",
           "avg_final_money", "avg_net_profit", "avg_days");
     for (size_t i = 0; i < agent_count; i++) {
-        const StrategyAgg *a = &agg[i];
-        double runs = a->runs > 0 ? (double)a->runs : 1.0;
-        printf("%-24s %8ld %9.2f%% %16.2f %16.2f %10.2f\n", names[i], a->runs,
-              100.0 * (double)a->bankrupt_count / runs, a->sum_final_money / runs,
-              a->sum_net_profit / runs, a->sum_days_simulated / runs);
+        StrategySummary s;
+        aggregate_finalize(&agg[i], crop_count, NULL, &s);
+        printf("%-24s %8ld %9.2f%% %16.2f %16.2f %10.2f\n", names[i], s.runs, s.bankruptcy_rate,
+              s.avg_final_money, s.avg_net_profit, s.avg_days_simulated);
     }
+}
+
+/* Balance warnings on stdout, from the same accumulators the dashboard
+ * reads -- ../metrics/warnings.py is what `main.py batch`'s report leads
+ * with, and a batch that only prints averages buries the finding. */
+static void emit_stdout_warning(const char *line, void *context) {
+    long *count = context;
+    if ((*count)++ == 0) printf("\n");
+    printf("! %s\n", line);
+}
+
+static void print_batch_warnings(const ResolvedConfig *config, const char *const *names,
+                                 const StrategyAgg *agg, size_t agent_count, int total_days,
+                                 double start_money) {
+    size_t crop_count = config->crop_count;
+    double *crop_pct = crop_count > 0 ? calloc(crop_count, sizeof(double)) : NULL;
+    const char **crop_ids = crop_count > 0 ? calloc(crop_count, sizeof(char *)) : NULL;
+    if (crop_count > 0 && (crop_pct == NULL || crop_ids == NULL)) {
+        free(crop_pct);
+        free(crop_ids);
+        return;
+    }
+    for (size_t c = 0; c < crop_count; c++) {
+        const ItemDef *item = config_find_item(config, config->crops[c].item_id);
+        crop_ids[c] = item != NULL && item->external_id != NULL ? item->external_id : "?";
+    }
+
+    long emitted = 0;
+    for (size_t i = 0; i < agent_count; i++) {
+        StrategySummary s;
+        aggregate_finalize(&agg[i], crop_count, crop_pct, &s);
+        StrategyWarningStats stats;
+        aggregate_to_warning_stats(&s, (const char *const *)crop_ids, crop_pct, crop_count,
+                                   &stats);
+        warnings_evaluate_strategy(names[i], &stats, total_days, start_money,
+                                   &WARNING_DEFAULT_THRESHOLDS, emit_stdout_warning, &emitted);
+    }
+    free(crop_pct);
+    free(crop_ids);
 }
 
 static int cmd_batch(int argc, char **argv) {
@@ -304,13 +349,7 @@ static int cmd_batch(int argc, char **argv) {
 
     ResolvedConfig config = {0};
     SimulationSettings settings = {0};
-    ConfigError config_error;
-    if (!config_load_directory(options.config_dir, &config, &config_error) ||
-        !config_load_simulation_settings(options.config_dir, &settings, &config_error)) {
-        fprintf(stderr, "configuration error: %s\n", config_error.message);
-        config_destroy(&config);
-        return 1;
-    }
+    if (!load_config_or_report(options.config_dir, &config, &settings)) return 1;
     if (options.has_days) settings.days = (int)options.days;
     if (options.has_start_money) settings.start_money = options.start_money;
 
@@ -330,9 +369,39 @@ static int cmd_batch(int argc, char **argv) {
                "contracts_failed,contract_penalties,reputation\n");
     }
 
+    DashboardWriter *html = NULL;
+    if (options.html_path != NULL) {
+        html = dashboard_open(options.html_path, &config, names, agent_count, &settings);
+        if (html == NULL) {
+            fprintf(stderr, "could not open --html path for writing: %s\n", options.html_path);
+            if (csv != NULL) fclose(csv);
+            config_destroy(&config);
+            return 1;
+        }
+    }
+
     StrategyAgg agg[MAX_BATCH_STRATEGIES];
     memset(agg, 0, sizeof(agg));
-    BatchContext context = {csv, agg, agent_count, (size_t)options.runs, 0};
+    /* One flat allocation carved into per-strategy slices, which is the
+     * arrangement StrategyAgg.crop_totals documents. calloc of a zero-sized
+     * request is implementation-defined, so a crop-less config keeps NULL
+     * slices -- safe, because aggregate_add_run's loop then runs zero
+     * times. */
+    long *crop_totals = NULL;
+    if (config.crop_count > 0) {
+        crop_totals = calloc(agent_count * config.crop_count, sizeof(long));
+        if (crop_totals == NULL) {
+            fprintf(stderr, "out of memory allocating per-strategy crop totals\n");
+            if (csv != NULL) fclose(csv);
+            dashboard_close(html, agg, agent_count, settings.days, settings.start_money);
+            config_destroy(&config);
+            return 1;
+        }
+        for (size_t i = 0; i < agent_count; i++)
+            agg[i].crop_totals = crop_totals + i * config.crop_count;
+    }
+
+    BatchContext context = {csv, html, agg, names, agent_count, &config};
 
     uint64_t resolved_seed = 0;
     BatchError error;
@@ -340,8 +409,19 @@ static int cmd_batch(int argc, char **argv) {
                         options.seed.has_seed, options.seed.seed, &resolved_seed,
                         on_batch_result, &context, &error);
     if (csv != NULL) fclose(csv);
+    /* Closed on both paths: a partially written page is still valid HTML
+     * for the runs that did complete, and leaving the file open would leak
+     * the writer. */
+    bool html_ok = dashboard_close(html, agg, agent_count, settings.days, settings.start_money);
     if (!ok) {
         fprintf(stderr, "batch run error: %s\n", error.message);
+        free(crop_totals);
+        config_destroy(&config);
+        return 1;
+    }
+    if (!html_ok) {
+        fprintf(stderr, "failed writing --html report: %s\n", options.html_path);
+        free(crop_totals);
         config_destroy(&config);
         return 1;
     }
@@ -350,8 +430,11 @@ static int cmd_batch(int argc, char **argv) {
     printf("strategies: %zu\nruns_per_strategy: %ld\ntotal_runs: %zu\n", agent_count,
           options.runs, agent_count * (size_t)options.runs);
     if (csv != NULL) printf("csv: %s\n", options.csv_path);
-    print_batch_summary(names, agg, agent_count);
+    if (html != NULL) printf("html: %s\n", options.html_path);
+    print_batch_summary(names, agg, agent_count, config.crop_count);
+    print_batch_warnings(&config, names, agg, agent_count, settings.days, settings.start_money);
 
+    free(crop_totals);
     config_destroy(&config);
     return 0;
 }
