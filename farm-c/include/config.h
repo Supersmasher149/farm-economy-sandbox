@@ -13,6 +13,7 @@
 #define FARM_CONFIG_H
 
 #include <stddef.h>
+#include <stdbool.h>
 
 #include "farm_types.h"
 
@@ -350,6 +351,17 @@ typedef struct {
 } StorageConfig;
 
 typedef struct {
+    double moisture;
+    double nitrogen;
+    double phosphorus;
+    double potassium;
+    double ph;
+    double soil_health;
+    double pest_pressure;
+    double disease_pressure;
+} SoilInitial;
+
+typedef struct {
     ItemDef *items;
     size_t item_count;
 
@@ -375,7 +387,40 @@ typedef struct {
     PlotRegen plot_regen;
     WeatherParams weather;
     MarketsConfig markets;
+    StorageConfig storage;
+    SoilInitial soil_initial;
+    int processing_capacity;
 } ResolvedConfig;
+
+typedef enum {
+    CONFIG_ERROR_NONE,
+    CONFIG_ERROR_ARGUMENT,
+    CONFIG_ERROR_IO,
+    CONFIG_ERROR_JSON,
+    CONFIG_ERROR_SCHEMA,
+    CONFIG_ERROR_RANGE,
+    CONFIG_ERROR_REFERENCE,
+    CONFIG_ERROR_ALLOCATION
+} ConfigErrorCode;
+
+typedef struct {
+    ConfigErrorCode code;
+    char message[512];
+} ConfigError;
+
+typedef struct {
+    double start_money;
+    int start_slots;
+    int days;
+    double operating_reserve;
+    bool has_seed;
+    int64_t seed;
+} SimulationSettings;
+
+bool config_load_directory(const char *directory, ResolvedConfig *out, ConfigError *error);
+bool config_load_simulation_settings(const char *directory, SimulationSettings *out,
+                                     ConfigError *error);
+void config_destroy(ResolvedConfig *config);
 
 /* --- Lookups (linear scan; config is small and this is test/decision-time
  * code, not the per-plot-per-day hot path the Python id()-keyed caches in
