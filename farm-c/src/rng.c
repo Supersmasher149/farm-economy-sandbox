@@ -6,7 +6,10 @@
  */
 #include "rng.h"
 
+#include <fcntl.h>
 #include <stddef.h>
+#include <time.h>
+#include <unistd.h>
 
 #define MT_N FARM_RNG_MT_N
 #define MT_M 397
@@ -198,4 +201,15 @@ uint32_t rng_randrange_2_32(FarmRng *rng) {
         uint32_t high_bit = genrand_uint32(rng) >> 31;
         if (high_bit == 0) return low;
     }
+}
+
+bool rng_fresh_seed(uint64_t *seed) {
+    int fd = open("/dev/urandom", O_RDONLY);
+    if (fd >= 0) {
+        ssize_t got = read(fd, seed, sizeof(*seed));
+        close(fd);
+        if (got == (ssize_t)sizeof(*seed)) return true;
+    }
+    *seed = (uint64_t)time(NULL) ^ ((uint64_t)(uintptr_t)seed << 17);
+    return true;
 }

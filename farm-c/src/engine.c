@@ -20,6 +20,18 @@ static void set_error(EngineError *error, EngineErrorCode code,
   snprintf(error->message, sizeof(error->message), "%s", message);
 }
 
+/* The four decision-buffer steps (12/13/14/15 below) all share this shape:
+ * call the agent, and if the buffer's own growth allocation failed, free it
+ * and bail with a matching error message. */
+#define ENGINE_CHECK_ALLOC(buf, free_fn, what)                               \
+  do {                                                                       \
+    if ((buf).allocation_failed) {                                           \
+      free_fn(&(buf));                                                       \
+      set_error(error, ENGINE_ERROR_ALLOCATION, what " buffer allocation failed"); \
+      return false;                                                          \
+    }                                                                        \
+  } while (0)
+
 static StorageConfig effective_storage(const FarmState *state) {
   StorageConfig storage = state->config->storage;
   for (size_t i = 0; i < state->config->upgrade_count; i++) {
@@ -41,10 +53,14 @@ static bool crop_can_be_funded(const FarmState *state, const CropDef *crop) {
 
 static bool plant_open_slots(FarmState *state, const Agent *agent) {
   bool acted = false;
+  /* next_plot only ever advances across iterations, so filling k of n open
+   * slots is a single O(n) sweep instead of an O(n*k) rescan-from-0 every
+   * time a slot gets planted. */
+  size_t next_plot = 0;
   while (farm_state_open_slots(state) > 0) {
     bool free_plot = false;
-    for (size_t i = 0; i < state->plot_count; i++) {
-      if (state->plots[i].planted_index == -1) {
+    for (; next_plot < state->plot_count; next_plot++) {
+      if (state->plots[next_plot].planted_index == -1) {
         free_plot = true;
         break;
       }
@@ -81,6 +97,11 @@ static bool plant_open_slots(FarmState *state, const Agent *agent) {
 }
 
 static bool no_viable_reinvestment(const FarmState *state) {
+  /* Cheap O(1) checks first: on the overwhelming majority of days this
+   * returns false right here, so the crop-catalog scan below (invariant
+   * for the config's lifetime) only runs on the rare days it's needed. */
+  if (state->planted.count != 0 || state->processing_jobs.count != 0)
+    return false;
   double cheapest = 0.0;
   bool found = false;
   for (size_t i = 0; i < state->config->crop_count; i++) {
@@ -90,8 +111,7 @@ static bool no_viable_reinvestment(const FarmState *state) {
       found = true;
     }
   }
-  if (!found || state->money >= cheapest || state->planted.count != 0 ||
-      state->processing_jobs.count != 0)
+  if (!found || state->money >= cheapest)
     return false;
   for (size_t i = 0; i < state->inventory_lots.count; i++) {
     if (state->inventory_lots.data[i].quantity > 0)
@@ -165,23 +185,13 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
 
   /* 12. */ ContractDecisionBuffer accepts = {0};
   agent->choose_contracts(agent, state, config, &accepts);
-  if (accepts.allocation_failed) {
-    contract_decision_free(&accepts);
-    set_error(error, ENGINE_ERROR_ALLOCATION,
-              "contract decision buffer allocation failed");
-    return false;
-  }
+  ENGINE_CHECK_ALLOC(accepts, contract_decision_free, "contract decision");
   for (size_t i = 0; i < accepts.count; i++)
     acted = contracts_accept(state, config, accepts.data[i]) || acted;
   contract_decision_free(&accepts);
   /* 13. */ DeliveryDecisionBuffer deliveries = {0};
   agent->choose_contract_deliveries(agent, state, &deliveries);
-  if (deliveries.allocation_failed) {
-    delivery_decision_free(&deliveries);
-    set_error(error, ENGINE_ERROR_ALLOCATION,
-              "delivery decision buffer allocation failed");
-    return false;
-  }
+  ENGINE_CHECK_ALLOC(deliveries, delivery_decision_free, "delivery decision");
   for (size_t i = 0; i < deliveries.count; i++) {
     int delivered = 0;
     (void)contracts_deliver(state, config, deliveries.data[i].contract_id,
@@ -191,12 +201,7 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
   delivery_decision_free(&deliveries);
   /* 14. */ ProcessingDecisionBuffer processing = {0};
   agent->choose_processing(agent, state, config, &processing);
-  if (processing.allocation_failed) {
-    processing_decision_free(&processing);
-    set_error(error, ENGINE_ERROR_ALLOCATION,
-              "processing decision buffer allocation failed");
-    return false;
-  }
+  ENGINE_CHECK_ALLOC(processing, processing_decision_free, "processing decision");
   for (size_t i = 0; i < processing.count; i++) {
     const RecipeDef *recipe =
         config_find_recipe(config, processing.data[i].recipe_id);
@@ -208,12 +213,7 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
   processing_decision_free(&processing);
   /* 15. */ SalesDecisionBuffer sales = {0};
   agent->choose_sales(agent, state, config, &sales);
-  if (sales.allocation_failed) {
-    sales_decision_free(&sales);
-    set_error(error, ENGINE_ERROR_ALLOCATION,
-              "sales decision buffer allocation failed");
-    return false;
-  }
+  ENGINE_CHECK_ALLOC(sales, sales_decision_free, "sales decision");
   for (size_t i = 0; i < sales.count; i++) {
     const ChannelDef *channel =
         config_find_channel(config, sales.data[i].channel_id);
@@ -277,10 +277,4 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
   if (callback != NULL)
     callback(state, &weather, context);
   return true;
-}
-
-// why is this needed why not just run engine_run_day_observed
-bool engine_run_day(FarmState *state, const Agent *agent, FarmRng *rng,
-                    EngineError *error) {
-  return engine_run_day_observed(state, agent, rng, NULL, NULL, error);
 }

@@ -37,11 +37,14 @@
 /* One run's outcome, flattened out of FarmState the way
  * metrics/run_results.py:build_run_result flattens PlayerState -- a
  * trimmed subset (the scalar fields main.c's `single` summary already
- * prints), not the full dataclass (crop_counts/percentages and the other
- * dict-valued fields stay out of scope here; see README). The FarmState
- * itself is destroyed before the next run starts, keeping a batch's peak
- * memory bounded independent of how many runs it covers, same as
- * run_batch's streaming-generator discipline. */
+ * prints, plus the handful of additional raw fields
+ * metrics/warnings.py:evaluate_warnings's rules need -- see
+ * include/warnings.h), not the full dataclass (crop_percentages,
+ * expenses_by_category, and the other report-only dict-valued fields stay
+ * out of scope here; see README). The FarmState itself is destroyed before
+ * the next run starts, keeping a batch's peak memory bounded independent of
+ * how many runs it covers, same as run_batch's streaming-generator
+ * discipline. */
 typedef struct {
     const char *strategy;
     uint64_t seed;
@@ -71,6 +74,18 @@ typedef struct {
     int contracts_failed;
     double contract_penalties;
     double reputation;
+
+    /* Warnings-only additions (metrics/run_results.py's crop_counts,
+     * crop_loss_rate's inputs, first_upgrade_day, and watering_rate's
+     * denominator). crop_plant_counts is borrowed from FarmState -- valid
+     * only for the duration of the BatchRunCallback, same lifetime as
+     * `strategy` above -- length config->crop_count, one entry per
+     * config->crops[i] in that same order. */
+    const int *crop_plant_counts;
+    int total_crops_lost;
+    int total_harvest_events;
+    int slot_days;
+    int first_upgrade_day; /* INVALID_DAY if no upgrade was ever bought */
 } BatchRunResult;
 
 typedef enum {

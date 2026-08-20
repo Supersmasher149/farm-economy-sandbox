@@ -71,7 +71,7 @@ static void test_order_and_bookkeeping(void) {
     EngineError error;
     calls[0] = '\0';
     call_count = 0;
-    assert(engine_run_day(&state, &TRACE_AGENT, &rng, &error));
+    assert(engine_run_day_observed(&state, &TRACE_AGENT, &rng, NULL, NULL, &error));
     assert(error.code == ENGINE_ERROR_NONE);
     assert(call_count == 5);
     assert(memcmp(calls, "adpsc", 5) == 0);
@@ -96,8 +96,8 @@ static void test_repeatability_and_cleanup(void) {
     rng_seed(&rb, 123456);
     EngineError ea, eb;
     for (int day = 0; day < 8; day++) {
-        assert(engine_run_day(&a, &AGENT_FAST_SELLER, &ra, &ea));
-        assert(engine_run_day(&b, &AGENT_FAST_SELLER, &rb, &eb));
+        assert(engine_run_day_observed(&a, &AGENT_FAST_SELLER, &ra, NULL, NULL, &ea));
+        assert(engine_run_day_observed(&b, &AGENT_FAST_SELLER, &rb, NULL, NULL, &eb));
         assert(a.money == b.money);
         assert(a.day == b.day);
         assert(a.planted.count == b.planted.count);

@@ -1,10 +1,7 @@
 #include "batch.h"
 
-#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
-#include <unistd.h>
 
 #include "engine.h"
 #include "rng.h"
@@ -17,22 +14,6 @@ static void set_error(BatchError *error, BatchErrorCode code, const char *strate
     error->strategy = strategy;
     error->seed = seed;
     snprintf(error->message, sizeof(error->message), "%s", message);
-}
-
-/* Same /dev/urandom-with-fallback shape as runner.c's fresh_seed (kept as a
- * separate copy rather than shared: runner.c's is file-static, and this
- * port's "no cross-file coupling beyond the header" style for small
- * one-line helpers -- see e.g. pyfloat.c/vec_util.c -- treats a four-line
- * duplicate as cheaper than adding a new exported entry point for it). */
-static bool fresh_seed(uint64_t *seed) {
-    int fd = open("/dev/urandom", O_RDONLY);
-    if (fd >= 0) {
-        ssize_t got = read(fd, seed, sizeof(*seed));
-        close(fd);
-        if (got == (ssize_t)sizeof(*seed)) return true;
-    }
-    *seed = (uint64_t)time(NULL) ^ ((uint64_t)(uintptr_t)seed << 17);
-    return true;
 }
 
 static BatchRunResult snapshot_result(const char *strategy, uint64_t seed,
@@ -67,6 +48,18 @@ static BatchRunResult snapshot_result(const char *strategy, uint64_t seed,
     out.contracts_failed = state->contracts_failed;
     out.contract_penalties = state->contract_penalties;
     out.reputation = state->reputation;
+
+    out.crop_plant_counts = state->crop_plant_counts;
+    out.total_crops_lost = state->total_crops_lost;
+    out.total_harvest_events = state->total_harvest_events;
+    out.slot_days = state->slot_days;
+    out.first_upgrade_day = INVALID_DAY;
+    for (size_t i = 0; i < state->config->upgrade_count; i++) {
+        int day = state->upgrade_purchase_days[i];
+        if (day != INVALID_DAY &&
+            (out.first_upgrade_day == INVALID_DAY || day < out.first_upgrade_day))
+            out.first_upgrade_day = day;
+    }
     return out;
 }
 
@@ -92,7 +85,7 @@ bool batch_run(const ResolvedConfig *config,
     }
 
     uint64_t seed = base_seed;
-    if (!has_base_seed && !fresh_seed(&seed)) {
+    if (!has_base_seed && !rng_fresh_seed(&seed)) {
         set_error(error, BATCH_ERROR_SEED, NULL, 0, "could not generate a base seed");
         return false;
     }
@@ -128,9 +121,13 @@ bool batch_run(const ResolvedConfig *config,
                 return false;
             }
 
+            /* Callback first, destroy second -- the order include/batch.h
+             * documents. snapshot.crop_plant_counts is borrowed straight
+             * from the FarmState, so destroying first leaves the callback
+             * reading freed memory. */
             BatchRunResult snapshot = snapshot_result(strategy_names[a], run_seed, &run);
-            runner_run_result_destroy(&run);
             if (on_result != NULL) on_result(&snapshot, context);
+            runner_run_result_destroy(&run);
         }
     }
     return true;

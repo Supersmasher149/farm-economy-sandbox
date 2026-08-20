@@ -80,4 +80,13 @@ double rng_uniform_event(FarmRng *rng, double minimum, double maximum);
  * genrand_uint32() draws. */
 uint32_t rng_randrange_2_32(FarmRng *rng);
 
+/* /dev/urandom-backed seed generation, with a time(NULL)-based fallback if
+ * /dev/urandom can't be opened or read in full. Shared by runner.c (single
+ * runs) and batch.c (batch base seeds) -- the one seed-generation helper
+ * both need, so it lives alongside rng_seed/rng_randrange_2_32 rather than
+ * being duplicated per file. Always returns true (the fallback can't fail);
+ * the bool return exists so callers can propagate a seed-generation error
+ * uniformly if a future fallback path ever can. */
+bool rng_fresh_seed(uint64_t *seed);
+
 #endif /* FARM_RNG_H */

@@ -1,12 +1,9 @@
 #include "runner.h"
 
-#include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include <unistd.h>
 
 #include "engine.h"
 #include "rng.h"
@@ -15,17 +12,6 @@ static void set_error(RunnerError *error, RunnerErrorCode code, const char *mess
     if (error == NULL) return;
     error->code = code;
     snprintf(error->message, sizeof(error->message), "%s", message);
-}
-
-static bool fresh_seed(uint64_t *seed) {
-    int fd = open("/dev/urandom", O_RDONLY);
-    if (fd >= 0) {
-        ssize_t got = read(fd, seed, sizeof(*seed));
-        close(fd);
-        if (got == (ssize_t)sizeof(*seed)) return true;
-    }
-    *seed = (uint64_t)time(NULL) ^ ((uint64_t)(uintptr_t)seed << 17);
-    return true;
 }
 
 static void apply_initial_soil(FarmState *state, const SoilInitial *soil) {
@@ -39,18 +25,6 @@ static void apply_initial_soil(FarmState *state, const SoilInitial *soil) {
         state->plots[i].pest_pressure = soil->pest_pressure;
         state->plots[i].disease_pressure = soil->disease_pressure;
     }
-}
-
-typedef struct {
-    RunDayCallback callback;
-    void *context;
-    int days;
-} CallbackContext;
-
-static void forward_day(const FarmState *state, const WeatherDay *weather, void *context) {
-    CallbackContext *forward = context;
-    forward->days++;
-    if (forward->callback != NULL) forward->callback(state, weather, forward->context);
 }
 
 bool runner_run_single(const ResolvedConfig *config,
@@ -70,7 +44,7 @@ bool runner_run_single(const ResolvedConfig *config,
     }
 
     uint64_t seed = requested_seed.seed;
-    if (!requested_seed.has_seed && !fresh_seed(&seed)) {
+    if (!requested_seed.has_seed && !rng_fresh_seed(&seed)) {
         set_error(error, RUNNER_ERROR_SEED, "could not generate a run seed");
         return false;
     }
@@ -88,10 +62,9 @@ bool runner_run_single(const ResolvedConfig *config,
 
     FarmRng rng;
     rng_seed(&rng, seed);
-    CallbackContext callback = {on_day, context, 0};
     for (int day = 0; day < settings->days && !out->state.bankrupt; day++) {
         EngineError engine_error;
-        if (!engine_run_day_observed(&out->state, agent, &rng, forward_day, &callback,
+        if (!engine_run_day_observed(&out->state, agent, &rng, on_day, context,
                                      &engine_error)) {
             set_error(error, engine_error.code == ENGINE_ERROR_ALLOCATION
                                 ? RUNNER_ERROR_ALLOCATION : RUNNER_ERROR_ENGINE,
@@ -100,7 +73,7 @@ bool runner_run_single(const ResolvedConfig *config,
             return false;
         }
     }
-    out->days_simulated = callback.days;
+    out->days_simulated = out->state.day;
     return true;
 }
 
