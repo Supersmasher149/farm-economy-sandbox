@@ -1,6 +1,6 @@
-*.o
-# Header-dependency files emitted by the Makefile's -MMD -MP.
-*.d
+# .o and .d (header-dependency files emitted by the Makefile's -MMD -MP)
+# land here, mirroring src/'s layout -- see Makefile's BUILD_DIR.
+build/
 tests/test_agents
 tests/test_rng
 tests/test_physics
@@ -11,6 +11,11 @@ tests/test_runner
 tests/test_batch
 tests/test_dashboard
 farm-c
+# Debug-symbol bundles the linker emits beside each binary now that the
+# Makefile builds with -g, and Instruments' capture directories from
+# profiling `make profile`'s binary.
+*.dSYM/
+Launch_*.trace/
 compile_commands.json
 .cache/
 run_results.csv
