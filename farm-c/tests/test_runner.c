@@ -72,6 +72,30 @@ static void test_settings_callback_and_bankruptcy(void) {
     config_destroy(&config);
 }
 
+/* A run that never rises above its opening balance must still report that
+ * opening balance as its peak -- runner/single_run.py:47 seeds it before the
+ * day loop. Regression test for a divergence the .claude/skills/c-parity
+ * harness found: the seeding was missing, so the peak stayed unset until the
+ * first in-day track_peak_cash call and every such run reported a peak below
+ * its own start money. Start rich and stop after three days so no plausible
+ * config change lets the farm out-earn its opening balance here. */
+static void test_peak_cash_seeded_with_start_money(void) {
+    ResolvedConfig config;
+    SimulationSettings settings;
+    load(&config, &settings);
+    settings.days = 3;
+    settings.start_money = 10000.0;
+    RunResult result = {0};
+    RunnerError error;
+    assert(runner_run_single(&config, &settings, &AGENT_RECKLESS_SPENDER,
+                             (RunSeed){true, 42}, NULL, NULL, &result, &error));
+    assert(result.state.has_highest_money);
+    assert(result.state.highest_money >= settings.start_money);
+    assert(result.state.lowest_money <= settings.start_money);
+    runner_run_result_destroy(&result);
+    config_destroy(&config);
+}
+
 static void test_omitted_seed_and_invalid_arguments(void) {
     ResolvedConfig config;
     SimulationSettings settings;
@@ -92,6 +116,7 @@ static void test_omitted_seed_and_invalid_arguments(void) {
 int main(void) {
     test_repeatability_and_seed();
     test_settings_callback_and_bankruptcy();
+    test_peak_cash_seeded_with_start_money();
     test_omitted_seed_and_invalid_arguments();
     puts("runner tests passed");
     return 0;

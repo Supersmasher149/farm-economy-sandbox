@@ -59,6 +59,25 @@ bool runner_run_single(const ResolvedConfig *config,
     out->state.has_run_seed = true;
     out->state.run_seed = (int64_t)seed;
     apply_initial_soil(&out->state, &config->soil_initial);
+    /* runner/single_run.py:47's `player.highest_money = player.money`. Without
+     * it, a run that never rises above its opening balance reports a *lower*
+     * peak than Python does -- the peak stays unset until the first
+     * track_peak_cash call inside a day, by which point spending has already
+     * pulled money below the start.
+     *
+     * This belongs here rather than in farm_state_init for the same reason it
+     * lives in the runner in Python: a fresh PlayerState has
+     * `highest_money = None`, which economy_rules reads as a real state
+     * (economy_rules.c:332's `has_highest_money ? ... : ...`, mirroring
+     * economy_rules.py:373-374's `if player.highest_money is not None`), and
+     * state.h documents farm_state_init as producing exactly those fresh-
+     * PlayerState defaults. Seeding it there would make that branch
+     * unreachable from the runner while it stays reachable for the
+     * directly-constructed states the fixture tests build.
+     *
+     * lowest_money needs no counterpart: farm_state_init already seeds it,
+     * since the C models it as a plain double rather than an Optional. */
+    farm_state_track_peak_cash(&out->state);
 
     FarmRng rng;
     rng_seed(&rng, seed);
