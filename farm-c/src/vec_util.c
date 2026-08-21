@@ -1,12 +1,27 @@
 #include "vec_util.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 
-bool vec_grow(void **data, size_t *capacity, size_t count, size_t elem_size) {
-    if (count < *capacity) {
+bool vec_reserve(void **data, size_t *capacity, size_t needed, size_t elem_size) {
+    if (needed <= *capacity) {
         return true;
     }
-    size_t new_capacity = *capacity == 0 ? 4 : *capacity * 2;
+    if (elem_size == 0 || needed > SIZE_MAX / elem_size) {
+        return false;
+    }
+
+    size_t new_capacity = *capacity == 0 ? 4 : *capacity;
+    while (new_capacity < needed) {
+        if (new_capacity > SIZE_MAX / 2) {
+            new_capacity = needed;
+            break;
+        }
+        new_capacity *= 2;
+    }
+    if (new_capacity > SIZE_MAX / elem_size) {
+        return false;
+    }
     void *grown = realloc(*data, new_capacity * elem_size);
     if (grown == NULL) {
         return false;
@@ -14,6 +29,13 @@ bool vec_grow(void **data, size_t *capacity, size_t count, size_t elem_size) {
     *data = grown;
     *capacity = new_capacity;
     return true;
+}
+
+bool vec_grow(void **data, size_t *capacity, size_t count, size_t elem_size) {
+    if (count == SIZE_MAX) {
+        return false;
+    }
+    return vec_reserve(data, capacity, count + 1, elem_size);
 }
 
 int int_floor_div(int a, int b) {
@@ -35,7 +57,12 @@ void *scratch_buffer_reserve(ScratchBuffer *scratch, size_t bytes) {
     /* Geometric growth, so repeated reserves stay amortized O(1); a request
      * larger than the doubled size is satisfied exactly rather than rounded
      * up further. */
-    size_t new_capacity = scratch->capacity_bytes == 0 ? 256 : scratch->capacity_bytes * 2;
+    size_t new_capacity = scratch->capacity_bytes == 0 ? 256 : scratch->capacity_bytes;
+    if (new_capacity > SIZE_MAX / 2) {
+        new_capacity = bytes;
+    } else {
+        new_capacity *= 2;
+    }
     if (new_capacity < bytes) {
         new_capacity = bytes;
     }

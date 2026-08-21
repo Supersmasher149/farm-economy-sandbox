@@ -22,6 +22,9 @@ typedef struct {
 typedef void (*EngineDayCallback)(const FarmState *state, const WeatherDay *weather,
                                   void *context);
 
+bool engine_run_day(FarmState *state, const Agent *agent, FarmRng *rng,
+                    EngineError *error);
+
 bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
                              EngineDayCallback callback, void *context,
                              EngineError *error);

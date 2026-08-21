@@ -1,5 +1,7 @@
 #include <errno.h>
+#include <ctype.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -45,6 +47,9 @@ static void usage(FILE *stream) {
 }
 
 static bool parse_seed(const char *text, uint64_t *seed) {
+    if (text == NULL) return false;
+    while (isspace((unsigned char)*text)) text++;
+    if (*text == '-') return false;
     char *end = NULL;
     errno = 0;
     unsigned long long value = strtoull(text, &end, 10);
@@ -117,10 +122,12 @@ static bool parse_batch_args(int argc, char **argv, BatchOptions *options) {
             if (!parse_seed(argv[++i], &options->seed.seed)) return false;
             options->seed.has_seed = true;
         } else if (strcmp(argv[i], "--days") == 0 && i + 1 < argc) {
-            if (!parse_positive_long(argv[++i], &options->days)) return false;
+            if (!parse_positive_long(argv[++i], &options->days) || options->days > INT_MAX)
+                return false;
             options->has_days = true;
         } else if (strcmp(argv[i], "--start-money") == 0 && i + 1 < argc) {
-            if (!parse_double(argv[++i], &options->start_money)) return false;
+            if (!parse_double(argv[++i], &options->start_money) || options->start_money < 0.0)
+                return false;
             options->has_start_money = true;
         } else if (strcmp(argv[i], "--csv") == 0 && i + 1 < argc) {
             options->csv_path = argv[++i];

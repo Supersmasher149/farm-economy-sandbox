@@ -45,9 +45,10 @@ void agent_base_choose_contract_deliveries(const Agent *self, const FarmState *s
     for (size_t i = 0; i < state->active_contracts.count; i++) {
         const ContractRecord *contract = &state->active_contracts.data[i];
         if (!contract->resolved) {
-            delivery_decision_push(
-                out, (DeliveryDecision){.contract_id = contract->id,
-                                         .quantity = contract_remaining(contract)});
+            if (!delivery_decision_push(
+                    out, (DeliveryDecision){.contract_id = contract->id,
+                                             .quantity = contract_remaining(contract)}))
+                return;
         }
     }
 }
@@ -69,10 +70,11 @@ void agent_base_choose_sales(const Agent *self, const FarmState *state,
     ChannelId spot = config->spot_channel_id;
     for (size_t i = 0; i < state->inventory_lots.count; i++) {
         const InventoryLot *lot = &state->inventory_lots.data[i];
-        sale_decision_push(out, (SaleDecision){.item_id = lot->item_id,
-                                                .channel_id = spot,
-                                                .quality = SALE_QUALITY_ANY,
-                                                .quantity = lot->quantity});
+        if (!sale_decision_push(out, (SaleDecision){.item_id = lot->item_id,
+                                                    .channel_id = spot,
+                                                    .quality = SALE_QUALITY_ANY,
+                                                    .quantity = lot->quantity}))
+            return;
     }
 }
 
@@ -104,7 +106,10 @@ static ItemQuantities *find_or_create(ItemQuantitiesVec *items, ItemId item_id) 
             return &items->data[i];
         }
     }
-    vec_grow((void **)&items->data, &items->capacity, items->count, sizeof(ItemQuantities));
+    if (!vec_grow((void **)&items->data, &items->capacity, items->count,
+                  sizeof(ItemQuantities))) {
+        return NULL;
+    }
     ItemQuantities *entry = &items->data[items->count++];
     entry->item_id = item_id;
     memset(entry->by_quality, 0, sizeof(entry->by_quality));
@@ -124,26 +129,41 @@ typedef struct {
     size_t capacity;
 } RouteAccumVec;
 
-static void route_accum_add(RouteAccumVec *routes, ItemId item_id, Quality quality,
-                             ChannelId channel_id, int quantity) {
+static bool route_accum_add(RouteAccumVec *routes, ItemId item_id, Quality quality,
+                            ChannelId channel_id, int quantity) {
     for (size_t i = 0; i < routes->count; i++) {
         RouteAccum *entry = &routes->data[i];
         if (entry->item_id == item_id && entry->quality == quality &&
             entry->channel_id == channel_id) {
             entry->quantity += quantity;
-            return;
+            return true;
         }
     }
-    vec_grow((void **)&routes->data, &routes->capacity, routes->count, sizeof(RouteAccum));
+    if (!vec_grow((void **)&routes->data, &routes->capacity, routes->count,
+                  sizeof(RouteAccum))) {
+        return false;
+    }
     routes->data[routes->count++] =
         (RouteAccum){.item_id = item_id, .quality = quality, .channel_id = channel_id,
                       .quantity = quantity};
+    return true;
 }
 
 void agent_route_sales_by_best_price(const FarmState *state, const ResolvedConfig *config,
                                       SalesDecisionBuffer *out) {
-    int *planned_capacity = malloc(config->channel_count * sizeof(int));
-    memcpy(planned_capacity, state->channel_capacity_used, config->channel_count * sizeof(int));
+    if (config->channel_count > SIZE_MAX / sizeof(int)) {
+        out->allocation_failed = true;
+        return;
+    }
+    int *planned_capacity = config->channel_count > 0
+                                ? malloc(config->channel_count * sizeof(int))
+                                : NULL;
+    if (config->channel_count > 0 && planned_capacity == NULL) {
+        out->allocation_failed = true;
+        return;
+    }
+    memcpy(planned_capacity, state->channel_capacity_used,
+           config->channel_count * sizeof(int));
 
     /* Group inventory by item_id (first-seen order, matching Python dict
      * insertion order) x quality. */
@@ -151,6 +171,12 @@ void agent_route_sales_by_best_price(const FarmState *state, const ResolvedConfi
     for (size_t i = 0; i < state->inventory_lots.count; i++) {
         const InventoryLot *lot = &state->inventory_lots.data[i];
         ItemQuantities *entry = find_or_create(&items, lot->item_id);
+        if (entry == NULL) {
+            out->allocation_failed = true;
+            free(planned_capacity);
+            free(items.data);
+            return;
+        }
         entry->by_quality[lot->quality] += lot->quantity;
     }
 
@@ -184,7 +210,14 @@ void agent_route_sales_by_best_price(const FarmState *state, const ResolvedConfi
                     break;
                 }
                 int sold = best_quote.quantity;
-                route_accum_add(&routes, item_id, (Quality)q, best_channel->channel_id, sold);
+                if (!route_accum_add(&routes, item_id, (Quality)q,
+                                     best_channel->channel_id, sold)) {
+                    out->allocation_failed = true;
+                    free(planned_capacity);
+                    free(items.data);
+                    free(routes.data);
+                    return;
+                }
                 planned_capacity[best_channel->channel_id] += sold;
                 remaining -= sold;
             }
@@ -193,10 +226,11 @@ void agent_route_sales_by_best_price(const FarmState *state, const ResolvedConfi
 
     for (size_t i = 0; i < routes.count; i++) {
         const RouteAccum *route = &routes.data[i];
-        sale_decision_push(out, (SaleDecision){.item_id = route->item_id,
-                                                .channel_id = route->channel_id,
-                                                .quality = route->quality,
-                                                .quantity = route->quantity});
+        if (!sale_decision_push(out, (SaleDecision){.item_id = route->item_id,
+                                                    .channel_id = route->channel_id,
+                                                    .quality = route->quality,
+                                                    .quantity = route->quantity}))
+            break;
     }
 
     free(planned_capacity);

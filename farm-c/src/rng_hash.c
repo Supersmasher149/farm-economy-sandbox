@@ -1,5 +1,6 @@
 #include "rng_hash.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,36 +13,70 @@ typedef struct {
     size_t capacity;
 } StrBuf;
 
-static void sb_reserve(StrBuf *sb, size_t extra) {
+static _Thread_local bool rng_hash_allocation_failed;
+
+void rng_hash_clear_allocation_failure(void) {
+    rng_hash_allocation_failed = false;
+}
+
+bool rng_hash_had_allocation_failure(void) {
+    return rng_hash_allocation_failed;
+}
+
+void rng_hash_mark_allocation_failure(void) {
+    rng_hash_allocation_failed = true;
+}
+
+static bool sb_reserve(StrBuf *sb, size_t extra) {
+    if (sb->len == SIZE_MAX || extra > SIZE_MAX - sb->len - 1) {
+        return false;
+    }
     if (sb->len + extra + 1 <= sb->capacity) {
-        return;
+        return true;
     }
     size_t new_capacity = sb->capacity == 0 ? 64 : sb->capacity;
     while (sb->len + extra + 1 > new_capacity) {
+        if (new_capacity > SIZE_MAX / 2) {
+            new_capacity = sb->len + extra + 1;
+            break;
+        }
         new_capacity *= 2;
     }
-    sb->data = realloc(sb->data, new_capacity);
+    char *grown = realloc(sb->data, new_capacity);
+    if (grown == NULL) {
+        return false;
+    }
+    sb->data = grown;
     sb->capacity = new_capacity;
+    return true;
 }
 
-static void sb_append(StrBuf *sb, const char *text) {
+static bool sb_append(StrBuf *sb, const char *text) {
     size_t n = strlen(text);
-    sb_reserve(sb, n);
+    if (!sb_reserve(sb, n)) return false;
     memcpy(sb->data + sb->len, text, n);
     sb->len += n;
     sb->data[sb->len] = '\0';
+    return true;
 }
 
-static void sb_append_char(StrBuf *sb, char c) {
-    sb_reserve(sb, 1);
+static bool sb_append_char(StrBuf *sb, char c) {
+    if (!sb_reserve(sb, 1)) return false;
     sb->data[sb->len++] = c;
     sb->data[sb->len] = '\0';
+    return true;
 }
 
-static void sb_append_long(StrBuf *sb, long value) {
+static bool sb_append_long(StrBuf *sb, long value) {
     char buf[32];
     snprintf(buf, sizeof(buf), "%ld", value);
-    sb_append(sb, buf);
+    return sb_append(sb, buf);
+}
+
+static bool sb_append_uint64(StrBuf *sb, uint64_t value) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%" PRIu64, value);
+    return sb_append(sb, buf);
 }
 
 /* Python str repr's quote-selection rule (the one piece of the algorithm
@@ -51,77 +86,79 @@ static void sb_append_long(StrBuf *sb, long value) {
  * single quote and no double quote. Backslash and the chosen quote
  * character are escaped; every other byte is emitted as-is, which is exact
  * for this codebase's ASCII identifiers (see rng_hash.h's scope note). */
-static void sb_append_str_repr(StrBuf *sb, const char *s) {
+static bool sb_append_str_repr(StrBuf *sb, const char *s) {
     bool has_squote = strchr(s, '\'') != NULL;
     bool has_dquote = strchr(s, '"') != NULL;
     char quote = (has_squote && !has_dquote) ? '"' : '\'';
-    sb_append_char(sb, quote);
+    if (!sb_append_char(sb, quote)) return false;
     for (const char *p = s; *p != '\0'; p++) {
         if (*p == quote || *p == '\\') {
-            sb_append_char(sb, '\\');
+            if (!sb_append_char(sb, '\\')) return false;
         }
-        sb_append_char(sb, *p);
+        if (!sb_append_char(sb, *p)) return false;
     }
-    sb_append_char(sb, quote);
+    return sb_append_char(sb, quote);
 }
 
 /* repr() of a homogeneous tuple of strings, e.g. ('a', 'b') or ('a',) or (). */
-static void sb_append_str_tuple_repr(StrBuf *sb, const char *const *items, size_t count) {
-    sb_append_char(sb, '(');
+static bool sb_append_str_tuple_repr(StrBuf *sb, const char *const *items, size_t count) {
+    if (!sb_append_char(sb, '(')) return false;
     for (size_t i = 0; i < count; i++) {
         if (i > 0) {
-            sb_append(sb, ", ");
+            if (!sb_append(sb, ", ")) return false;
         }
-        sb_append_str_repr(sb, items[i]);
+        if (!sb_append_str_repr(sb, items[i])) return false;
     }
     if (count == 1) {
-        sb_append_char(sb, ',');
+        if (!sb_append_char(sb, ',')) return false;
     }
-    sb_append_char(sb, ')');
+    return sb_append_char(sb, ')');
 }
 
-static void sb_append_repr_value(StrBuf *sb, const ReprValue *value) {
+static bool sb_append_repr_value(StrBuf *sb, const ReprValue *value) {
     switch (value->kind) {
         case REPR_INT:
-            sb_append_long(sb, value->int_value);
-            break;
+            return sb_append_long(sb, value->int_value);
         case REPR_STR:
-            sb_append_str_repr(sb, value->str_value);
-            break;
+            return sb_append_str_repr(sb, value->str_value);
         case REPR_STR_TUPLE:
-            sb_append_str_tuple_repr(sb, value->tuple_items, value->tuple_count);
-            break;
+            return sb_append_str_tuple_repr(sb, value->tuple_items, value->tuple_count);
     }
+    return false;
 }
 
 /* repr() of the heterogeneous `context` tuple (agents/random_agent.py's
  * *args), e.g. ('choose_crop', 0, 5, ('a', 'b')) or ('upgrade', 'well'). */
-static void sb_append_context_tuple_repr(StrBuf *sb, const ReprValue *values, size_t count) {
-    sb_append_char(sb, '(');
+static bool sb_append_context_tuple_repr(StrBuf *sb, const ReprValue *values, size_t count) {
+    if (!sb_append_char(sb, '(')) return false;
     for (size_t i = 0; i < count; i++) {
         if (i > 0) {
-            sb_append(sb, ", ");
+            if (!sb_append(sb, ", ")) return false;
         }
-        sb_append_repr_value(sb, &values[i]);
+        if (!sb_append_repr_value(sb, &values[i])) return false;
     }
     if (count == 1) {
-        sb_append_char(sb, ',');
+        if (!sb_append_char(sb, ',')) return false;
     }
-    sb_append_char(sb, ')');
+    return sb_append_char(sb, ')');
 }
 
-double rng_decision_random(bool has_run_seed, int64_t run_seed, int day, const ReprValue *context,
+double rng_decision_random(bool has_run_seed, uint64_t run_seed, int day, const ReprValue *context,
                             size_t context_count) {
     StrBuf sb = {0};
     /* repr((seed_or_0, day, context)) -- a plain 3-tuple, never length 1,
      * so no trailing-comma case to handle here. */
-    sb_append_char(&sb, '(');
-    sb_append_long(&sb, has_run_seed ? (long)run_seed : 0L);
-    sb_append(&sb, ", ");
-    sb_append_long(&sb, (long)day);
-    sb_append(&sb, ", ");
-    sb_append_context_tuple_repr(&sb, context, context_count);
-    sb_append_char(&sb, ')');
+    bool ok = sb_append_char(&sb, '(') &&
+              sb_append_uint64(&sb, has_run_seed ? run_seed : 0) &&
+              sb_append(&sb, ", ") && sb_append_long(&sb, (long)day) &&
+              sb_append(&sb, ", ") &&
+              sb_append_context_tuple_repr(&sb, context, context_count) &&
+              sb_append_char(&sb, ')');
+    if (!ok) {
+        rng_hash_allocation_failed = true;
+        free(sb.data);
+        return 0.0;
+    }
 
     uint8_t digest[8];
     blake2b_hash(sb.data, sb.len, digest, sizeof(digest));

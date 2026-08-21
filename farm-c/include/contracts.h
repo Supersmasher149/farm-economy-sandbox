@@ -30,6 +30,12 @@ bool contracts_is_offer_profitable(const FarmState *state, const ResolvedConfig 
 bool contracts_is_offer_feasible(const FarmState *state, const ResolvedConfig *config,
                                   const ContractRecord *contract);
 
+/* Read-only contract forecasting can allocate temporary schedules. The
+ * engine clears and checks this thread-local status around agent decisions so
+ * an allocation failure cannot be mistaken for an ordinary infeasible offer. */
+void contracts_clear_allocation_failure(void);
+bool contracts_had_allocation_failure(void);
+
 /* simulation/contracts.py:530-570 */
 double contracts_forecast_committed_supply(const FarmState *state, const ResolvedConfig *config,
                                             const ContractRecord *contract);

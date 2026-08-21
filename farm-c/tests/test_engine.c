@@ -1,9 +1,13 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "contracts.h"
 #include "config.h"
 #include "engine.h"
+#include "markets.h"
+#include "pyfloat.h"
 
 static char calls[32];
 static size_t call_count;
@@ -71,7 +75,7 @@ static void test_order_and_bookkeeping(void) {
     EngineError error;
     calls[0] = '\0';
     call_count = 0;
-    assert(engine_run_day_observed(&state, &TRACE_AGENT, &rng, NULL, NULL, &error));
+    assert(engine_run_day(&state, &TRACE_AGENT, &rng, &error));
     assert(error.code == ENGINE_ERROR_NONE);
     assert(call_count == 5);
     assert(memcmp(calls, "adpsc", 5) == 0);
@@ -176,10 +180,85 @@ static void test_repeatability_and_cleanup(void) {
     config_destroy(&config);
 }
 
+static void test_contract_ids_are_not_vector_positions(void) {
+    ResolvedConfig config;
+    load_world(&config);
+    FarmState state;
+    assert(farm_state_init(&state, &config, 1000.0, 2));
+    state.day = config.contracts.offer_interval_days;
+
+    ContractRecord existing = {
+        .id = 0,
+        .buyer_id = INVALID_ID,
+        .item_id = config.crops[0].item_id,
+        .quantity = 1,
+        .min_quality = QUALITY_STANDARD,
+        .unit_price = 1.0,
+        .offered_day = 0,
+        .deadline_day = 100,
+        .penalty_rate = 0.0,
+        .accepted = true,
+        .resolved = false,
+    };
+    assert(contract_vec_push(&state.active_contracts, existing));
+
+    FarmRng rng;
+    rng_seed(&rng, 42);
+    contracts_generate_offers(&state, &config, &rng);
+    assert(!state.allocation_failed);
+    assert(state.contract_offers.count > 0);
+    assert(state.contract_offers.data[0].id != existing.id);
+
+    ContractId generated = state.contract_offers.data[0].id;
+    assert(contracts_accept(&state, &config, generated));
+    assert(state.active_contracts.count == 2);
+    assert(state.active_contracts.data[0].id != state.active_contracts.data[1].id);
+
+    farm_state_destroy(&state);
+    config_destroy(&config);
+}
+
+static void test_python_min_max_keep_first_tie(void) {
+    double negative_zero = -0.0;
+    double positive_zero = 0.0;
+    assert(signbit(py_min(negative_zero, positive_zero)));
+    assert(!signbit(py_min(positive_zero, negative_zero)));
+    assert(signbit(py_max(negative_zero, positive_zero)));
+    assert(!signbit(py_max(positive_zero, negative_zero)));
+}
+
+static void test_market_rejects_invalid_item_ids(void) {
+    ResolvedConfig config;
+    load_world(&config);
+    FarmState state;
+    assert(farm_state_init(&state, &config, 1000.0, 1));
+    MarketQuote quote;
+    ItemId invalid = (ItemId)config.item_count;
+    assert(!markets_quote(&state, invalid, QUALITY_STANDARD, &config.channels[0], 1,
+                          NULL, &quote));
+    int sold = -1;
+    assert(markets_sell(&state, invalid, 1, &config.channels[0], false,
+                        QUALITY_REJECTED, false, QUALITY_REJECTED, &sold) == 0.0);
+    assert(sold == 0);
+    farm_state_destroy(&state);
+    config_destroy(&config);
+}
+
+static void test_vector_overflow_is_rejected(void) {
+    void *data = NULL;
+    size_t capacity = 0;
+    assert(!vec_reserve(&data, &capacity, SIZE_MAX, sizeof(uint64_t)));
+    assert(data == NULL && capacity == 0);
+}
+
 int main(void) {
     test_order_and_bookkeeping();
     test_water_and_fertilize_interleave_per_crop();
     test_repeatability_and_cleanup();
+    test_contract_ids_are_not_vector_positions();
+    test_python_min_max_keep_first_tie();
+    test_market_rejects_invalid_item_ids();
+    test_vector_overflow_is_rejected();
     puts("engine tests passed");
     return 0;
 }

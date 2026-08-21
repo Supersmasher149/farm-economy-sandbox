@@ -10,6 +10,7 @@
 #include "inventory.h"
 #include "markets.h"
 #include "processing.h"
+#include "rng_hash.h"
 #include "weather.h"
 
 static void set_error(EngineError *error, EngineErrorCode code,
@@ -30,6 +31,16 @@ static void set_error(EngineError *error, EngineErrorCode code,
       set_error(error, ENGINE_ERROR_ALLOCATION, what " buffer allocation failed"); \
       return false;                                                          \
     }                                                                        \
+  } while (0)
+
+#define ENGINE_CHECK_STATE_ALLOC(what)                                        \
+  do {                                                                        \
+    if (state->allocation_failed || contracts_had_allocation_failure() ||     \
+        rng_hash_had_allocation_failure()) {                                  \
+      state->allocation_failed = true;                                        \
+      set_error(error, ENGINE_ERROR_ALLOCATION, what " allocation failed"); \
+      return false;                                                           \
+    }                                                                         \
   } while (0)
 
 static StorageConfig effective_storage(const FarmState *state) {
@@ -53,6 +64,16 @@ static bool crop_can_be_funded(const FarmState *state, const CropDef *crop) {
 
 static bool plant_open_slots(FarmState *state, const Agent *agent) {
   bool acted = false;
+  int open_slots = farm_state_open_slots(state);
+  if (open_slots > 0) {
+    if ((size_t)open_slots > SIZE_MAX - state->planted.count ||
+        !vec_reserve((void **)&state->planted.data, &state->planted.capacity,
+                     state->planted.count + (size_t)open_slots,
+                     sizeof(*state->planted.data))) {
+      farm_state_mark_allocation_failed(state);
+      return false;
+    }
+  }
   /* next_plot only ever advances across iterations, so filling k of n open
    * slots is a single O(n) sweep instead of an O(n*k) rescan-from-0 every
    * time a slot gets planted. */
@@ -68,6 +89,10 @@ static bool plant_open_slots(FarmState *state, const Agent *agent) {
     if (!free_plot)
       break;
     ItemId crop_id = agent->choose_crop(agent, state, state->config);
+    if (contracts_had_allocation_failure() || rng_hash_had_allocation_failure()) {
+      farm_state_mark_allocation_failed(state);
+      return false;
+    }
     if (!id_valid(crop_id))
       break;
     const CropDef *crop = config_find_crop(state->config, crop_id);
@@ -76,6 +101,10 @@ static bool plant_open_slots(FarmState *state, const Agent *agent) {
       break;
 
     bool fertilized = agent->should_use_fertilizer(agent, state, crop_id);
+    if (contracts_had_allocation_failure() || rng_hash_had_allocation_failure()) {
+      farm_state_mark_allocation_failed(state);
+      return false;
+    }
     if (fertilized && state->fertilizer_inventory == 0) {
       if (state->money >= crop->seed_cost + state->config->fertilizer.cost) {
         (void)actions_buy_fertilizer(state, &state->config->fertilizer, 1);
@@ -143,6 +172,12 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
               "state, config, agent, and rng are required");
     return false;
   }
+  contracts_clear_allocation_failure();
+  rng_hash_clear_allocation_failure();
+  if (state->allocation_failed) {
+    set_error(error, ENGINE_ERROR_ALLOCATION, "state allocation previously failed");
+    return false;
+  }
   const ResolvedConfig *config = state->config;
   state->processing_capacity = config->processing_capacity;
   for (size_t i = 0; i < config->upgrade_count; i++) {
@@ -171,37 +206,57 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
   /* 5. */ double liability =
       inventory_capture_storage_liability(state, &storage);
   /* 6. */ acted = actions_harvest_mature(state, config, rng, &config->watering,
-                                          &config->fertilizer) ||
-                   acted;
+                                           &config->fertilizer) ||
+                    acted;
+  ENGINE_CHECK_STATE_ALLOC("harvest");
   /* 7. */ int spoiled = inventory_age_and_spoil(state, &storage, false);
+  ENGINE_CHECK_STATE_ALLOC("inventory aging");
   acted = spoiled > 0 || acted;
   /* 8. */ int completed = processing_complete_jobs(state);
+  ENGINE_CHECK_STATE_ALLOC("processing completion");
   acted = completed > 0 || acted;
   /* 9. */ spoiled =
       inventory_enforce_storage_capacity(state, storage.capacity);
+  ENGINE_CHECK_STATE_ALLOC("storage enforcement");
   acted = spoiled > 0 || acted;
   /* 10. */ markets_update_daily_prices(state, config, rng);
   /* 11. */ contracts_generate_offers(state, config, rng);
+  ENGINE_CHECK_STATE_ALLOC("contract offer");
 
   /* 12. */ ContractDecisionBuffer accepts = {0};
   agent->choose_contracts(agent, state, config, &accepts);
   ENGINE_CHECK_ALLOC(accepts, contract_decision_free, "contract decision");
-  for (size_t i = 0; i < accepts.count; i++)
+  ENGINE_CHECK_STATE_ALLOC("contract decision");
+  for (size_t i = 0; i < accepts.count; i++) {
     acted = contracts_accept(state, config, accepts.data[i]) || acted;
+    if (state->allocation_failed) {
+      contract_decision_free(&accepts);
+      set_error(error, ENGINE_ERROR_ALLOCATION, "contract acceptance allocation failed");
+      return false;
+    }
+  }
   contract_decision_free(&accepts);
+  ENGINE_CHECK_STATE_ALLOC("contract acceptance");
   /* 13. */ DeliveryDecisionBuffer deliveries = {0};
   agent->choose_contract_deliveries(agent, state, &deliveries);
   ENGINE_CHECK_ALLOC(deliveries, delivery_decision_free, "delivery decision");
+  ENGINE_CHECK_STATE_ALLOC("delivery decision");
   for (size_t i = 0; i < deliveries.count; i++) {
     int delivered = 0;
     (void)contracts_deliver(state, config, deliveries.data[i].contract_id,
                             deliveries.data[i].quantity, &delivered);
     acted = delivered > 0 || acted;
+    if (state->allocation_failed) {
+      delivery_decision_free(&deliveries);
+      set_error(error, ENGINE_ERROR_ALLOCATION, "contract delivery allocation failed");
+      return false;
+    }
   }
   delivery_decision_free(&deliveries);
   /* 14. */ ProcessingDecisionBuffer processing = {0};
   agent->choose_processing(agent, state, config, &processing);
   ENGINE_CHECK_ALLOC(processing, processing_decision_free, "processing decision");
+  ENGINE_CHECK_STATE_ALLOC("processing decision");
   for (size_t i = 0; i < processing.count; i++) {
     const RecipeDef *recipe =
         config_find_recipe(config, processing.data[i].recipe_id);
@@ -209,11 +264,17 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
       acted = processing_start_job(state, recipe, processing.data[i].batches,
                                    state->processing_capacity) ||
               acted;
+    if (state->allocation_failed) {
+      processing_decision_free(&processing);
+      set_error(error, ENGINE_ERROR_ALLOCATION, "processing allocation failed");
+      return false;
+    }
   }
   processing_decision_free(&processing);
   /* 15. */ SalesDecisionBuffer sales = {0};
   agent->choose_sales(agent, state, config, &sales);
   ENGINE_CHECK_ALLOC(sales, sales_decision_free, "sales decision");
+  ENGINE_CHECK_STATE_ALLOC("sales decision");
   for (size_t i = 0; i < sales.count; i++) {
     const ChannelDef *channel =
         config_find_channel(config, sales.data[i].channel_id);
@@ -225,15 +286,26 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
                        channel, exact, sales.data[i].quality, false,
                        QUALITY_REJECTED, &sold);
     acted = sold > 0 || acted;
+    if (state->allocation_failed) {
+      sales_decision_free(&sales);
+      set_error(error, ENGINE_ERROR_ALLOCATION, "sale allocation failed");
+      return false;
+    }
   }
   sales_decision_free(&sales);
   /* 16. */
   for (size_t i = 0; i < config->upgrade_count; i++) {
     const UpgradeDef *upgrade = &config->upgrades[i];
-    if (!state->upgrades_owned[upgrade->id] &&
-        agent->should_buy_upgrade(agent, state, upgrade->id))
-      acted = actions_buy_upgrade(state, upgrade) || acted;
+    if (!state->upgrades_owned[upgrade->id]) {
+      bool should_buy = agent->should_buy_upgrade(agent, state, upgrade->id);
+      ENGINE_CHECK_STATE_ALLOC("upgrade decision");
+      if (should_buy) {
+        acted = actions_buy_upgrade(state, upgrade) || acted;
+        ENGINE_CHECK_STATE_ALLOC("upgrade");
+      }
+    }
   }
+  ENGINE_CHECK_STATE_ALLOC("upgrade");
   /* 17. Water and fertilize in ONE pass over the planted crops, per crop --
    * simulation/engine.py:176-183 is a single `for planted in
    * list(player.planted)` loop doing both. Splitting it into a water pass
@@ -251,21 +323,27 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
     const CropDef *crop = config_find_crop(config, planted->crop_item_id);
     if (crop == NULL)
       continue;
-    if (agent->should_water(agent, state, (int)i) &&
-        rng_chance(rng, agent->watering_diligence))
+    bool should_water = agent->should_water(agent, state, (int)i);
+    ENGINE_CHECK_STATE_ALLOC("water decision");
+    if (should_water && rng_chance(rng, agent->watering_diligence)) {
       acted = actions_water_crop(state, planted, &config->watering) || acted;
+    }
     /* Operand order matches Python's `should_fertilize(...) and not
      * planted.fertilized`; no agent's should_fertilize has side effects, so
      * this is short-circuit-equivalent, but keep it in the reference's
      * order. */
-    if (agent->should_fertilize(agent, state, (int)i) && !planted->fertilized) {
+    bool should_fertilize = agent->should_fertilize(agent, state, (int)i);
+    ENGINE_CHECK_STATE_ALLOC("fertilizer decision");
+    if (should_fertilize && !planted->fertilized) {
       if (state->fertilizer_inventory == 0)
         (void)actions_buy_fertilizer(state, &config->fertilizer, 1);
       acted =
           actions_fertilize_crop(state, planted, &config->fertilizer) || acted;
     }
   }
+  ENGINE_CHECK_STATE_ALLOC("crop care");
   /* 18. */ acted = plant_open_slots(state, agent) || acted;
+  ENGINE_CHECK_STATE_ALLOC("planting");
   /* 19. */ contracts_resolve_expired(state, config);
   /* 20. */ (void)inventory_collect_storage_liability(state, liability);
   /* 21. */ if (!acted)
@@ -278,11 +356,20 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
     state->bankruptcy_day = state->day + 1;
     free(state->bankruptcy_reason);
     state->bankruptcy_reason = malloc(sizeof("no_viable_reinvestment"));
-    if (state->bankruptcy_reason != NULL)
-      strcpy(state->bankruptcy_reason, "no_viable_reinvestment");
+    if (state->bankruptcy_reason == NULL) {
+      farm_state_mark_allocation_failed(state);
+      set_error(error, ENGINE_ERROR_ALLOCATION, "bankruptcy reason allocation failed");
+      return false;
+    }
+    strcpy(state->bankruptcy_reason, "no_viable_reinvestment");
   }
   /* 23. */ state->day++;
   if (callback != NULL)
     callback(state, &weather, context);
   return true;
+}
+
+bool engine_run_day(FarmState *state, const Agent *agent, FarmRng *rng,
+                    EngineError *error) {
+  return engine_run_day_observed(state, agent, rng, NULL, NULL, error);
 }

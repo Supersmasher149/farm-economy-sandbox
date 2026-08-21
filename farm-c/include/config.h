@@ -422,7 +422,7 @@ typedef struct {
     int days;
     double operating_reserve;
     bool has_seed;
-    int64_t seed;
+    uint64_t seed;
 } SimulationSettings;
 
 bool config_load_directory(const char *directory, ResolvedConfig *out, ConfigError *error);

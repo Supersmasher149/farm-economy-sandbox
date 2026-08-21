@@ -49,7 +49,11 @@ static inline ReprValue repr_str_tuple(const char *const *items, size_t count) {
 /* `run_seed` mirrors `self.run_seed if self.run_seed is not None else 0` --
  * pass has_run_seed=false for a FarmState with no run seed set (matching a
  * bare unit-test PlayerState, where run_seed defaults to None). */
-double rng_decision_random(bool has_run_seed, int64_t run_seed, int day, const ReprValue *context,
+double rng_decision_random(bool has_run_seed, uint64_t run_seed, int day, const ReprValue *context,
                             size_t context_count);
+
+void rng_hash_clear_allocation_failure(void);
+bool rng_hash_had_allocation_failure(void);
+void rng_hash_mark_allocation_failure(void);
 
 #endif /* FARM_RNG_HASH_H */

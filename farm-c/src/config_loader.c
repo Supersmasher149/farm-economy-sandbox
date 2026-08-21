@@ -64,6 +64,21 @@ static bool integer(cJSON *value, const char *path, int minimum) {
     return true;
 }
 
+/* cJSON stores all JSON numbers as doubles, so only integers through 2^53-1
+ * can be recovered exactly for the optional configuration seed. The CLI/API
+ * RunSeed path accepts the full uint64 range; rejecting larger JSON tokens is
+ * safer than silently changing the seed during a double conversion. */
+static bool seed_integer(cJSON *value, const char *path, uint64_t *out) {
+    if (value == NULL || !cJSON_IsNumber(value) || !isfinite(value->valuedouble) ||
+        value->valuedouble < 0.0 || value->valuedouble != floor(value->valuedouble) ||
+        value->valuedouble > 9007199254740991.0) {
+        return errorf(CONFIG_ERROR_SCHEMA, path,
+                       "must be a non-negative exactly representable integer");
+    }
+    *out = (uint64_t)value->valuedouble;
+    return true;
+}
+
 static const char *string(cJSON *value, const char *path) {
     if (value == NULL || !cJSON_IsString(value) || value->valuestring == NULL ||
         value->valuestring[0] == '\0' || value->valuestring[strspn(value->valuestring, " \t\r\n")] == '\0') {
@@ -154,15 +169,16 @@ static bool read_document(const char *directory, const char *name, Document *doc
     doc->name = name; return true;
 }
 
-static bool parse_nutrients(cJSON *value, const char *path, NutrientDemand *out, NutrientDemand defaults) {
+static bool parse_nutrients(cJSON *value, const char *path, NutrientDemand *out,
+                            NutrientDemand defaults, double maximum) {
     static const char *const allowed[] = {"nitrogen", "phosphorus", "potassium", NULL};
-    *out = defaults;
-    if (value == NULL || cJSON_IsNull(value)) return true;
+    *out = value == NULL ? defaults : (NutrientDemand){0};
+    if (value == NULL) return true;
     if (!object(value, path) || !only(value, path, allowed)) return false;
     const char *keys[] = {"nitrogen", "phosphorus", "potassium"};
     double *fields[] = {&out->nitrogen, &out->phosphorus, &out->potassium};
     for (int i = 0; i < 3; i++) if (cJSON_GetObjectItem(value, keys[i]) != NULL) {
-        if (!number(cJSON_GetObjectItem(value, keys[i]), path, 0, 1, false)) return false;
+        if (!number(cJSON_GetObjectItem(value, keys[i]), path, 0, maximum, false)) return false;
         *fields[i] = cJSON_GetObjectItem(value, keys[i])->valuedouble;
     }
     return true;
@@ -186,6 +202,7 @@ static bool parse_world(Document *d, ResolvedConfig *c) {
     cJSON *root = d->json;
     if (!array(root, d->name)) return false;
     size_t n = (size_t)cJSON_GetArraySize(root);
+    if (n == 0) return errorf(CONFIG_ERROR_SCHEMA, d->name, "at least one crop is required");
     c->crop_count = n; c->crops = n ? calloc(n, sizeof(*c->crops)) : NULL;
     if (n && c->crops == NULL) return alloc_error();
     c->item_count = n; c->items = n ? calloc(n, sizeof(*c->items)) : NULL;
@@ -211,7 +228,7 @@ static bool parse_world(Document *d, ResolvedConfig *c) {
         crop->temperature_low=10;crop->temperature_high=30;v=cJSON_GetObjectItem(item,"temperature_range");if(v&&!range2(v,p,false,-DBL_MAX,DBL_MAX))return false;if(v){crop->temperature_low=cJSON_GetArrayItem(v,0)->valuedouble;crop->temperature_high=cJSON_GetArrayItem(v,1)->valuedouble;}
         crop->ph_low=5.8;crop->ph_high=7;v=cJSON_GetObjectItem(item,"ph_range");if(v&&!range2(v,p,false,0,14))return false;if(v){crop->ph_low=cJSON_GetArrayItem(v,0)->valuedouble;crop->ph_high=cJSON_GetArrayItem(v,1)->valuedouble;}
         crop->min_moisture=.35;crop->pest_susceptibility=1;crop->disease_susceptibility=1; v=cJSON_GetObjectItem(item,"min_moisture");if(v&&!number(v,p,0,1,false))return false;if(v)crop->min_moisture=v->valuedouble;v=cJSON_GetObjectItem(item,"pest_susceptibility");if(v&&!number(v,p,0,-1,false))return false;if(v)crop->pest_susceptibility=v->valuedouble;v=cJSON_GetObjectItem(item,"disease_susceptibility");if(v&&!number(v,p,0,-1,false))return false;if(v)crop->disease_susceptibility=v->valuedouble;
-        if(!parse_nutrients(cJSON_GetObjectItem(item,"nutrient_demand"),p,&crop->nutrient_demand,DEFAULT_NUTRIENT_DEMAND)) return false;
+        if(!parse_nutrients(cJSON_GetObjectItem(item,"nutrient_demand"),p,&crop->nutrient_demand,DEFAULT_NUTRIENT_DEMAND,-1)) return false;
         ItemDef *item_def = &c->items[i];
         item_def->id = (ItemId)i; item_def->type = ITEM_CROP;
         item_def->external_id = copy_string(id); item_def->name = copy_string(crop_name);
@@ -243,7 +260,7 @@ static bool parse_upgrades(Document *d, ResolvedConfig *c) {
         if(!only(e,p,effect_fields))return false;
         if(strcmp(et,"capacity")==0){c->upgrades[i].effect.type=EFFECT_CAPACITY;v=member(e,"amount",p,true);if(!integer(v,p,1))return false;c->upgrades[i].effect.as.capacity=v->valueint;}
         else if(strcmp(et,"processing_capacity")==0){c->upgrades[i].effect.type=EFFECT_PROCESSING_CAPACITY;v=member(e,"amount",p,true);if(!integer(v,p,1))return false;c->upgrades[i].effect.as.processing_capacity=v->valueint;}
-        else if(strcmp(et,"growth_time_reduction")==0){c->upgrades[i].effect.type=EFFECT_GROWTH_TIME_REDUCTION;v=member(e,"amount",p,true);if(!number(v,p,0,1,true))return false;c->upgrades[i].effect.as.growth_time_reduction=v->valuedouble;}
+         else if(strcmp(et,"growth_time_reduction")==0){c->upgrades[i].effect.type=EFFECT_GROWTH_TIME_REDUCTION;v=member(e,"amount",p,true);if(!number(v,p,0,-1,false)||v->valuedouble>=1.0)return errorf(CONFIG_ERROR_RANGE,p,"value is outside the allowed range");c->upgrades[i].effect.as.growth_time_reduction=v->valuedouble;}
         else {c->upgrades[i].effect.type=EFFECT_STORAGE;v=member(e,"capacity_bonus",p,true);if(!integer(v,p,0))return false;c->upgrades[i].effect.as.storage.capacity_bonus=v->valueint;v=member(e,"shelf_life_multiplier",p,true);if(!number(v,p,0,-1,true))return false;c->upgrades[i].effect.as.storage.shelf_life_multiplier=v->valuedouble;}
         i++;
     } return true;
@@ -251,11 +268,119 @@ static bool parse_upgrades(Document *d, ResolvedConfig *c) {
 
 static bool parse_processing(Document *d, ResolvedConfig *c) {
     g_file = d->name;
-    cJSON *root=d->json;if(!object(root,"processing"))return false;static const char *const top[]={"base_capacity","products","recipes",NULL};if(!only(root,"processing",top))return false;
-    cJSON *v=member(root,"base_capacity","processing.base_capacity",true);if(!integer(v,"processing.base_capacity",0))return false;c->processing_capacity=v->valueint;
-    cJSON *products=member(root,"products","processing.products",true);if(!array(products,"processing.products"))return false;size_t pn=(size_t)cJSON_GetArraySize(products);size_t old=c->item_count;if (old > SIZE_MAX / sizeof(*c->items) || pn > SIZE_MAX / sizeof(*c->items) - old) return alloc_error();ItemDef *items = realloc(c->items,(old+pn)*sizeof(*c->items));if(pn&&!items)return alloc_error();c->items=items;
-    static const char *const pf[]={"id","name","processed_base_price","price_variation","seasonal_demand",NULL};cJSON *x;size_t i=0;cJSON_ArrayForEach(x,products){char p[128];snprintf(p,sizeof(p),"processing.products[%zu]",i);if(!object(x,p)||!only(x,p,pf))return false;const char *id=string(member(x,"id",p,true),p),*name=string(member(x,"name",p,true),p);if(!id||!name)return false;for(size_t j=0;j<old+i;j++)if(strcmp(c->items[j].external_id,id)==0)return errorf(CONFIG_ERROR_SCHEMA,p,"duplicate item id");ItemDef *q=&c->items[old+i];q->id=(ItemId)(old+i);q->type=ITEM_PRODUCT;q->external_id=copy_string(id);q->name=copy_string(name);if(!q->external_id||!q->name)return alloc_error();v=member(x,"processed_base_price",p,true);if(!number(v,p,0,-1,false))return false;q->base_price=v->valuedouble;v=cJSON_GetObjectItem(x,"price_variation");q->price_variation=.12;if(v&&!number(v,p,0,1,false))return false;if(v)q->price_variation=v->valuedouble;if(!parse_seasonal(cJSON_GetObjectItem(x,"seasonal_demand"),p,q->seasonal_demand))return false;i++;}c->item_count=old+pn;
-    cJSON *recipes=member(root,"recipes","processing.recipes",true);if(!array(recipes,"processing.recipes"))return false;size_t rn=(size_t)cJSON_GetArraySize(recipes);c->recipe_count=rn;c->recipes=rn?calloc(rn,sizeof(*c->recipes)):NULL;if(rn&&!c->recipes)return alloc_error();static const char *const rf[]={"id","input_item_id","output_item_id","input_quantity","output_quantity","min_quality","processing_days","cost","shelf_life_days",NULL};size_t r=0;cJSON_ArrayForEach(x,recipes){char p[128];snprintf(p,sizeof(p),"processing.recipes[%zu]",r);if(!object(x,p)||!only(x,p,rf))return false;const char *id=string(member(x,"id",p,true),p),*in=string(member(x,"input_item_id",p,true),p),*out=string(member(x,"output_item_id",p,true),p);if(!id||!in||!out)return false;for(size_t j=0;j<r;j++)if(strcmp(c->recipes[j].external_id,id)==0)return errorf(CONFIG_ERROR_SCHEMA,p,"duplicate recipe id");int ii=-1,oi=-1;for(size_t j=0;j<c->item_count;j++){if(strcmp(c->items[j].external_id,in)==0)ii=(int)j;if(strcmp(c->items[j].external_id,out)==0)oi=(int)j;}if(ii<0||oi<0)return errorf(CONFIG_ERROR_REFERENCE,p,"unknown recipe item");RecipeDef *z=&c->recipes[r];z->id=(RecipeId)r;z->external_id=copy_string(id);z->input_item_id=(ItemId)ii;z->output_item_id=(ItemId)oi;v=member(x,"input_quantity",p,true);if(!integer(v,p,1))return false;z->input_quantity=v->valueint;v=member(x,"output_quantity",p,true);if(!integer(v,p,1))return false;z->output_quantity=v->valueint;v=member(x,"processing_days",p,true);if(!integer(v,p,1))return false;z->processing_days=v->valueint;v=member(x,"cost",p,true);if(!number(v,p,0,-1,false))return false;z->cost=v->valuedouble;v=member(x,"shelf_life_days",p,true);if(!integer(v,p,1))return false;z->shelf_life_days=v->valueint;v=cJSON_GetObjectItem(x,"min_quality");z->min_quality=QUALITY_PROCESSING;if(v){if(!enum_value(v,p,QUALITY_NAMES))return false;z->min_quality=quality(v->valuestring);}r++;}return true;
+    cJSON *root = d->json;
+    static const char *const top[] = {"base_capacity", "products", "recipes", NULL};
+    if (!object(root, "processing") || !only(root, "processing", top)) return false;
+
+    cJSON *v = member(root, "base_capacity", "processing.base_capacity", true);
+    if (!integer(v, "processing.base_capacity", 0)) return false;
+    c->processing_capacity = v->valueint;
+
+    cJSON *products = cJSON_GetObjectItem(root, "products");
+    if (products != NULL && !array(products, "processing.products")) return false;
+    size_t pn = products == NULL ? 0 : (size_t)cJSON_GetArraySize(products);
+    size_t old = c->item_count;
+    if (old > SIZE_MAX / sizeof(*c->items) ||
+        pn > SIZE_MAX / sizeof(*c->items) - old) return alloc_error();
+    if (pn > 0) {
+        ItemDef *items = realloc(c->items, (old + pn) * sizeof(*c->items));
+        if (items == NULL) return alloc_error();
+        c->items = items;
+        memset(c->items + old, 0, pn * sizeof(*c->items));
+    }
+    c->item_count = old + pn;
+
+    static const char *const pf[] = {
+        "id", "name", "processed_base_price", "price_variation", "seasonal_demand", NULL};
+    cJSON *x;
+    size_t i = 0;
+    cJSON_ArrayForEach(x, products) {
+        char p[128];
+        snprintf(p, sizeof(p), "processing.products[%zu]", i);
+        if (!object(x, p) || !only(x, p, pf)) return false;
+        const char *id = string(member(x, "id", p, true), p);
+        const char *name = string(member(x, "name", p, true), p);
+        if (!id || !name) return false;
+        for (size_t j = 0; j < old + i; j++) {
+            if (strcmp(c->items[j].external_id, id) == 0)
+                return errorf(CONFIG_ERROR_SCHEMA, p, "duplicate item id");
+        }
+        ItemDef *q = &c->items[old + i];
+        q->id = (ItemId)(old + i);
+        q->type = ITEM_PRODUCT;
+        q->external_id = copy_string(id);
+        q->name = copy_string(name);
+        if (q->external_id == NULL || q->name == NULL) return alloc_error();
+        v = member(x, "processed_base_price", p, true);
+        if (!number(v, p, 0, -1, false)) return false;
+        q->base_price = v->valuedouble;
+        v = cJSON_GetObjectItem(x, "price_variation");
+        q->price_variation = .12;
+        if (v != NULL && !number(v, p, 0, 1, false)) return false;
+        if (v != NULL) q->price_variation = v->valuedouble;
+        if (!parse_seasonal(cJSON_GetObjectItem(x, "seasonal_demand"), p,
+                            q->seasonal_demand)) return false;
+        i++;
+    }
+
+    cJSON *recipes = cJSON_GetObjectItem(root, "recipes");
+    if (recipes != NULL && !array(recipes, "processing.recipes")) return false;
+    size_t rn = recipes == NULL ? 0 : (size_t)cJSON_GetArraySize(recipes);
+    c->recipe_count = rn;
+    c->recipes = rn ? calloc(rn, sizeof(*c->recipes)) : NULL;
+    if (rn && c->recipes == NULL) return alloc_error();
+    static const char *const rf[] = {"id", "input_item_id", "output_item_id", "input_quantity",
+                                     "output_quantity", "min_quality", "processing_days", "cost",
+                                     "shelf_life_days", NULL};
+    size_t r = 0;
+    cJSON_ArrayForEach(x, recipes) {
+        char p[128];
+        snprintf(p, sizeof(p), "processing.recipes[%zu]", r);
+        if (!object(x, p) || !only(x, p, rf)) return false;
+        const char *id = string(member(x, "id", p, true), p);
+        const char *in = string(member(x, "input_item_id", p, true), p);
+        const char *out = string(member(x, "output_item_id", p, true), p);
+        if (!id || !in || !out) return false;
+        for (size_t j = 0; j < r; j++) {
+            if (strcmp(c->recipes[j].external_id, id) == 0)
+                return errorf(CONFIG_ERROR_SCHEMA, p, "duplicate recipe id");
+        }
+        int ii = -1, oi = -1;
+        for (size_t j = 0; j < c->item_count; j++) {
+            if (strcmp(c->items[j].external_id, in) == 0) ii = (int)j;
+            if (strcmp(c->items[j].external_id, out) == 0) oi = (int)j;
+        }
+        if (ii < 0 || oi < 0) return errorf(CONFIG_ERROR_REFERENCE, p, "unknown recipe item");
+        RecipeDef *z = &c->recipes[r];
+        z->id = (RecipeId)r;
+        z->external_id = copy_string(id);
+        if (z->external_id == NULL) return alloc_error();
+        z->input_item_id = (ItemId)ii;
+        z->output_item_id = (ItemId)oi;
+        v = member(x, "input_quantity", p, true);
+        if (!integer(v, p, 1)) return false;
+        z->input_quantity = v->valueint;
+        v = member(x, "output_quantity", p, true);
+        if (!integer(v, p, 1)) return false;
+        z->output_quantity = v->valueint;
+        v = member(x, "processing_days", p, true);
+        if (!integer(v, p, 1)) return false;
+        z->processing_days = v->valueint;
+        v = member(x, "cost", p, true);
+        if (!number(v, p, 0, -1, false)) return false;
+        z->cost = v->valuedouble;
+         v = member(x, "shelf_life_days", p, true);
+         if (!integer(v, p, 1)) return false;
+         z->shelf_life_days = v->valueint;
+        v = cJSON_GetObjectItem(x, "min_quality");
+        z->min_quality = QUALITY_PROCESSING;
+        if (v != NULL) {
+            if (!enum_value(v, p, QUALITY_NAMES)) return false;
+            z->min_quality = quality(v->valuestring);
+        }
+        r++;
+    }
+    return true;
 }
 
 /* The remaining section parsers are deliberately table-driven in the public
@@ -273,7 +398,7 @@ static bool parse_fertilizer(Document *d, ResolvedConfig *c) {
     v=member(r,"yield_bonus_pct","fertilizer.yield_bonus_pct",true);if(!number(v,"fertilizer.yield_bonus_pct",0,-1,false))return false;c->fertilizer.yield_bonus_pct=v->valuedouble;
     v=member(r,"loss_chance_reduction","fertilizer.loss_chance_reduction",true);if(!number(v,"fertilizer.loss_chance_reduction",0,1,false))return false;c->fertilizer.loss_chance_reduction=v->valuedouble;
     v=cJSON_GetObjectItem(r,"quality_bonus");if(v&&!number(v,"fertilizer.quality_bonus",0,1,false))return false;c->fertilizer.quality_bonus=v?v->valuedouble:.05;
-    if(!parse_nutrients(cJSON_GetObjectItem(r,"nutrients_added"),"fertilizer.nutrients_added",&c->fertilizer.nutrients_added,DEFAULT_FERTILIZER_NUTRIENTS_ADDED))return false;
+     if(!parse_nutrients(cJSON_GetObjectItem(r,"nutrients_added"),"fertilizer.nutrients_added",&c->fertilizer.nutrients_added,DEFAULT_FERTILIZER_NUTRIENTS_ADDED,1))return false;
     return true;
 }
 
@@ -303,8 +428,29 @@ static bool parse_contracts_required(Document *d, ResolvedConfig *c) {
 
 static bool parse_soil_initial(Document *d, ResolvedConfig *c) {
     g_file = d->name;
-    cJSON *r=d->json,*v;
-    static const char*const sf[]={"initial","regen_per_day","dynamics",NULL};if(!object(r,"soil")||!only(r,"soil",sf))return false;v=member(r,"initial","soil.initial",true);if(!object(v,"soil.initial"))return false;cJSON*initial=v;static const char*const sk[]={"moisture","nitrogen","phosphorus","potassium","ph","soil_health","pest_pressure","disease_pressure",NULL};if(!only(initial,"soil.initial",sk))return false;double*si[]={&c->soil_initial.moisture,&c->soil_initial.nitrogen,&c->soil_initial.phosphorus,&c->soil_initial.potassium,&c->soil_initial.ph,&c->soil_initial.soil_health,&c->soil_initial.pest_pressure,&c->soil_initial.disease_pressure};for(int i=0;i<8;i++){v=member(initial,sk[i],"soil.initial",true);if(!number(v,"soil.initial",i==4?0:0,i==4?14:1,false))return false;*si[i]=v->valuedouble;}
+    cJSON *r = d->json;
+    cJSON *v;
+    static const char *const sf[] = {"initial", "regen_per_day", "dynamics", NULL};
+    if (!object(r, "soil") || !only(r, "soil", sf)) return false;
+
+    c->soil_initial = (SoilInitial){0.65, 0.75, 0.75, 0.75, 6.5, 0.7, 0.05, 0.03};
+    cJSON *initial = cJSON_GetObjectItem(r, "initial");
+    if (initial == NULL) return true;
+    if (!object(initial, "soil.initial")) return false;
+    static const char *const sk[] = {"moisture", "nitrogen", "phosphorus", "potassium",
+                                     "ph", "soil_health", "pest_pressure", "disease_pressure", NULL};
+    if (!only(initial, "soil.initial", sk)) return false;
+    double *fields[] = {&c->soil_initial.moisture, &c->soil_initial.nitrogen,
+                        &c->soil_initial.phosphorus, &c->soil_initial.potassium,
+                        &c->soil_initial.ph, &c->soil_initial.soil_health,
+                        &c->soil_initial.pest_pressure, &c->soil_initial.disease_pressure};
+    for (size_t i = 0; sk[i] != NULL; i++) {
+        v = cJSON_GetObjectItem(initial, sk[i]);
+        if (v == NULL) continue;
+        if (!number(v, "soil.initial", i == 4 ? 0 : 0, i == 4 ? 14 : 1, false))
+            return false;
+        *fields[i] = v->valuedouble;
+    }
     return true;
 }
 
@@ -392,7 +538,90 @@ static bool parse_markets(Document *d, ResolvedConfig *c) {
 
 static bool parse_buyers(Document *d, ResolvedConfig *c) {
     g_file = d->name;
-    cJSON*r=d->json;if(!array(r,"buyers"))return false;size_t n=(size_t)cJSON_GetArraySize(r);c->buyer_count=n;c->buyers=n?calloc(n,sizeof(*c->buyers)):NULL;if(n&&!c->buyers)return alloc_error();static const char *const fields[]={"id","name","items","quantity_range","min_quality","contract_price_multiplier","deadline_days","penalty_rate","min_reputation","relationship_bonus_rate",NULL};cJSON*x;size_t i=0;cJSON_ArrayForEach(x,r){char p[128];snprintf(p,sizeof(p),"buyers[%zu]",i);if(!object(x,p)||!only(x,p,fields))return false;const char*id=string(member(x,"id",p,true),p),*name=string(member(x,"name",p,true),p);if(!id||!name)return false;for(size_t j=0;j<i;j++)if(strcmp(c->buyers[j].external_id,id)==0)return errorf(CONFIG_ERROR_SCHEMA,p,"duplicate buyer id");BuyerDef*b=&c->buyers[i];b->id=(BuyerId)i;b->external_id=copy_string(id);b->name=copy_string(name);if(!b->external_id||!b->name)return alloc_error();cJSON*a=member(x,"items",p,true);if(!array(a,p))return false;size_t an=(size_t)cJSON_GetArraySize(a);b->allowed_items=an?calloc(an,sizeof(ItemId)):NULL;b->allowed_item_count=an;if(an&&!b->allowed_items)return alloc_error();cJSON*it;size_t k=0;cJSON_ArrayForEach(it,a){char q[128];snprintf(q,sizeof(q),"%s.items[%zu]",p,k);const char*s=string(it,q);if(!s)return false;int found=-1;for(size_t j=0;j<c->item_count;j++)if(strcmp(c->items[j].external_id,s)==0)found=(int)j;if(found<0)return errorf(CONFIG_ERROR_REFERENCE,q,"unknown item");b->allowed_items[k++]=(ItemId)found;}a=member(x,"quantity_range",p,true);if(!range2(a,p,true,1,-1))return false;b->quantity_min=cJSON_GetArrayItem(a,0)->valueint;b->quantity_max=cJSON_GetArrayItem(a,1)->valueint;cJSON*v=cJSON_GetObjectItem(x,"min_quality");b->min_quality=QUALITY_STANDARD;if(v){if(!enum_value(v,p,QUALITY_NAMES))return false;b->min_quality=quality(v->valuestring);}v=member(x,"deadline_days",p,true);if(!integer(v,p,1))return false;b->deadline_days=v->valueint;v=cJSON_GetObjectItem(x,"contract_price_multiplier");b->contract_price_multiplier=1.2;if(v&&!number(v,p,0,-1,false))return false;if(v)b->contract_price_multiplier=v->valuedouble;v=cJSON_GetObjectItem(x,"penalty_rate");b->penalty_rate=c->contracts.default_penalty_rate;if(v&&!number(v,p,0,1,false))return false;if(v)b->penalty_rate=v->valuedouble;v=cJSON_GetObjectItem(x,"min_reputation");if(v&&!number(v,p,0,-1,false))return false;if(v)b->min_reputation=v->valuedouble;v=cJSON_GetObjectItem(x,"relationship_bonus_rate");if(v&&!number(v,p,0,-1,false))return false;if(v)b->relationship_bonus_rate=v->valuedouble;i++;}return true;
+    cJSON *root = d->json;
+    if (!array(root, "buyers")) return false;
+    size_t n = (size_t)cJSON_GetArraySize(root);
+    c->buyer_count = n;
+    c->buyers = n ? calloc(n, sizeof(*c->buyers)) : NULL;
+    if (n && c->buyers == NULL) return alloc_error();
+    static const char *const fields[] = {"id", "name", "items", "quantity_range", "min_quality",
+                                         "contract_price_multiplier", "deadline_days", "penalty_rate",
+                                         "min_reputation", "relationship_bonus_rate", NULL};
+    cJSON *x;
+    size_t i = 0;
+    cJSON_ArrayForEach(x, root) {
+        char p[128];
+        snprintf(p, sizeof(p), "buyers[%zu]", i);
+        if (!object(x, p) || !only(x, p, fields)) return false;
+        const char *id = string(member(x, "id", p, true), p);
+        if (id == NULL) return false;
+        cJSON *name_value = cJSON_GetObjectItem(x, "name");
+        const char *name = id;
+        if (name_value != NULL && !cJSON_IsNull(name_value)) {
+            name = string(name_value, p);
+            if (name == NULL) return false;
+        }
+        for (size_t j = 0; j < i; j++) {
+            if (strcmp(c->buyers[j].external_id, id) == 0)
+                return errorf(CONFIG_ERROR_SCHEMA, p, "duplicate buyer id");
+        }
+        BuyerDef *buyer = &c->buyers[i];
+        buyer->id = (BuyerId)i;
+        buyer->external_id = copy_string(id);
+        buyer->name = copy_string(name);
+        if (buyer->external_id == NULL || buyer->name == NULL) return alloc_error();
+        cJSON *items = member(x, "items", p, true);
+        if (!array(items, p)) return false;
+        size_t item_count = (size_t)cJSON_GetArraySize(items);
+        buyer->allowed_items = item_count ? calloc(item_count, sizeof(ItemId)) : NULL;
+        buyer->allowed_item_count = item_count;
+        if (item_count && buyer->allowed_items == NULL) return alloc_error();
+        cJSON *item;
+        size_t k = 0;
+        cJSON_ArrayForEach(item, items) {
+            char q[128];
+            snprintf(q, sizeof(q), "%s.items[%zu]", p, k);
+            const char *item_id = string(item, q);
+            if (item_id == NULL) return false;
+            int found = -1;
+            for (size_t j = 0; j < c->item_count; j++) {
+                if (strcmp(c->items[j].external_id, item_id) == 0) found = (int)j;
+            }
+            if (found < 0) return errorf(CONFIG_ERROR_REFERENCE, q, "unknown item");
+            buyer->allowed_items[k++] = (ItemId)found;
+        }
+        items = member(x, "quantity_range", p, true);
+        if (!range2(items, p, true, 1, -1)) return false;
+        buyer->quantity_min = cJSON_GetArrayItem(items, 0)->valueint;
+        buyer->quantity_max = cJSON_GetArrayItem(items, 1)->valueint;
+        cJSON *v = cJSON_GetObjectItem(x, "min_quality");
+        buyer->min_quality = QUALITY_STANDARD;
+        if (v != NULL) {
+            if (!enum_value(v, p, QUALITY_NAMES)) return false;
+            buyer->min_quality = quality(v->valuestring);
+        }
+        v = member(x, "deadline_days", p, true);
+        if (!integer(v, p, 1)) return false;
+        buyer->deadline_days = v->valueint;
+        v = cJSON_GetObjectItem(x, "contract_price_multiplier");
+        buyer->contract_price_multiplier = 1.2;
+        if (v != NULL && !number(v, p, 0, -1, false)) return false;
+        if (v != NULL) buyer->contract_price_multiplier = v->valuedouble;
+        v = cJSON_GetObjectItem(x, "penalty_rate");
+        buyer->penalty_rate = c->contracts.default_penalty_rate;
+        if (v != NULL && !number(v, p, 0, 1, false)) return false;
+        if (v != NULL) buyer->penalty_rate = v->valuedouble;
+        v = cJSON_GetObjectItem(x, "min_reputation");
+        buyer->min_reputation = 0;
+        if (v != NULL && !number(v, p, 0, -1, false)) return false;
+        if (v != NULL) buyer->min_reputation = v->valuedouble;
+        v = cJSON_GetObjectItem(x, "relationship_bonus_rate");
+        buyer->relationship_bonus_rate = 0;
+        if (v != NULL && !number(v, p, 0, -1, false)) return false;
+        if (v != NULL) buyer->relationship_bonus_rate = v->valuedouble;
+        i++;
+    }
+    return true;
 }
 
 static void apply_resolved_defaults(Document *processing, Document *markets, ResolvedConfig *c) {
@@ -416,12 +645,18 @@ static bool validate_unlocks(Document *d, ResolvedConfig *c) {
 
 static void destroy_partial(ResolvedConfig *c) {
     if (c == NULL) return;
-    for (size_t i=0;i<c->item_count;i++){free((char*)c->items[i].external_id);free((char*)c->items[i].name);}
-    for (size_t i=0;i<c->crop_count;i++) free((char*)c->crops[i].family);
-    for (size_t i=0;i<c->upgrade_count;i++){free((char*)c->upgrades[i].external_id);free((char*)c->upgrades[i].name);}
-    for (size_t i=0;i<c->recipe_count;i++)free((char*)c->recipes[i].external_id);
-    for (size_t i=0;i<c->channel_count;i++)free((char*)c->channels[i].external_id);
-    for(size_t i=0;i<c->buyer_count;i++){free((char*)c->buyers[i].external_id);free((char*)c->buyers[i].name);free(c->buyers[i].allowed_items);}
+    if (c->items != NULL)
+        for (size_t i=0;i<c->item_count;i++){free((char*)c->items[i].external_id);free((char*)c->items[i].name);}
+    if (c->crops != NULL)
+        for (size_t i=0;i<c->crop_count;i++) free((char*)c->crops[i].family);
+    if (c->upgrades != NULL)
+        for (size_t i=0;i<c->upgrade_count;i++){free((char*)c->upgrades[i].external_id);free((char*)c->upgrades[i].name);}
+    if (c->recipes != NULL)
+        for (size_t i=0;i<c->recipe_count;i++)free((char*)c->recipes[i].external_id);
+    if (c->channels != NULL)
+        for (size_t i=0;i<c->channel_count;i++)free((char*)c->channels[i].external_id);
+    if (c->buyers != NULL)
+        for(size_t i=0;i<c->buyer_count;i++){free((char*)c->buyers[i].external_id);free((char*)c->buyers[i].name);free(c->buyers[i].allowed_items);}
     free(c->items);free(c->crops);free(c->upgrades);free(c->recipes);free(c->channels);free(c->buyers);memset(c,0,sizeof(*c));
 }
 
@@ -461,6 +696,11 @@ bool config_load_directory(const char *directory, ResolvedConfig *out, ConfigErr
          !parse_soil_dynamics(&docs[4],out) ||
          !parse_contract_optional(&docs[7],out) || !parse_processing(&docs[9],out) ||
          !parse_markets(&docs[6],out) || !parse_buyers(&docs[8],out)) goto fail;
+    if (out->spot_channel_id == INVALID_ID) {
+        g_file = docs[6].name;
+        errorf(CONFIG_ERROR_SCHEMA, "markets.channels", "a 'spot' channel is required");
+        goto fail;
+    }
     apply_resolved_defaults(&docs[9], &docs[6], out);
     if(!validate_ids_are_indexes(out))goto fail;
     /* cJSON trees are kept until every reference has been resolved. */
@@ -475,12 +715,11 @@ bool config_load_simulation_settings(const char *directory, SimulationSettings *
     if(out==NULL||directory==NULL){if(error){error->code=CONFIG_ERROR_ARGUMENT;snprintf(error->message,sizeof(error->message),"invalid argument");}return false;}
     memset(out,0,sizeof(*out));g_error=error;if(error)memset(error,0,sizeof(*error));Document d={0};if(!read_document(directory,"simulation_settings",&d))return false;
     if(!object(d.json,"simulation_settings"))goto fail;
-    static const char *const fields[]={"start_money","start_slots","days","operating_reserve","seed",NULL};if(!only(d.json,"simulation_settings",fields))goto fail;
-    cJSON *v=member(d.json,"start_money","simulation_settings.start_money",true);if(!number(v,"simulation_settings.start_money",0,-1,false))goto fail;out->start_money=v->valuedouble;
+     cJSON *v=member(d.json,"start_money","simulation_settings.start_money",true);if(!number(v,"simulation_settings.start_money",0,-1,false))goto fail;out->start_money=v->valuedouble;
     v=member(d.json,"start_slots","simulation_settings.start_slots",true);if(!integer(v,"simulation_settings.start_slots",1))goto fail;out->start_slots=v->valueint;
     v=member(d.json,"days","simulation_settings.days",true);if(!integer(v,"simulation_settings.days",1))goto fail;out->days=v->valueint;
     v=member(d.json,"operating_reserve","simulation_settings.operating_reserve",false);if(v&&!number(v,"simulation_settings.operating_reserve",0,-1,false))goto fail;out->operating_reserve=v?v->valuedouble:0;
-    v=member(d.json,"seed","simulation_settings.seed",false);if(v&&!cJSON_IsNull(v)){if(!integer(v,"simulation_settings.seed",INT_MIN))goto fail;out->has_seed=true;out->seed=v->valueint;}
+     v=member(d.json,"seed","simulation_settings.seed",false);if(v&&!cJSON_IsNull(v)){if(!seed_integer(v,"simulation_settings.seed",&out->seed))goto fail;out->has_seed=true;}
     cJSON_Delete(d.json);return true;
 fail:cJSON_Delete(d.json);memset(out,0,sizeof(*out));return false;
 }

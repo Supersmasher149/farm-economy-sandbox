@@ -62,7 +62,11 @@ static void fast_seller_choose_sales(const Agent *self, const FarmState *state,
             }
         }
         if (entry == NULL) {
-            vec_grow((void **)&items, &capacity, count, sizeof(ItemQty));
+            if (!vec_grow((void **)&items, &capacity, count, sizeof(ItemQty))) {
+                out->allocation_failed = true;
+                free(items);
+                return;
+            }
             entry = &items[count++];
             entry->item_id = lot->item_id;
             entry->quantity = 0;
@@ -70,10 +74,13 @@ static void fast_seller_choose_sales(const Agent *self, const FarmState *state,
         entry->quantity += lot->quantity;
     }
     for (size_t i = 0; i < count; i++) {
-        sale_decision_push(out, (SaleDecision){.item_id = items[i].item_id,
-                                                .channel_id = spot,
-                                                .quality = SALE_QUALITY_ANY,
-                                                .quantity = items[i].quantity});
+        if (!sale_decision_push(out, (SaleDecision){.item_id = items[i].item_id,
+                                                    .channel_id = spot,
+                                                    .quality = SALE_QUALITY_ANY,
+                                                    .quantity = items[i].quantity})) {
+            free(items);
+            return;
+        }
     }
     free(items);
 }

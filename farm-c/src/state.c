@@ -1,5 +1,8 @@
 #include "state.h"
 
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -43,7 +46,9 @@ void contract_vec_free(ContractVec *vec) {
 
 bool farm_state_init(FarmState *state, const ResolvedConfig *config, double money,
                      int slots_total) {
-    if (state == NULL || config == NULL || slots_total < 0) return false;
+    if (state == NULL || config == NULL || slots_total < 0 || !isfinite(money) ||
+        money < 0.0)
+        return false;
     memset(state, 0, sizeof(*state));
     state->config = config;
     state->money = money;
@@ -54,6 +59,10 @@ bool farm_state_init(FarmState *state, const ResolvedConfig *config, double mone
 
     state->plot_count = (size_t)slots_total;
     state->plots = calloc(state->plot_count ? state->plot_count : 1, sizeof(PlotState));
+    if (state->plot_count && state->plots == NULL) {
+        farm_state_destroy(state);
+        return false;
+    }
     for (size_t i = 0; i < state->plot_count; i++) {
         /* simulation/state.py PlotState field defaults (state.py:37-46). */
         state->plots[i] = (PlotState){
@@ -74,7 +83,13 @@ bool farm_state_init(FarmState *state, const ResolvedConfig *config, double mone
     state->crop_plant_counts = calloc(config->item_count, sizeof(int));
 
     state->upgrades_owned = calloc(config->upgrade_count, sizeof(bool));
-    state->upgrade_purchase_days = malloc(config->upgrade_count * sizeof(int));
+    state->upgrade_purchase_days = config->upgrade_count <= SIZE_MAX / sizeof(int)
+                                       ? malloc(config->upgrade_count * sizeof(int))
+                                       : NULL;
+    if (config->upgrade_count && state->upgrade_purchase_days == NULL) {
+        farm_state_destroy(state);
+        return false;
+    }
     for (size_t i = 0; i < config->upgrade_count; i++) {
         state->upgrade_purchase_days[i] = INVALID_DAY;
     }
@@ -153,16 +168,20 @@ void farm_state_track_peak_cash(FarmState *state) {
 
 bool farm_state_add_slots(FarmState *state, int amount) {
     if (amount <= 0) {
-        /* Python's `add_slots` never guards this (a caller only ever passes
-         * a positive upgrade effect amount), but a no-op for <= 0 is a
-         * strict superset of that behaviour and keeps this safe to call
-         * defensively. */
-        state->slots_total += amount;
+        /* Configured upgrade amounts are positive. Treat an invalid direct
+         * call as a safe no-op rather than allowing slots_total to underflow. */
         return true;
+    }
+    if ((size_t)amount > SIZE_MAX - state->plot_count ||
+        state->plot_count + (size_t)amount > SIZE_MAX / sizeof(PlotState) ||
+        state->slots_total > INT_MAX - amount) {
+        farm_state_mark_allocation_failed(state);
+        return false;
     }
     size_t new_count = state->plot_count + (size_t)amount;
     PlotState *grown = realloc(state->plots, new_count * sizeof(PlotState));
     if (grown == NULL) {
+        farm_state_mark_allocation_failed(state);
         return false;
     }
     state->plots = grown;

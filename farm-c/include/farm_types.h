@@ -18,10 +18,9 @@ typedef uint32_t UpgradeId;
 typedef uint32_t RecipeId;
 typedef uint32_t BuyerId;
 typedef uint32_t ChannelId;
-typedef uint32_t ContractId; /* index into a FarmState's offer/active vectors,
-                               * not a stable identity across days -- mirrors
-                               * how simulation/state.py's ContractState.id is
-                               * a per-offer string minted fresh each time. */
+typedef uint32_t ContractId; /* stable identity for an offer/active contract;
+                               * unlike vector positions, it survives
+                               * compaction and is never reused while live. */
 
 #define INVALID_ID UINT32_MAX
 #define INVALID_DAY INT32_MIN /* "never" sentinel, e.g. no upgrade purchase yet */

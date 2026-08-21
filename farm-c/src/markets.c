@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 
+#include "pyfloat.h"
+
 const double QUALITY_MULTIPLIERS[QUALITY_COUNT] = {
     [QUALITY_REJECTED] = 0.0,
     [QUALITY_PROCESSING] = 0.65,
@@ -9,17 +11,16 @@ const double QUALITY_MULTIPLIERS[QUALITY_COUNT] = {
     [QUALITY_PREMIUM] = 1.35,
 };
 
-static double min2(double a, double b) {
-    return a < b ? a : b;
-}
-static double max2(double a, double b) {
-    return a > b ? a : b;
-}
+#define min2 py_min
+#define max2 py_max
 
 bool markets_quote(const FarmState *state, ItemId item_id, Quality quality,
                     const ChannelDef *channel, int quantity, const int *capacity_used,
                     MarketQuote *out) {
-    if (!state->has_market_price[item_id] || quantity <= 0) {
+    if (state == NULL || state->config == NULL || channel == NULL || out == NULL ||
+        item_id >= state->config->item_count || quality < 0 || quality >= QUALITY_COUNT ||
+        channel->channel_id >= state->config->channel_count ||
+        !state->has_market_price[item_id] || quantity <= 0) {
         return false;
     }
     if (quality < channel->min_quality_rank) {
@@ -139,15 +140,21 @@ typedef struct {
 
 double markets_sell(FarmState *state, ItemId item_id, int quantity, const ChannelDef *channel,
                      bool has_quality, Quality quality, bool has_min_quality, Quality min_quality,
-                     int *out_sold) {
+    int *out_sold) {
+    if (out_sold == NULL) return 0.0;
     *out_sold = 0;
-    Quality minimum = has_min_quality ? min_quality : channel->min_quality_rank;
 
-    if (quantity <= 0 || !state->has_market_price[item_id] ||
+    if (state == NULL || state->config == NULL || channel == NULL ||
+        item_id >= state->config->item_count ||
+        channel->channel_id >= state->config->channel_count || quantity <= 0 ||
+        (has_quality && (quality < 0 || quality >= QUALITY_COUNT)) ||
+        (has_min_quality && (min_quality < 0 || min_quality >= QUALITY_COUNT)) ||
+        !state->has_market_price[item_id] ||
         state->reputation < channel->min_reputation ||
         (has_quality && quality < channel->min_quality_rank)) {
         return 0.0;
     }
+    Quality minimum = has_min_quality ? min_quality : channel->min_quality_rank;
 
     int used = state->channel_capacity_used[channel->channel_id];
     int room = (channel->has_daily_capacity ? channel->daily_capacity : quantity) - used;
@@ -157,8 +164,16 @@ double markets_sell(FarmState *state, ItemId item_id, int quantity, const Channe
     quantity = quantity < room ? quantity : room;
 
     size_t lot_count = state->inventory_lots.count;
+    if (lot_count > SIZE_MAX / sizeof(SellCandidate)) {
+        farm_state_mark_allocation_failed(state);
+        return 0.0;
+    }
     SellCandidate *candidates =
         scratch_buffer_reserve(&state->scratch_sell_candidates, lot_count * sizeof(SellCandidate));
+    if (lot_count > 0 && candidates == NULL) {
+        farm_state_mark_allocation_failed(state);
+        return 0.0;
+    }
     size_t candidate_count = 0;
     for (size_t i = 0; i < lot_count; i++) {
         const InventoryLot *lot = &state->inventory_lots.data[i];
@@ -180,8 +195,16 @@ double markets_sell(FarmState *state, ItemId item_id, int quantity, const Channe
     double reputation_multiplier = 1.0 + min2(0.25, state->reputation * channel->reputation_bonus);
     int sold = 0;
     double gross = 0.0;
+    if (candidate_count > SIZE_MAX / sizeof(PlannedSale)) {
+        farm_state_mark_allocation_failed(state);
+        return 0.0;
+    }
     PlannedSale *planned =
         scratch_buffer_reserve(&state->scratch_sell_planned, candidate_count * sizeof(PlannedSale));
+    if (candidate_count > 0 && planned == NULL) {
+        farm_state_mark_allocation_failed(state);
+        return 0.0;
+    }
     size_t planned_count = 0;
     bool first_is_product = false;
 

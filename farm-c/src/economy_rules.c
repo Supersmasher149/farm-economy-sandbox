@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "derived.h"
+#include "pyfloat.h"
 
 /* economy_rules.py:146-153 */
 #define NUTRIENT_RISK_SENSITIVITY 18.0
@@ -15,13 +16,8 @@ static double crop_base_price(const CropDef *crop, const ResolvedConfig *config)
     return item != NULL ? item->base_price : 0.0;
 }
 
-static double min2(double a, double b) {
-    return a < b ? a : b;
-}
-
-static double max2(double a, double b) {
-    return a > b ? a : b;
-}
+#define min2 py_min
+#define max2 py_max
 
 bool economy_is_crop_unlocked(const CropDef *crop, const FarmState *state) {
     switch (crop->unlock_requirement.type) {

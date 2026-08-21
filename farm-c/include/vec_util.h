@@ -13,9 +13,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/* Ensure room for `needed` elements of `elem_size` bytes at `*data`/
+ * `*capacity`, growing by doubling (starting at 4). Returns false (and leaves
+ * everything unchanged) on allocation failure or size overflow. */
+bool vec_reserve(void **data, size_t *capacity, size_t needed, size_t elem_size);
+
 /* Ensure room for one more element of `elem_size` bytes at `*data`/`*capacity`
- * (current live count `count`), growing by doubling (starting at 4). Returns
- * false (and leaves everything unchanged) only on allocation failure. */
+ * (current live count `count`). */
 bool vec_grow(void **data, size_t *capacity, size_t count, size_t elem_size);
 
 /* Floor division (Python's `//`): C's `/` truncates toward zero, so this

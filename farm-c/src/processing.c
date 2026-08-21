@@ -1,5 +1,7 @@
 #include "processing.h"
 
+#include <limits.h>
+
 #include "inventory.h"
 
 /* --- simulation/processing.py:7-58 --- */
@@ -14,6 +16,9 @@ bool processing_start_job(FarmState *state, const RecipeDef *recipe, int quantit
         return false;
     }
 
+    if (quantity_batches > INT_MAX / recipe->input_quantity) {
+        return false;
+    }
     int total_input = recipe->input_quantity * quantity_batches;
     double total_cost = recipe->cost * quantity_batches;
     if (state->money < total_cost) {
@@ -21,6 +26,13 @@ bool processing_start_job(FarmState *state, const RecipeDef *recipe, int quantit
     }
     if (inventory_available_quantity(state, recipe->input_item_id, recipe->min_quality) <
         total_input) {
+        return false;
+    }
+    if ((size_t)quantity_batches > SIZE_MAX - state->processing_jobs.count ||
+        !vec_reserve((void **)&state->processing_jobs.data, &state->processing_jobs.capacity,
+                     state->processing_jobs.count + (size_t)quantity_batches,
+                     sizeof(ProcessingJob))) {
+        farm_state_mark_allocation_failed(state);
         return false;
     }
     int consumed;
@@ -42,7 +54,10 @@ bool processing_start_job(FarmState *state, const RecipeDef *recipe, int quantit
             .shelf_life_days = recipe->shelf_life_days,
             .unit_cost = (input_cost / quantity_batches + recipe->cost) / recipe->output_quantity,
         };
-        processing_job_vec_push(&state->processing_jobs, job);
+        if (!processing_job_vec_push(&state->processing_jobs, job)) {
+            farm_state_mark_allocation_failed(state);
+            return false;
+        }
     }
     return true;
 }
@@ -51,6 +66,16 @@ bool processing_start_job(FarmState *state, const RecipeDef *recipe, int quantit
 
 int processing_complete_jobs(FarmState *state) {
     int completed = 0;
+    size_t completed_jobs = 0;
+    for (size_t i = 0; i < state->processing_jobs.count; i++) {
+        if (state->day >= state->processing_jobs.data[i].completion_day) completed_jobs++;
+    }
+    if (completed_jobs > SIZE_MAX - state->inventory_lots.count ||
+        !vec_reserve((void **)&state->inventory_lots.data, &state->inventory_lots.capacity,
+                     state->inventory_lots.count + completed_jobs, sizeof(InventoryLot))) {
+        if (completed_jobs > 0) farm_state_mark_allocation_failed(state);
+        return 0;
+    }
     size_t write = 0;
     for (size_t read = 0; read < state->processing_jobs.count; read++) {
         ProcessingJob job = state->processing_jobs.data[read];
@@ -69,7 +94,10 @@ int processing_complete_jobs(FarmState *state) {
             .unit_cost = job.unit_cost,
             .item_type = ITEM_PRODUCT,
         };
-        inventory_lot_vec_push(&state->inventory_lots, lot);
+        if (!inventory_lot_vec_push(&state->inventory_lots, lot)) {
+            farm_state_mark_allocation_failed(state);
+            return 0;
+        }
         completed += job.output_quantity;
     }
     state->processing_jobs.count = write;

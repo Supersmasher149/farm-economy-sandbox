@@ -3,10 +3,6 @@
 #include "crop_growth.h"
 #include "pyfloat.h"
 
-static double max2(double a, double b) {
-    return a > b ? a : b;
-}
-
 /* --- simulation/actions.py:16-25 --- */
 
 bool actions_buy_seeds(FarmState *state, const CropDef *crop, int quantity) {
@@ -55,6 +51,7 @@ bool actions_plant_seed(FarmState *state, const CropDef *crop, int growth_days, 
         .accrued_cost = crop->seed_cost + (fertilized ? fertilizer->cost : 0.0),
     };
     if (!planted_crop_vec_push(&state->planted, planted)) {
+        farm_state_mark_allocation_failed(state);
         return false;
     }
     int new_index = (int)state->planted.count - 1;
@@ -139,6 +136,19 @@ bool actions_fertilize_crop(FarmState *state, PlantedCrop *planted,
 bool actions_harvest_mature(FarmState *state, const ResolvedConfig *config, FarmRng *rng,
                              const WateringConfig *watering, const FertilizerConfig *fertilizer) {
     bool harvested_any = false;
+    size_t mature_count = 0;
+    for (size_t i = 0; i < state->planted.count; i++) {
+        const PlantedCrop *planted = &state->planted.data[i];
+        if (state->day - planted->day_planted >= planted->growth_days_required)
+            mature_count++;
+    }
+    if (mature_count > 0 &&
+        (mature_count > SIZE_MAX - state->inventory_lots.count ||
+        !vec_reserve((void **)&state->inventory_lots.data, &state->inventory_lots.capacity,
+                     state->inventory_lots.count + mature_count, sizeof(InventoryLot)))) {
+        farm_state_mark_allocation_failed(state);
+        return false;
+    }
     /* In-place write-pointer compaction on state->planted itself, instead
      * of rebuilding into a fresh vector and swapping -- same pattern as
      * inventory.c's remove_empty_lots/processing.c's processing_complete_
@@ -196,7 +206,10 @@ bool actions_harvest_mature(FarmState *state, const ResolvedConfig *config, Farm
                     .unit_cost = planted.accrued_cost / amount,
                     .item_type = ITEM_CROP,
                 };
-                inventory_lot_vec_push(&state->inventory_lots, lot);
+                if (!inventory_lot_vec_push(&state->inventory_lots, lot)) {
+                    farm_state_mark_allocation_failed(state);
+                    return false;
+                }
                 state->total_harvested += amount;
                 state->quality_harvested[grade] += amount;
             } else {
@@ -213,8 +226,8 @@ bool actions_harvest_mature(FarmState *state, const ResolvedConfig *config, Farm
             const ItemDef *item = config_find_item(config, crop->item_id);
             plot->previous_crop_family = crop->family != NULL ? crop->family : item->external_id;
             plot->planted_index = -1;
-            plot->soil_health = max2(config->soil_dynamics.min_soil_health,
-                                      plot->soil_health - config->soil_dynamics.harvest_soil_health_cost);
+            plot->soil_health = py_max(config->soil_dynamics.min_soil_health,
+                                       plot->soil_health - config->soil_dynamics.harvest_soil_health_cost);
         }
     }
 
@@ -228,13 +241,14 @@ bool actions_buy_upgrade(FarmState *state, const UpgradeDef *upgrade) {
     if (state->upgrades_owned[upgrade->id] || state->money < upgrade->cost) {
         return false;
     }
+    if (upgrade->effect.type == EFFECT_CAPACITY &&
+        !farm_state_add_slots(state, upgrade->effect.as.capacity)) {
+        return false;
+    }
     state->money -= upgrade->cost;
     farm_state_record_expense(state, EXPENSE_UPGRADES, upgrade->cost);
     state->upgrades_owned[upgrade->id] = true;
     state->upgrade_purchase_days[upgrade->id] = state->day;
-    if (upgrade->effect.type == EFFECT_CAPACITY) {
-        farm_state_add_slots(state, upgrade->effect.as.capacity);
-    }
     return true;
 }
 

@@ -363,7 +363,7 @@ static void load_scenario(cJSON *json, const ResolvedConfig *config, Scenario *o
     out->state.has_highest_money = jbool(json, "has_highest_money");
     out->state.total_planted = jint(json, "total_planted");
     out->state.has_run_seed = jbool(json, "has_run_seed");
-    out->state.run_seed = (int64_t)jint(json, "run_seed");
+  out->state.run_seed = (uint64_t)jint(json, "run_seed");
     out->state.has_processing_capacity = jbool(json, "has_processing_capacity");
     out->state.processing_capacity = jint(json, "processing_capacity");
 

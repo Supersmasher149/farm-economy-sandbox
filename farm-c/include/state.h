@@ -198,6 +198,12 @@ typedef struct {
 
     ContractVec active_contracts;
     ContractVec contract_offers;
+    ContractId next_contract_id;
+
+    /* Set by a mutator when an internal allocation cannot be completed. The
+     * engine turns this latch into an allocation error before continuing with
+     * a partially applied day. */
+    bool allocation_failed;
 
     /* Dense, config->buyer_count-sized array indexed by BuyerId. */
     double *buyer_relationships;
@@ -226,9 +232,10 @@ typedef struct {
     /* PlayerState.run_seed: int | None -- feeds rng_hash's decision_random,
      * used only by RandomAgent. has_run_seed == false resolves to 0, per
      * `self.run_seed if self.run_seed is not None else 0`
-     * (simulation/state.py:185). */
+     * (simulation/state.py:185). Seeds are non-negative in the C CLI/API,
+     * matching the uint64_t runner seed representation. */
     bool has_run_seed;
-    int64_t run_seed;
+    uint64_t run_seed;
 
     /* --- Phase 2 fields: the rest of simulation/state.py's PlayerState,
      * read/written by actions.c/inventory.c/markets.c/processing.c/
@@ -353,6 +360,10 @@ void contract_vec_free(ContractVec *vec);
 bool farm_state_init(FarmState *state, const ResolvedConfig *config, double money,
                      int slots_total);
 void farm_state_destroy(FarmState *state);
+
+static inline void farm_state_mark_allocation_failed(FarmState *state) {
+    state->allocation_failed = true;
+}
 
 /* --- Phase 2 mutation helpers, backed by state.c --- */
 

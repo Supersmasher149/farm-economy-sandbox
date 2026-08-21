@@ -1,5 +1,6 @@
 #include "batch.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -77,8 +78,10 @@ bool batch_run(const ResolvedConfig *config,
                BatchError *error) {
     if (error != NULL) memset(error, 0, sizeof(*error));
     if (config == NULL || settings == NULL || agents == NULL || strategy_names == NULL ||
-        agent_count == 0 || runs_per_strategy == 0 || settings->days < 1 ||
-        settings->start_slots < 0) {
+         agent_count == 0 || runs_per_strategy == 0 || settings->days < 1 ||
+          settings->start_slots < 1 || !isfinite(settings->start_money) ||
+          settings->start_money < 0.0 || !isfinite(settings->operating_reserve) ||
+          settings->operating_reserve < 0.0) {
         set_error(error, BATCH_ERROR_ARGUMENT, NULL, 0,
                  "config, settings, and a non-empty agent list are required");
         return false;

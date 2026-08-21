@@ -74,6 +74,9 @@ static ItemId progression_player_choose_crop(const Agent *self, const FarmState 
                 growth_days <= days_to_deadline && economy_matures_within_run(growth_days, state);
             bool still_short =
                 contracts_forecast_committed_supply(state, config, active) < contract_remaining(active);
+            if (contracts_had_allocation_failure()) {
+                return INVALID_ID;
+            }
             if (matures_in_time && still_short) {
                 return contracted_crop->item_id;
             }
@@ -177,16 +180,25 @@ static void progression_player_choose_contracts(const Agent *self, const FarmSta
         if (offer->resolved) {
             continue;
         }
-        if (offer->quantity <= affordable_scale &&
-            contracts_is_offer_profitable(state, config, offer) &&
-            contracts_is_offer_feasible(state, config, offer)) {
+        bool profitable = offer->quantity <= affordable_scale &&
+                          contracts_is_offer_profitable(state, config, offer);
+        if (contracts_had_allocation_failure()) {
+            out->allocation_failed = true;
+            return;
+        }
+        bool feasible = profitable && contracts_is_offer_feasible(state, config, offer);
+        if (contracts_had_allocation_failure()) {
+            out->allocation_failed = true;
+            return;
+        }
+        if (profitable && feasible) {
             if (best == NULL || offer->unit_price > best->unit_price) {
                 best = offer;
             }
         }
     }
     if (best != NULL) {
-        contract_decision_push(out, best->id);
+        (void)contract_decision_push(out, best->id);
     }
 }
 

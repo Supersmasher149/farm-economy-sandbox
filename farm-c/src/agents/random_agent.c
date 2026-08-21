@@ -4,6 +4,7 @@
  */
 #include "agent.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -36,7 +37,15 @@ static ItemId random_agent_choose_crop(const Agent *self, const FarmState *state
     if (config->crop_count == 0) {
         return INVALID_ID;
     }
+    if (config->crop_count > SIZE_MAX / sizeof(NamedCrop)) {
+        rng_hash_mark_allocation_failure();
+        return INVALID_ID;
+    }
     NamedCrop *candidates = malloc(config->crop_count * sizeof(NamedCrop));
+    if (candidates == NULL) {
+        rng_hash_mark_allocation_failure();
+        return INVALID_ID;
+    }
     size_t count = 0;
     for (size_t i = 0; i < config->crop_count; i++) {
         const CropDef *crop = &config->crops[i];
@@ -52,7 +61,17 @@ static ItemId random_agent_choose_crop(const Agent *self, const FarmState *state
     }
     qsort(candidates, count, sizeof(NamedCrop), cmp_named_crop);
 
+    if (count > SIZE_MAX / sizeof(char *)) {
+        free(candidates);
+        rng_hash_mark_allocation_failure();
+        return INVALID_ID;
+    }
     const char **ids = malloc(count * sizeof(char *));
+    if (ids == NULL) {
+        free(candidates);
+        rng_hash_mark_allocation_failure();
+        return INVALID_ID;
+    }
     for (size_t i = 0; i < count; i++) {
         ids[i] = candidates[i].external_id;
     }

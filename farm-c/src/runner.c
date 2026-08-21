@@ -38,7 +38,9 @@ bool runner_run_single(const ResolvedConfig *config,
     if (out != NULL) memset(out, 0, sizeof(*out));
     if (error != NULL) memset(error, 0, sizeof(*error));
     if (config == NULL || settings == NULL || agent == NULL || out == NULL ||
-        settings->days < 1 || settings->start_slots < 0 || !isfinite(settings->start_money)) {
+        settings->days < 1 || settings->start_slots < 1 || !isfinite(settings->start_money) ||
+        settings->start_money < 0.0 || !isfinite(settings->operating_reserve) ||
+        settings->operating_reserve < 0.0) {
         set_error(error, RUNNER_ERROR_ARGUMENT, "config, settings, agent, and result are required");
         return false;
     }
@@ -57,7 +59,7 @@ bool runner_run_single(const ResolvedConfig *config,
     out->state.has_total_days = true;
     out->state.total_days = settings->days;
     out->state.has_run_seed = true;
-    out->state.run_seed = (int64_t)seed;
+    out->state.run_seed = seed;
     apply_initial_soil(&out->state, &config->soil_initial);
     /* runner/single_run.py:47's `player.highest_money = player.money`. Without
      * it, a run that never rises above its opening balance reports a *lower*

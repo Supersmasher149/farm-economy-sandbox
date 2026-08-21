@@ -8,6 +8,7 @@
 #include "economy.h"
 #include "inventory.h"
 #include "markets.h"
+#include "pyfloat.h"
 #include "vec_util.h"
 
 /* --- small local dynamic-array helpers, private to this file --- */
@@ -18,8 +19,23 @@ typedef struct {
     size_t capacity;
 } IntVec;
 
+static _Thread_local bool contracts_allocation_failed_tls;
+
+static void contracts_mark_allocation_failed(void) {
+    contracts_allocation_failed_tls = true;
+}
+
+void contracts_clear_allocation_failure(void) {
+    contracts_allocation_failed_tls = false;
+}
+
+bool contracts_had_allocation_failure(void) {
+    return contracts_allocation_failed_tls;
+}
+
 static bool int_vec_push(IntVec *vec, int value) {
     if (!vec_grow((void **)&vec->data, &vec->capacity, vec->count, sizeof(int))) {
+        contracts_mark_allocation_failed();
         return false;
     }
     vec->data[vec->count++] = value;
@@ -39,12 +55,10 @@ static bool int_vec_reserve(IntVec *vec, size_t needed) {
     if (needed <= vec->capacity) {
         return true;
     }
-    int *grown = realloc(vec->data, needed * sizeof(int));
-    if (grown == NULL) {
+    if (!vec_reserve((void **)&vec->data, &vec->capacity, needed, sizeof(int))) {
+        contracts_mark_allocation_failed();
         return false;
     }
-    vec->data = grown;
-    vec->capacity = needed;
     return true;
 }
 
@@ -85,12 +99,8 @@ static void int_vec_sort(IntVec *vec) {
     int_sort_ascending(vec->data, vec->count);
 }
 
-static double min2(double a, double b) {
-    return a < b ? a : b;
-}
-static double max2(double a, double b) {
-    return a > b ? a : b;
-}
+#define min2 py_min
+#define max2 py_max
 
 /* --- simulation/contracts.py:24-33 offer expiry (public API -- see
  * contracts.h) --- */
@@ -171,18 +181,20 @@ static void future_crop_arrivals_free(FutureCropArrivals *arrivals) {
 /* Records one replant schedule: the harvest days of every further cycle that
  * still fits before the deadline. `seeded_days` may be NULL, which counts
  * the cycles without materializing their days. */
-static void push_replant_cycles(IntVec *seeded_days, size_t *seeded_count, int today,
+static bool push_replant_cycles(IntVec *seeded_days, size_t *seeded_count, int today,
                                  int free_after, int growth_days, int days_available) {
     int max_cycle = int_floor_div(days_available - free_after, growth_days);
     if (max_cycle <= 0) {
-        return;
+        return true;
     }
     if (seeded_days != NULL) {
         for (int cycle = 1; cycle <= max_cycle; cycle++) {
-            int_vec_push(seeded_days, today + free_after + cycle * growth_days);
+            if (!int_vec_push(seeded_days, today + free_after + cycle * growth_days))
+                return false;
         }
     }
     *seeded_count += (size_t)max_cycle;
+    return true;
 }
 
 /* `want_days` false computes only how many arrivals there are, skipping both
@@ -227,8 +239,15 @@ static void future_crop_arrivals(const FarmState *state, const ResolvedConfig *c
          * this is the hottest allocation site in a batch. */
         int cycles_per_slot = int_floor_div(days_available, growth_days);
         if (cycles_per_slot > 0 && seeded != NULL) {
-            int_vec_reserve(seeded, ((size_t)open_slots + state->planted.count) *
-                                         (size_t)cycles_per_slot);
+            if (state->planted.count > SIZE_MAX - (size_t)open_slots) {
+                contracts_mark_allocation_failed();
+                return;
+            }
+            size_t schedule_slots = (size_t)open_slots + state->planted.count;
+            if (schedule_slots > SIZE_MAX / (size_t)cycles_per_slot ||
+                !int_vec_reserve(seeded, schedule_slots * (size_t)cycles_per_slot)) {
+                return;
+            }
         }
         /* Every open slot gets the identical replant schedule
          * (push_replant_cycles with free_after == 0), so emitting them
@@ -245,7 +264,7 @@ static void future_crop_arrivals(const FarmState *state, const ResolvedConfig *c
                 for (int cycle = 1; cycle <= cycles_per_slot; cycle++) {
                     int harvest_day = state->day + cycle * growth_days;
                     for (int i = 0; i < open_slots; i++) {
-                        int_vec_push(seeded, harvest_day);
+                        if (!int_vec_push(seeded, harvest_day)) return;
                     }
                 }
             }
@@ -266,17 +285,19 @@ static void future_crop_arrivals(const FarmState *state, const ResolvedConfig *c
             Quality best_grade = best_possible_grade(state, config, crop, planted);
             if (best_grade >= min_quality) {
                 if (guaranteed != NULL) {
-                    int_vec_push(guaranteed, state->day + days_until_free);
+                    if (!int_vec_push(guaranteed, state->day + days_until_free)) return;
                 }
                 out->guaranteed_count++;
             }
             if (guaranteed_grade) {
-                push_replant_cycles(seeded, &out->seeded_count, state->day, days_until_free,
-                                     growth_days, days_available);
+                if (!push_replant_cycles(seeded, &out->seeded_count, state->day,
+                                         days_until_free, growth_days, days_available))
+                    return;
             }
         } else if (guaranteed_grade && days_until_free < days_available) {
-            push_replant_cycles(seeded, &out->seeded_count, state->day, days_until_free,
-                                 growth_days, days_available);
+            if (!push_replant_cycles(seeded, &out->seeded_count, state->day,
+                                     days_until_free, growth_days, days_available))
+                return;
         }
     }
 
@@ -347,6 +368,7 @@ typedef struct {
 
 static bool arrival_vec_push(ArrivalVec *vec, Arrival item) {
     if (!vec_grow((void **)&vec->data, &vec->capacity, vec->count, sizeof(Arrival))) {
+        contracts_mark_allocation_failed();
         return false;
     }
     vec->data[vec->count++] = item;
@@ -408,8 +430,16 @@ static void arrival_vec_stable_sort_by_day(ArrivalVec *vec) {
     if (vec->count == 0) {
         return;
     }
+    if (vec->count > SIZE_MAX / sizeof(ArrivalSortEntry)) {
+        contracts_mark_allocation_failed();
+        return;
+    }
     ArrivalSortEntry *entries =
         scratch_buffer_reserve(&contracts_scratch_sort, vec->count * sizeof(ArrivalSortEntry));
+    if (entries == NULL) {
+        contracts_mark_allocation_failed();
+        return;
+    }
     for (size_t i = 0; i < vec->count; i++) {
         entries[i] = (ArrivalSortEntry){.arrival = vec->data[i], .original_index = i};
     }
@@ -437,33 +467,60 @@ static void input_supply_build(const FarmState *state, const ResolvedConfig *con
     memset(out, 0, sizeof(*out));
     int current = contract_inventory_quantity(state, input_id, min_quality);
     if (current > 0) {
-        arrival_vec_push(&out->arrivals,
-                          (Arrival){.day = state->day, .quantity = current, .is_future = false});
+        if (!arrival_vec_push(&out->arrivals,
+                              (Arrival){.day = state->day, .quantity = current,
+                                        .is_future = false})) {
+            return;
+        }
     }
     const CropDef *crop = config_find_crop(config, input_id);
     if (crop != NULL) {
         FutureCropArrivals arrivals;
         future_crop_arrivals(state, config, crop, deadline, min_quality, true, &arrivals);
+        if (contracts_allocation_failed_tls) {
+            future_crop_arrivals_free(&arrivals);
+            input_supply_free(out);
+            return;
+        }
         out->funding = arrivals.seed_cash_needed;
 
         IntVec harvest_days = {0};
         for (size_t i = 0; i < arrivals.guaranteed_days.count; i++) {
-            int_vec_push(&harvest_days, arrivals.guaranteed_days.data[i]);
+            if (!int_vec_push(&harvest_days, arrivals.guaranteed_days.data[i])) {
+                int_vec_free(&harvest_days);
+                future_crop_arrivals_free(&arrivals);
+                input_supply_free(out);
+                return;
+            }
         }
         for (size_t i = 0; i < arrivals.seeded_days.count; i++) {
-            int_vec_push(&harvest_days, arrivals.seeded_days.data[i]);
+            if (!int_vec_push(&harvest_days, arrivals.seeded_days.data[i])) {
+                int_vec_free(&harvest_days);
+                future_crop_arrivals_free(&arrivals);
+                input_supply_free(out);
+                return;
+            }
         }
         int_vec_sort(&harvest_days);
         for (size_t i = 0; i < harvest_days.count; i++) {
-            arrival_vec_push(&out->arrivals, (Arrival){.day = harvest_days.data[i],
-                                                         .quantity = arrivals.expected_yield,
-                                                         .is_future = true});
+            if (!arrival_vec_push(&out->arrivals,
+                                  (Arrival){.day = harvest_days.data[i],
+                                            .quantity = arrivals.expected_yield,
+                                            .is_future = true})) {
+                int_vec_free(&harvest_days);
+                future_crop_arrivals_free(&arrivals);
+                input_supply_free(out);
+                return;
+            }
         }
         out->future_total = (double)harvest_days.count * arrivals.expected_yield;
         int_vec_free(&harvest_days);
         future_crop_arrivals_free(&arrivals);
     }
     arrival_vec_stable_sort_by_day(&out->arrivals);
+    if (contracts_allocation_failed_tls) {
+        input_supply_free(out);
+    }
 }
 
 static bool input_supply_arrival_day(const InputSupply *supply, double needed, int *out_day) {
@@ -501,7 +558,15 @@ static void slot_free_days(const FarmState *state, int capacity, IntVec *out) {
     int cap = capacity > 0 ? capacity : 0;
 
     size_t job_count = state->processing_jobs.count;
+    if (job_count > SIZE_MAX / sizeof(int)) {
+        contracts_mark_allocation_failed();
+        return;
+    }
     int *completion_days = scratch_buffer_reserve(&contracts_scratch_sort, job_count * sizeof(int));
+    if (job_count > 0 && completion_days == NULL) {
+        contracts_mark_allocation_failed();
+        return;
+    }
     for (size_t i = 0; i < job_count; i++) {
         completion_days[i] = state->processing_jobs.data[i].completion_day;
     }
@@ -510,10 +575,10 @@ static void slot_free_days(const FarmState *state, int capacity, IntVec *out) {
     size_t busy_count = (size_t)cap < job_count ? (size_t)cap : job_count;
     for (size_t i = 0; i < busy_count; i++) {
         int free_day = completion_days[i] > state->day ? completion_days[i] : state->day;
-        int_vec_push(out, free_day);
+        if (!int_vec_push(out, free_day)) return;
     }
     for (size_t i = busy_count; i < (size_t)cap; i++) {
-        int_vec_push(out, state->day);
+        if (!int_vec_push(out, state->day)) return;
     }
 }
 
@@ -605,10 +670,27 @@ static void item_capacity(const FarmState *state, const ResolvedConfig *config, 
 
     IntVec slot_free_day;
     slot_free_days(state, processing_capacity(state), &slot_free_day);
+    if (contracts_allocation_failed_tls) {
+        int_vec_free(&slot_free_day);
+        return;
+    }
 
     size_t supply_capacity = config->recipe_count > 0 ? config->recipe_count : 1;
+    if (supply_capacity > SIZE_MAX / sizeof(ItemId) ||
+        supply_capacity > SIZE_MAX / sizeof(InputSupply)) {
+        contracts_mark_allocation_failed();
+        int_vec_free(&slot_free_day);
+        return;
+    }
     ItemId *supply_input_ids = malloc(supply_capacity * sizeof(ItemId));
     InputSupply *supplies = malloc(supply_capacity * sizeof(InputSupply));
+    if (supply_input_ids == NULL || supplies == NULL) {
+        free(supply_input_ids);
+        free(supplies);
+        contracts_mark_allocation_failed();
+        int_vec_free(&slot_free_day);
+        return;
+    }
     size_t supply_count = 0;
 
     for (size_t i = 0; i < config->recipe_count; i++) {
@@ -633,6 +715,14 @@ static void item_capacity(const FarmState *state, const ResolvedConfig *config, 
             supply_input_ids[supply_count] = input_id;
             input_supply_build(state, config, input_id, recipe->min_quality, deadline,
                                 &supplies[supply_count]);
+            if (contracts_allocation_failed_tls) {
+                for (size_t s = 0; s < supply_count; s++) input_supply_free(&supplies[s]);
+                input_supply_free(&supplies[supply_count]);
+                free(supplies);
+                free(supply_input_ids);
+                int_vec_free(&slot_free_day);
+                return;
+            }
             supply = &supplies[supply_count];
             supply_count++;
         }
@@ -666,6 +756,7 @@ static void item_capacity(const FarmState *state, const ResolvedConfig *config, 
 
 double contracts_best_market_alternative(const FarmState *state, const ResolvedConfig *config,
                                           const ContractRecord *contract) {
+    contracts_allocation_failed_tls = false;
     double best = 0.0;
     bool found = false;
     for (size_t i = 0; i < config->channel_count; i++) {
@@ -694,7 +785,8 @@ bool contracts_is_offer_profitable(const FarmState *state, const ResolvedConfig 
 }
 
 double contracts_forecast_committed_supply(const FarmState *state, const ResolvedConfig *config,
-                                            const ContractRecord *contract) {
+                                             const ContractRecord *contract) {
+    contracts_allocation_failed_tls = false;
     int deadline = economy_effective_deadline(state, contract->deadline_day);
     double current = contract_inventory_quantity(state, contract->item_id, contract->min_quality);
     for (size_t i = 0; i < state->processing_jobs.count; i++) {
@@ -709,6 +801,7 @@ double contracts_forecast_committed_supply(const FarmState *state, const Resolve
         double future, funding, free_future;
         future_crop_capacity(state, config, crop, deadline, contract->min_quality, &future,
                               &funding, &free_future);
+        if (contracts_allocation_failed_tls) return 0.0;
         current += free_future;
     }
     return current;
@@ -716,12 +809,14 @@ double contracts_forecast_committed_supply(const FarmState *state, const Resolve
 
 bool contracts_is_offer_feasible(const FarmState *state, const ResolvedConfig *config,
                                   const ContractRecord *contract) {
+    contracts_allocation_failed_tls = false;
     if (contracts_is_offer_expired(state, config, contract)) {
         return false;
     }
     double current, future, funding, free_future;
     item_capacity(state, config, contract->item_id, contract->min_quality, contract->deadline_day,
                    &current, &future, &funding, &free_future);
+    if (contracts_allocation_failed_tls) return false;
     if (current + future < contract->quantity) {
         return false;
     }
@@ -759,6 +854,31 @@ static void contract_offers_compact(FarmState *state, const ResolvedConfig *conf
         }
     }
     state->contract_offers.count = write;
+}
+
+static bool contract_id_in_use(const FarmState *state, ContractId id) {
+    const ContractVec *vectors[] = {&state->contract_offers, &state->active_contracts};
+    for (size_t v = 0; v < sizeof(vectors) / sizeof(vectors[0]); v++) {
+        for (size_t i = 0; i < vectors[v]->count; i++) {
+            if (vectors[v]->data[i].id == id) return true;
+        }
+    }
+    return false;
+}
+
+static bool allocate_contract_id(FarmState *state, ContractId *out) {
+    ContractId candidate = state->next_contract_id;
+    while (candidate != INVALID_ID && contract_id_in_use(state, candidate)) {
+        if (candidate == INVALID_ID - 1) {
+            candidate = INVALID_ID;
+            break;
+        }
+        candidate++;
+    }
+    if (candidate == INVALID_ID) return false;
+    *out = candidate;
+    state->next_contract_id = candidate == INVALID_ID - 1 ? INVALID_ID : candidate + 1;
+    return true;
 }
 
 bool contracts_visible_offers(const FarmState *state, const ResolvedConfig *config,
@@ -819,6 +939,14 @@ void contracts_generate_offers(FarmState *state, const ResolvedConfig *config, F
     }
 
     contract_offers_compact(state, config);
+    if (config->buyer_count > SIZE_MAX - state->contract_offers.count ||
+        !vec_reserve((void **)&state->contract_offers.data,
+                     &state->contract_offers.capacity,
+                     state->contract_offers.count + config->buyer_count,
+                     sizeof(*state->contract_offers.data))) {
+        farm_state_mark_allocation_failed(state);
+        return;
+    }
 
     for (size_t b = 0; b < config->buyer_count; b++) {
         const BuyerDef *buyer = &config->buyers[b];
@@ -849,8 +977,13 @@ void contracts_generate_offers(FarmState *state, const ResolvedConfig *config, F
         double price_multiplier =
             buyer->contract_price_multiplier * relationship_price_multiplier(state, config, buyer);
 
+        ContractId contract_id;
+        if (!allocate_contract_id(state, &contract_id)) {
+            farm_state_mark_allocation_failed(state);
+            return;
+        }
         ContractRecord offer = {
-            .id = (ContractId)state->contract_offers.count,
+            .id = contract_id,
             .buyer_id = buyer->id,
             .item_id = item_id,
             .quantity = quantity,
@@ -863,7 +996,10 @@ void contracts_generate_offers(FarmState *state, const ResolvedConfig *config, F
             .accepted = false,
             .resolved = false,
         };
-        contract_vec_push(&state->contract_offers, offer);
+        if (!contract_vec_push(&state->contract_offers, offer)) {
+            farm_state_mark_allocation_failed(state);
+            return;
+        }
     }
 }
 
@@ -883,18 +1019,20 @@ bool contracts_accept(FarmState *state, const ResolvedConfig *config, ContractId
     }
 
     ContractRecord contract = state->contract_offers.data[found];
-    /* `player.contract_offers.remove(contract)` -- happens in both the
-     * expired and accepted branches below, so it is done once, up front. */
-    for (size_t i = found; i + 1 < state->contract_offers.count; i++) {
-        state->contract_offers.data[i] = state->contract_offers.data[i + 1];
-    }
-    state->contract_offers.count -= 1;
-
     if (contracts_is_offer_expired(state, config, &contract)) {
+        for (size_t i = found; i + 1 < state->contract_offers.count; i++)
+            state->contract_offers.data[i] = state->contract_offers.data[i + 1];
+        state->contract_offers.count -= 1;
         return false;
     }
     contract.accepted = true;
-    contract_vec_push(&state->active_contracts, contract);
+    if (!contract_vec_push(&state->active_contracts, contract)) {
+        farm_state_mark_allocation_failed(state);
+        return false;
+    }
+    for (size_t i = found; i + 1 < state->contract_offers.count; i++)
+        state->contract_offers.data[i] = state->contract_offers.data[i + 1];
+    state->contract_offers.count -= 1;
     return true;
 }
 

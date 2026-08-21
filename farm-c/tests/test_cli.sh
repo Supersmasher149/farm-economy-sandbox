@@ -78,6 +78,55 @@ if ./farm-c batch --runs 0 >/dev/null 2>&1; then
     echo "non-positive --runs unexpectedly succeeded" >&2
     exit 1
 fi
+if ./farm-c batch --runs 1 --start-money -1 >/dev/null 2>&1; then
+    echo "negative --start-money unexpectedly succeeded" >&2
+    exit 1
+fi
+if ./farm-c batch --runs 1 --days 0 >/dev/null 2>&1; then
+    echo "non-positive --days unexpectedly succeeded" >&2
+    exit 1
+fi
+
+config_variant=$(mktemp -d)
+cp ../config/*.json "$config_variant/"
+printf '%s\n' '{"base_capacity":1}' >"$config_variant/processing.json"
+printf '%s\n' '[{"id":"local","items":["quickweed"],"quantity_range":[1,2],"deadline_days":1}]' >"$config_variant/buyers.json"
+printf '%s\n' '{}' >"$config_variant/soil.json"
+if ! ./farm-c single --config "$config_variant" --strategy fast_seller --seed 42 >/dev/null; then
+    echo "valid omitted processing/soil/buyer fields were rejected" >&2
+    rm -rf "$config_variant"
+    exit 1
+fi
+printf '%s\n' '[]' >"$config_variant/crops.json"
+if ./farm-c single --config "$config_variant" --strategy fast_seller --seed 42 >/dev/null 2>&1; then
+    echo "empty crop catalog unexpectedly loaded" >&2
+    rm -rf "$config_variant"
+    exit 1
+fi
+cp ../config/crops.json "$config_variant/crops.json"
+printf '%s\n' '{"base_capacity":1,"products":[{"id":"dry","name":"Dry","processed_base_price":1}],"recipes":[{"id":"r","input_item_id":"quickweed","output_item_id":"dry","input_quantity":1,"output_quantity":1,"processing_days":1,"cost":0}]}' >"$config_variant/processing.json"
+if ./farm-c single --config "$config_variant" --strategy fast_seller --seed 42 >/dev/null 2>&1; then
+    echo "recipe without shelf_life_days unexpectedly loaded" >&2
+    rm -rf "$config_variant"
+    exit 1
+fi
+printf '%s\n' '{"default_variation":0.12,"minimum_supply_multiplier":0.95,"supply_decay":0.75,"channels":[{"id":"wholesale","name":"Wholesale","price_multiplier":1.0,"daily_capacity":1000}]}' >"$config_variant/markets.json"
+if ./farm-c single --config "$config_variant" --strategy fast_seller --seed 42 >/dev/null 2>&1; then
+    echo "configuration without a spot channel unexpectedly loaded" >&2
+    rm -rf "$config_variant"
+    exit 1
+fi
+rm -rf "$config_variant"
+
+if ./farm-c single --seed ' -1' >/dev/null 2>&1; then
+    echo "whitespace-prefixed negative seed unexpectedly succeeded" >&2
+    exit 1
+fi
+max_seed_summary=$(./farm-c single --seed 18446744073709551615)
+case "$max_seed_summary" in
+    *"actual_seed: 18446744073709551615"*) ;;
+    *) echo "maximum uint64 seed was not preserved" >&2; exit 1 ;;
+esac
 if ./farm-c batch >/dev/null 2>&1; then
     echo "missing --runs unexpectedly succeeded" >&2
     exit 1

@@ -1,6 +1,7 @@
 /* Faithful port of agents/profit_optimizer.py. */
 #include "agents/profit_optimizer.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "contracts.h"
@@ -60,6 +61,9 @@ ItemId profit_optimizer_choose_crop(const Agent *self, const FarmState *state,
             int growth_days = economy_effective_growth_days(contracted_crop, state, config);
             bool still_short =
                 contracts_forecast_committed_supply(state, config, active) < contract_remaining(active);
+            if (contracts_had_allocation_failure()) {
+                return INVALID_ID;
+            }
             if (growth_days <= days_to_deadline && still_short) {
                 return contracted_crop->item_id;
             }
@@ -128,15 +132,24 @@ void profit_optimizer_choose_contracts(const Agent *self, const FarmState *state
         if (offer->resolved) {
             continue;
         }
-        if (contracts_is_offer_profitable(state, config, offer) &&
-            contracts_is_offer_feasible(state, config, offer)) {
+        bool profitable = contracts_is_offer_profitable(state, config, offer);
+        if (contracts_had_allocation_failure()) {
+            out->allocation_failed = true;
+            return;
+        }
+        bool feasible = profitable && contracts_is_offer_feasible(state, config, offer);
+        if (contracts_had_allocation_failure()) {
+            out->allocation_failed = true;
+            return;
+        }
+        if (profitable && feasible) {
             if (best == NULL || offer->unit_price > best->unit_price) {
                 best = offer;
             }
         }
     }
     if (best != NULL) {
-        contract_decision_push(out, best->id);
+        (void)contract_decision_push(out, best->id);
     }
 }
 
@@ -172,7 +185,15 @@ void profit_optimizer_choose_processing(const Agent *self, const FarmState *stat
         return;
     }
 
+    if (config->recipe_count > SIZE_MAX / sizeof(ScoredRecipe)) {
+        out->allocation_failed = true;
+        return;
+    }
     ScoredRecipe *profitable = malloc(config->recipe_count * sizeof(ScoredRecipe));
+    if (profitable == NULL) {
+        out->allocation_failed = true;
+        return;
+    }
     size_t profitable_count = 0;
     for (size_t i = 0; i < config->recipe_count; i++) {
         const RecipeDef *recipe = &config->recipes[i];
@@ -195,7 +216,18 @@ void profit_optimizer_choose_processing(const Agent *self, const FarmState *stat
         ItemId input_item_id;
         int reserved;
     } Reservation;
-    Reservation *reserved = malloc((profitable_count > 0 ? profitable_count : 1) * sizeof(Reservation));
+    size_t reserved_capacity = profitable_count > 0 ? profitable_count : 1;
+    if (reserved_capacity > SIZE_MAX / sizeof(Reservation)) {
+        free(profitable);
+        out->allocation_failed = true;
+        return;
+    }
+    Reservation *reserved = malloc(reserved_capacity * sizeof(Reservation));
+    if (reserved == NULL) {
+        free(profitable);
+        out->allocation_failed = true;
+        return;
+    }
     size_t reserved_count = 0;
     double cash_remaining = state->money;
 
@@ -229,7 +261,12 @@ void profit_optimizer_choose_processing(const Agent *self, const FarmState *stat
             continue;
         }
 
-        processing_decision_push(out, (ProcessingDecision){.recipe_id = recipe->id, .batches = batches});
+        if (!processing_decision_push(
+                out, (ProcessingDecision){.recipe_id = recipe->id, .batches = batches})) {
+            free(reserved);
+            free(profitable);
+            return;
+        }
         remaining_capacity -= batches;
         if (slot == NULL) {
             reserved[reserved_count++] =

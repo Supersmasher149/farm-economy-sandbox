@@ -3,14 +3,12 @@
 #include <math.h>
 #include <stdlib.h>
 
+#include "pyfloat.h"
+
 /* --- shared helpers --- */
 
-static double min2(double a, double b) {
-    return a < b ? a : b;
-}
-static double max2(double a, double b) {
-    return a > b ? a : b;
-}
+#define min2 py_min
+#define max2 py_max
 
 /* `player.inventory_lots = [lot for lot in player.inventory_lots if
  * lot.quantity > 0]`, in place. Every mutator below that can zero out a
@@ -72,8 +70,16 @@ void inventory_consume(FarmState *state, ItemId item_id, int quantity, Quality m
     }
 
     size_t lot_count = state->inventory_lots.count;
+    if (lot_count > SIZE_MAX / sizeof(EligibleLot)) {
+        farm_state_mark_allocation_failed(state);
+        return;
+    }
     EligibleLot *eligible =
         scratch_buffer_reserve(&state->scratch_lot_sort, lot_count * sizeof(EligibleLot));
+    if (lot_count > 0 && eligible == NULL) {
+        farm_state_mark_allocation_failed(state);
+        return;
+    }
     size_t eligible_count = 0;
     for (size_t i = 0; i < lot_count; i++) {
         const InventoryLot *lot = &state->inventory_lots.data[i];
@@ -155,7 +161,15 @@ static int trim_to_capacity(FarmState *state, int capacity) {
     }
 
     size_t lot_count = state->inventory_lots.count;
+    if (lot_count > SIZE_MAX / sizeof(TrimLot)) {
+        farm_state_mark_allocation_failed(state);
+        return 0;
+    }
     TrimLot *lots = scratch_buffer_reserve(&state->scratch_lot_sort, lot_count * sizeof(TrimLot));
+    if (lot_count > 0 && lots == NULL) {
+        farm_state_mark_allocation_failed(state);
+        return 0;
+    }
     for (size_t i = 0; i < lot_count; i++) {
         lots[i] = (TrimLot){
             .lot_index = i,
@@ -193,6 +207,14 @@ int inventory_age_and_spoil(FarmState *state, const StorageConfig *storage, bool
     double liability = charge_storage ? inventory_capture_storage_liability(state, storage) : 0.0;
     double multiplier = storage->shelf_life_multiplier;
     int spoiled = 0;
+    size_t lot_count = state->inventory_lots.count;
+    if (lot_count > SIZE_MAX / sizeof(TrimLot) ||
+        (lot_count > 0 &&
+         scratch_buffer_reserve(&state->scratch_lot_sort,
+                                lot_count * sizeof(TrimLot)) == NULL)) {
+        farm_state_mark_allocation_failed(state);
+        return 0;
+    }
 
     for (size_t i = 0; i < state->inventory_lots.count; i++) {
         InventoryLot *lot = &state->inventory_lots.data[i];
