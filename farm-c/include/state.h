@@ -14,6 +14,7 @@
 
 #include "config.h"
 #include "farm_types.h"
+#include "vec_util.h"
 
 typedef struct {
     double moisture;
@@ -298,6 +299,31 @@ typedef struct {
     int crop_loss_events;
     int rejected_quality_units;
     int spoilage_units;
+
+    /* Reusable scratch allocations backing per-call decorate-sort buffers
+     * (see vec_util.h's ScratchBuffer), replacing a fresh malloc+qsort+free
+     * every call with one realloc'd-as-needed buffer per FarmState, freed
+     * once in farm_state_destroy. Named by the group of call sites that
+     * share them; grouped only where those sites are never concurrently
+     * live on the call stack (see each field's comment for why): */
+    ScratchBuffer scratch_lot_sort;      /* inventory.c: inventory_consume's
+                                           * EligibleLot array and
+                                           * trim_to_capacity's TrimLot array
+                                           * -- neither function calls the
+                                           * other, directly or transitively,
+                                           * so they never nest. */
+    ScratchBuffer scratch_sell_candidates; /* markets.c markets_sell's
+                                             * SellCandidate array. */
+    ScratchBuffer scratch_sell_planned;    /* markets.c markets_sell's
+                                             * planned-sale array -- kept
+                                             * separate from
+                                             * scratch_sell_candidates
+                                             * because both are concurrently
+                                             * live in the same call
+                                             * (candidates[i] is read while
+                                             * the plan is written). */
+    /* contracts.c's equivalent buffer is deliberately not here -- it sits
+     * behind a const-FarmState call chain; see its comment in that file. */
 } FarmState;
 
 /* --- Vector push/free, backed by vec_util.c (see its header for why these

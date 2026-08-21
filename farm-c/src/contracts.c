@@ -277,11 +277,36 @@ static int cmp_arrival_sort_entry(const void *a, const void *b) {
     return 0;
 }
 
+/* Backs arrival_vec_stable_sort_by_day and slot_free_days below -- both are
+ * reached only from const-FarmState decision-support queries
+ * (contracts_is_offer_feasible/contracts_forecast_committed_supply and
+ * their helpers), so unlike inventory.c/markets.c's equivalent buffers this
+ * can't live on FarmState without threading a mutable field through that
+ * whole const call chain (see state.h's comment). A file-static buffer is
+ * safe here because neither function ever holds a pointer into it across a
+ * call to the other or to itself: item_capacity calls slot_free_days once,
+ * then input_supply_build/arrival_vec_stable_sort_by_day separately per
+ * recipe, always sequentially, never with one still "live" while the other
+ * runs. Reused, never freed -- bounded by the largest arrival/job count
+ * seen by this thread, same amortized-allocation trade-off a persistent
+ * cache would make.
+ *
+ * _Thread_local, not a plain static: batches run sequentially today
+ * (src/batch.c, README.md), but docs/c-port-plan.md Section 11 / step 22
+ * plans parallel batches over pthreads or C11 threads. The FarmState-owned
+ * buffers stay correct there by construction (one FarmState per worker);
+ * this one would not, and a torn decorate-sort buffer would corrupt a
+ * simulation result rather than crash -- the worst failure mode for a port
+ * whose central invariant is bit-exact replay. One keyword now costs
+ * nothing and removes that trap. */
+static _Thread_local ScratchBuffer contracts_scratch_sort;
+
 static void arrival_vec_stable_sort_by_day(ArrivalVec *vec) {
     if (vec->count == 0) {
         return;
     }
-    ArrivalSortEntry *entries = malloc(vec->count * sizeof(ArrivalSortEntry));
+    ArrivalSortEntry *entries =
+        scratch_buffer_reserve(&contracts_scratch_sort, vec->count * sizeof(ArrivalSortEntry));
     for (size_t i = 0; i < vec->count; i++) {
         entries[i] = (ArrivalSortEntry){.arrival = vec->data[i], .original_index = i};
     }
@@ -289,7 +314,6 @@ static void arrival_vec_stable_sort_by_day(ArrivalVec *vec) {
     for (size_t i = 0; i < vec->count; i++) {
         vec->data[i] = entries[i].arrival;
     }
-    free(entries);
 }
 
 typedef struct {
@@ -374,7 +398,7 @@ static void slot_free_days(const FarmState *state, int capacity, IntVec *out) {
     int cap = capacity > 0 ? capacity : 0;
 
     size_t job_count = state->processing_jobs.count;
-    int *completion_days = job_count > 0 ? malloc(job_count * sizeof(int)) : NULL;
+    int *completion_days = scratch_buffer_reserve(&contracts_scratch_sort, job_count * sizeof(int));
     for (size_t i = 0; i < job_count; i++) {
         completion_days[i] = state->processing_jobs.data[i].completion_day;
     }
@@ -385,7 +409,6 @@ static void slot_free_days(const FarmState *state, int capacity, IntVec *out) {
         int free_day = completion_days[i] > state->day ? completion_days[i] : state->day;
         int_vec_push(out, free_day);
     }
-    free(completion_days);
     for (size_t i = busy_count; i < (size_t)cap; i++) {
         int_vec_push(out, state->day);
     }

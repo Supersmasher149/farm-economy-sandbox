@@ -72,7 +72,8 @@ void inventory_consume(FarmState *state, ItemId item_id, int quantity, Quality m
     }
 
     size_t lot_count = state->inventory_lots.count;
-    EligibleLot *eligible = lot_count > 0 ? malloc(lot_count * sizeof(EligibleLot)) : NULL;
+    EligibleLot *eligible =
+        scratch_buffer_reserve(&state->scratch_lot_sort, lot_count * sizeof(EligibleLot));
     size_t eligible_count = 0;
     for (size_t i = 0; i < lot_count; i++) {
         const InventoryLot *lot = &state->inventory_lots.data[i];
@@ -95,7 +96,6 @@ void inventory_consume(FarmState *state, ItemId item_id, int quantity, Quality m
         consumed += take;
         cost += take * lot->unit_cost;
     }
-    free(eligible);
 
     remove_empty_lots(state);
     *out_consumed = consumed;
@@ -155,7 +155,7 @@ static int trim_to_capacity(FarmState *state, int capacity) {
     }
 
     size_t lot_count = state->inventory_lots.count;
-    TrimLot *lots = lot_count > 0 ? malloc(lot_count * sizeof(TrimLot)) : NULL;
+    TrimLot *lots = scratch_buffer_reserve(&state->scratch_lot_sort, lot_count * sizeof(TrimLot));
     for (size_t i = 0; i < lot_count; i++) {
         lots[i] = (TrimLot){
             .lot_index = i,
@@ -172,7 +172,6 @@ static int trim_to_capacity(FarmState *state, int capacity) {
         overflow -= removed;
         spoiled += removed;
     }
-    free(lots);
     return spoiled;
 }
 

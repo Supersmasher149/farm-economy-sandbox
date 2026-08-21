@@ -24,3 +24,32 @@ int int_floor_div(int a, int b) {
     }
     return q;
 }
+
+void *scratch_buffer_reserve(ScratchBuffer *scratch, size_t bytes) {
+    if (bytes == 0) {
+        return NULL;
+    }
+    if (bytes <= scratch->capacity_bytes) {
+        return scratch->data;
+    }
+    /* Geometric growth, so repeated reserves stay amortized O(1); a request
+     * larger than the doubled size is satisfied exactly rather than rounded
+     * up further. */
+    size_t new_capacity = scratch->capacity_bytes == 0 ? 256 : scratch->capacity_bytes * 2;
+    if (new_capacity < bytes) {
+        new_capacity = bytes;
+    }
+    void *grown = realloc(scratch->data, new_capacity);
+    if (grown == NULL) {
+        return NULL;
+    }
+    scratch->data = grown;
+    scratch->capacity_bytes = new_capacity;
+    return scratch->data;
+}
+
+void scratch_buffer_free(ScratchBuffer *scratch) {
+    free(scratch->data);
+    scratch->data = NULL;
+    scratch->capacity_bytes = 0;
+}

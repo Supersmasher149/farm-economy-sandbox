@@ -127,6 +127,16 @@ static int cmp_sell_candidate(const void *a, const void *b) {
     return (ca->lot_index > cb->lot_index) - (ca->lot_index < cb->lot_index);
 }
 
+/* Mirrors Python's `planned` list: (lot_index, take) pairs, applied only
+ * once the sale is confirmed profitable below -- a rejected sale (gross
+ * <= fee) must leave every lot untouched. One struct instead of two
+ * parallel arrays -- same tuples, same order, same values, half the
+ * scratch buffers to manage. */
+typedef struct {
+    size_t lot_index;
+    int take;
+} PlannedSale;
+
 double markets_sell(FarmState *state, ItemId item_id, int quantity, const ChannelDef *channel,
                      bool has_quality, Quality quality, bool has_min_quality, Quality min_quality,
                      int *out_sold) {
@@ -147,7 +157,8 @@ double markets_sell(FarmState *state, ItemId item_id, int quantity, const Channe
     quantity = quantity < room ? quantity : room;
 
     size_t lot_count = state->inventory_lots.count;
-    SellCandidate *candidates = lot_count > 0 ? malloc(lot_count * sizeof(SellCandidate)) : NULL;
+    SellCandidate *candidates =
+        scratch_buffer_reserve(&state->scratch_sell_candidates, lot_count * sizeof(SellCandidate));
     size_t candidate_count = 0;
     for (size_t i = 0; i < lot_count; i++) {
         const InventoryLot *lot = &state->inventory_lots.data[i];
@@ -169,11 +180,8 @@ double markets_sell(FarmState *state, ItemId item_id, int quantity, const Channe
     double reputation_multiplier = 1.0 + min2(0.25, state->reputation * channel->reputation_bonus);
     int sold = 0;
     double gross = 0.0;
-    /* Mirrors Python's `planned` list: (lot_index, take) pairs, applied only
-     * once the sale is confirmed profitable below -- a rejected sale (gross
-     * <= fee) must leave every lot untouched. */
-    size_t *planned_index = candidate_count > 0 ? malloc(candidate_count * sizeof(size_t)) : NULL;
-    int *planned_take = candidate_count > 0 ? malloc(candidate_count * sizeof(int)) : NULL;
+    PlannedSale *planned =
+        scratch_buffer_reserve(&state->scratch_sell_planned, candidate_count * sizeof(PlannedSale));
     size_t planned_count = 0;
     bool first_is_product = false;
 
@@ -182,8 +190,7 @@ double markets_sell(FarmState *state, ItemId item_id, int quantity, const Channe
         int take = lot->quantity < quantity - sold ? lot->quantity : quantity - sold;
         double unit_price = state->market_prices[item_id] * channel->price_multiplier *
                              QUALITY_MULTIPLIERS[lot->quality] * reputation_multiplier;
-        planned_index[planned_count] = candidates[i].lot_index;
-        planned_take[planned_count] = take;
+        planned[planned_count] = (PlannedSale){.lot_index = candidates[i].lot_index, .take = take};
         planned_count++;
         if (planned_count == 1) {
             first_is_product = lot->item_type == ITEM_PRODUCT;
@@ -191,7 +198,6 @@ double markets_sell(FarmState *state, ItemId item_id, int quantity, const Channe
         sold += take;
         gross += unit_price * take;
     }
-    free(candidates);
 
     double revenue = 0.0;
     if (sold) {
@@ -199,7 +205,7 @@ double markets_sell(FarmState *state, ItemId item_id, int quantity, const Channe
         if (gross > fee) {
             revenue = gross - fee;
             for (size_t i = 0; i < planned_count; i++) {
-                state->inventory_lots.data[planned_index[i]].quantity -= planned_take[i];
+                state->inventory_lots.data[planned[i].lot_index].quantity -= planned[i].take;
             }
             /* `[lot for lot in inventory_lots if lot.quantity > 0]` */
             size_t write = 0;
@@ -226,7 +232,5 @@ double markets_sell(FarmState *state, ItemId item_id, int quantity, const Channe
             sold = 0;
         }
     }
-    free(planned_index);
-    free(planned_take);
     return sold ? revenue : 0.0;
 }

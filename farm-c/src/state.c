@@ -128,6 +128,9 @@ void farm_state_destroy(FarmState *state) {
     free(state->market_supply);
     free(state->revenue_by_channel);
     free(state->bankruptcy_reason);
+    scratch_buffer_free(&state->scratch_lot_sort);
+    scratch_buffer_free(&state->scratch_sell_candidates);
+    scratch_buffer_free(&state->scratch_sell_planned);
     memset(state, 0, sizeof(*state));
 }
 
