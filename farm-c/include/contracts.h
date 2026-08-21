@@ -58,9 +58,10 @@ bool contracts_visible_offers(const FarmState *state, const ResolvedConfig *conf
                                const ContractVec *source, ContractVec *out);
 
 /* simulation/contracts.py:58-106. Generates at most one new offer per
- * buyer, appended to `state->contract_offers` (which is first replaced by
- * its own `contracts_visible_offers` filter, exactly as Python's
- * `player.contract_offers = visible_offers(player)` does) -- a no-op
+ * buyer, appended to `state->contract_offers` (from which resolved and
+ * expired offers are first dropped, achieving what Python's
+ * `player.contract_offers = visible_offers(player)` does, but compacted in
+ * place rather than rebuilt) -- a no-op
  * outside the buyer-offer day (`state->day == 0` or not a multiple of
  * `config->contracts.offer_interval_days`). Python's own `player.
  * contract_config = contract_config` bookkeeping line has no equivalent
@@ -87,8 +88,9 @@ double contracts_deliver(FarmState *state, const ResolvedConfig *config, Contrac
                           int quantity, int *out_delivered);
 
 /* simulation/contracts.py:626-663. Penalizes every active contract past its
- * deadline, drops resolved ones from `state->active_contracts`, and
- * refreshes `state->contract_offers` via `contracts_visible_offers`. */
+ * deadline, drops resolved ones from `state->active_contracts`, and drops
+ * resolved/expired offers from `state->contract_offers` -- both compacted
+ * in place. */
 void contracts_resolve_expired(FarmState *state, const ResolvedConfig *config);
 
 #endif /* FARM_CONTRACTS_H */

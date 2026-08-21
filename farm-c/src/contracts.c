@@ -625,13 +625,38 @@ bool contracts_is_offer_feasible(const FarmState *state, const ResolvedConfig *c
 
 /* --- simulation/contracts.py:35-42 visible_offers --- */
 
+/* The one definition of "still on the board": not yet resolved and not past
+ * its expiry day. Shared by contracts_visible_offers below and by
+ * contract_offers_compact, so the rule lives in exactly one place. */
+static bool offer_is_visible(const FarmState *state, const ResolvedConfig *config,
+                              const ContractRecord *offer) {
+    return !offer->resolved && !contracts_is_offer_expired(state, config, offer);
+}
+
+/* Drops every no-longer-visible offer from state->contract_offers, compacted
+ * in place (write-pointer, same idiom as inventory.c's remove_empty_lots and
+ * the active_contracts cleanup in contracts_resolve_expired) rather than
+ * built as a fresh vector and swapped in. Both day-loop mutators below start
+ * from this; contracts_visible_offers stays a separate copy-returning
+ * function for callers that must not disturb state. */
+static void contract_offers_compact(FarmState *state, const ResolvedConfig *config) {
+    size_t write = 0;
+    for (size_t read = 0; read < state->contract_offers.count; read++) {
+        const ContractRecord *offer = &state->contract_offers.data[read];
+        if (offer_is_visible(state, config, offer)) {
+            state->contract_offers.data[write++] = *offer;
+        }
+    }
+    state->contract_offers.count = write;
+}
+
 bool contracts_visible_offers(const FarmState *state, const ResolvedConfig *config,
                                const ContractVec *source, ContractVec *out) {
     *out = (ContractVec){0};
     const ContractVec *src = source != NULL ? source : &state->contract_offers;
     for (size_t i = 0; i < src->count; i++) {
         const ContractRecord *offer = &src->data[i];
-        if (!offer->resolved && !contracts_is_offer_expired(state, config, offer)) {
+        if (offer_is_visible(state, config, offer)) {
             if (!contract_vec_push(out, *offer)) {
                 return false;
             }
@@ -682,10 +707,7 @@ void contracts_generate_offers(FarmState *state, const ResolvedConfig *config, F
         return;
     }
 
-    ContractVec visible;
-    contracts_visible_offers(state, config, NULL, &visible);
-    contract_vec_free(&state->contract_offers);
-    state->contract_offers = visible;
+    contract_offers_compact(state, config);
 
     for (size_t b = 0; b < config->buyer_count; b++) {
         const BuyerDef *buyer = &config->buyers[b];
@@ -847,8 +869,5 @@ void contracts_resolve_expired(FarmState *state, const ResolvedConfig *config) {
     }
     state->active_contracts.count = write;
 
-    ContractVec visible;
-    contracts_visible_offers(state, config, NULL, &visible);
-    contract_vec_free(&state->contract_offers);
-    state->contract_offers = visible;
+    contract_offers_compact(state, config);
 }

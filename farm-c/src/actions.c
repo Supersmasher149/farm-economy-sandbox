@@ -139,20 +139,27 @@ bool actions_fertilize_crop(FarmState *state, PlantedCrop *planted,
 bool actions_harvest_mature(FarmState *state, const ResolvedConfig *config, FarmRng *rng,
                              const WateringConfig *watering, const FertilizerConfig *fertilizer) {
     bool harvested_any = false;
-    PlantedCropVec still_growing = {0};
+    /* In-place write-pointer compaction on state->planted itself, instead
+     * of rebuilding into a fresh vector and swapping -- same pattern as
+     * inventory.c's remove_empty_lots/processing.c's processing_complete_
+     * jobs. write <= read always holds, and `planted` below is copied out
+     * of state->planted.data[read] before any write, so writing through
+     * data[write] (write < read) never corrupts an element not yet read. */
+    size_t write = 0;
 
     /* Iterated in state->planted's original order, not plot order: RNG
      * draws happen below (compute_harvest_outcome) only for mature crops,
      * in this exact sequence, so reordering would silently desynchronize
      * replay for every recorded seed -- see actions.h's header comment. */
-    for (size_t i = 0; i < state->planted.count; i++) {
-        PlantedCrop planted = state->planted.data[i];
+    for (size_t read = 0; read < state->planted.count; read++) {
+        PlantedCrop planted = state->planted.data[read];
         bool mature = (state->day - planted.day_planted) >= planted.growth_days_required;
         if (!mature) {
-            planted_crop_vec_push(&still_growing, planted);
+            state->planted.data[write] = planted;
             if (planted.plot_index >= 0 && (size_t)planted.plot_index < state->plot_count) {
-                state->plots[planted.plot_index].planted_index = (int)still_growing.count - 1;
+                state->plots[planted.plot_index].planted_index = (int)write;
             }
+            write++;
             continue;
         }
 
@@ -211,8 +218,7 @@ bool actions_harvest_mature(FarmState *state, const ResolvedConfig *config, Farm
         }
     }
 
-    planted_crop_vec_free(&state->planted);
-    state->planted = still_growing;
+    state->planted.count = write;
     return harvested_any;
 }
 
