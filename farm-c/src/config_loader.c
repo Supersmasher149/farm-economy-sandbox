@@ -387,7 +387,7 @@ static bool parse_contract_optional(Document *d, ResolvedConfig *c) {
 
 static bool parse_markets(Document *d, ResolvedConfig *c) {
     g_file = d->name;
-    cJSON *r=d->json;if(!object(r,"markets"))return false;static const char *const top[]={"default_variation","minimum_supply_multiplier","supply_decay","channels",NULL};if(!only(r,"markets",top))return false; cJSON *v=member(r,"default_variation","markets.default_variation",true);if(!number(v,"markets.default_variation",0,1,false))return false;v=member(r,"minimum_supply_multiplier","markets.minimum_supply_multiplier",true);if(!number(v,"markets.minimum_supply_multiplier",0,1,false))return false;c->markets.minimum_supply_multiplier=v->valuedouble;v=member(r,"supply_decay","markets.supply_decay",true);if(!number(v,"markets.supply_decay",0,1,false))return false;c->markets.supply_decay=v->valuedouble;cJSON *a=member(r,"channels","markets.channels",true);if(!array(a,"markets.channels"))return false;size_t n=(size_t)cJSON_GetArraySize(a);c->channel_count=n;c->channels=n?calloc(n,sizeof(*c->channels)):NULL;if(n&&!c->channels)return alloc_error();static const char *const fields[]={"id","name","price_multiplier","min_quality","daily_capacity","fee_rate","flat_fee","min_reputation","reputation_bonus",NULL};cJSON *x;size_t i=0;bool spot=false;cJSON_ArrayForEach(x,a){char p[128];snprintf(p,sizeof(p),"markets.channels[%zu]",i);if(!object(x,p)||!only(x,p,fields))return false;const char *id=string(member(x,"id",p,true),p);if(!id)return false;for(size_t j=0;j<i;j++)if(strcmp(c->channels[j].external_id,id)==0)return errorf(CONFIG_ERROR_SCHEMA,p,"duplicate channel id");ChannelDef*q=&c->channels[i];q->channel_id=(ChannelId)i;q->external_id=copy_string(id);if(!q->external_id)return alloc_error();spot|=strcmp(id,"spot")==0;v=member(x,"price_multiplier",p,true);if(!number(v,p,0,-1,false))return false;q->price_multiplier=v->valuedouble;v=cJSON_GetObjectItem(x,"min_quality");q->min_quality_rank=QUALITY_REJECTED;if(v){if(!enum_value(v,p,QUALITY_NAMES))return false;q->min_quality_rank=quality(v->valuestring);}v=member(x,"daily_capacity",p,true);if(!integer(v,p,1))return false;q->daily_capacity=v->valueint;q->has_daily_capacity=true;v=cJSON_GetObjectItem(x,"fee_rate");if(v&&!number(v,p,0,1,false))return false;if(v)q->fee_rate=v->valuedouble;v=cJSON_GetObjectItem(x,"flat_fee");if(v&&!number(v,p,0,-1,false))return false;if(v)q->flat_fee=v->valuedouble;v=cJSON_GetObjectItem(x,"min_reputation");if(v&&!number(v,p,0,-1,false))return false;if(v)q->min_reputation=v->valuedouble;v=cJSON_GetObjectItem(x,"reputation_bonus");if(v&&!number(v,p,0,-1,false))return false;if(v)q->reputation_bonus=v->valuedouble;i++;}if(!spot)return errorf(CONFIG_ERROR_REFERENCE,"markets.channels","spot channel is required");return true;
+    cJSON *r=d->json;if(!object(r,"markets"))return false;static const char *const top[]={"default_variation","minimum_supply_multiplier","supply_decay","channels",NULL};if(!only(r,"markets",top))return false; cJSON *v=member(r,"default_variation","markets.default_variation",true);if(!number(v,"markets.default_variation",0,1,false))return false;v=member(r,"minimum_supply_multiplier","markets.minimum_supply_multiplier",true);if(!number(v,"markets.minimum_supply_multiplier",0,1,false))return false;c->markets.minimum_supply_multiplier=v->valuedouble;v=member(r,"supply_decay","markets.supply_decay",true);if(!number(v,"markets.supply_decay",0,1,false))return false;c->markets.supply_decay=v->valuedouble;cJSON *a=member(r,"channels","markets.channels",true);if(!array(a,"markets.channels"))return false;size_t n=(size_t)cJSON_GetArraySize(a);c->channel_count=n;c->channels=n?calloc(n,sizeof(*c->channels)):NULL;if(n&&!c->channels)return alloc_error();static const char *const fields[]={"id","name","price_multiplier","min_quality","daily_capacity","fee_rate","flat_fee","min_reputation","reputation_bonus",NULL};cJSON *x;size_t i=0;c->spot_channel_id=INVALID_ID;cJSON_ArrayForEach(x,a){char p[128];snprintf(p,sizeof(p),"markets.channels[%zu]",i);if(!object(x,p)||!only(x,p,fields))return false;const char *id=string(member(x,"id",p,true),p);if(!id)return false;for(size_t j=0;j<i;j++)if(strcmp(c->channels[j].external_id,id)==0)return errorf(CONFIG_ERROR_SCHEMA,p,"duplicate channel id");ChannelDef*q=&c->channels[i];q->channel_id=(ChannelId)i;q->external_id=copy_string(id);if(!q->external_id)return alloc_error();if(strcmp(id,"spot")==0)c->spot_channel_id=q->channel_id;v=member(x,"price_multiplier",p,true);if(!number(v,p,0,-1,false))return false;q->price_multiplier=v->valuedouble;v=cJSON_GetObjectItem(x,"min_quality");q->min_quality_rank=QUALITY_REJECTED;if(v){if(!enum_value(v,p,QUALITY_NAMES))return false;q->min_quality_rank=quality(v->valuestring);}v=member(x,"daily_capacity",p,true);if(!integer(v,p,1))return false;q->daily_capacity=v->valueint;q->has_daily_capacity=true;v=cJSON_GetObjectItem(x,"fee_rate");if(v&&!number(v,p,0,1,false))return false;if(v)q->fee_rate=v->valuedouble;v=cJSON_GetObjectItem(x,"flat_fee");if(v&&!number(v,p,0,-1,false))return false;if(v)q->flat_fee=v->valuedouble;v=cJSON_GetObjectItem(x,"min_reputation");if(v&&!number(v,p,0,-1,false))return false;if(v)q->min_reputation=v->valuedouble;v=cJSON_GetObjectItem(x,"reputation_bonus");if(v&&!number(v,p,0,-1,false))return false;if(v)q->reputation_bonus=v->valuedouble;i++;}if(!id_valid(c->spot_channel_id))return errorf(CONFIG_ERROR_REFERENCE,"markets.channels","spot channel is required");return true;
 }
 
 static bool parse_buyers(Document *d, ResolvedConfig *c) {
@@ -427,6 +427,24 @@ static void destroy_partial(ResolvedConfig *c) {
 
 void config_destroy(ResolvedConfig *config) { destroy_partial(config); }
 
+/* config.c's config_find_* accessors index these arrays directly by id
+ * rather than scanning for a match, which is only correct while every id
+ * equals its own array position. Each parser above assigns ids that way, so
+ * this is a postcondition check, not a parse step -- one pass at load time
+ * in exchange for not re-verifying it on every lookup. Without it the
+ * invariant would be enforced by source comments alone, and a config whose
+ * ids drifted would silently resolve to the *wrong* record rather than
+ * fail. */
+static bool validate_ids_are_indexes(const ResolvedConfig *c) {
+    for(size_t i=0;i<c->item_count;i++)if(c->items[i].id!=(ItemId)i)return errorf(CONFIG_ERROR_SCHEMA,"items","item id must equal its index");
+    for(size_t i=0;i<c->crop_count;i++)if(c->crops[i].item_id!=(ItemId)i)return errorf(CONFIG_ERROR_SCHEMA,"crops","crop item id must equal its index");
+    for(size_t i=0;i<c->upgrade_count;i++)if(c->upgrades[i].id!=(UpgradeId)i)return errorf(CONFIG_ERROR_SCHEMA,"upgrades","upgrade id must equal its index");
+    for(size_t i=0;i<c->recipe_count;i++)if(c->recipes[i].id!=(RecipeId)i)return errorf(CONFIG_ERROR_SCHEMA,"processing.recipes","recipe id must equal its index");
+    for(size_t i=0;i<c->channel_count;i++)if(c->channels[i].channel_id!=(ChannelId)i)return errorf(CONFIG_ERROR_SCHEMA,"markets.channels","channel id must equal its index");
+    for(size_t i=0;i<c->buyer_count;i++)if(c->buyers[i].id!=(BuyerId)i)return errorf(CONFIG_ERROR_SCHEMA,"buyers","buyer id must equal its index");
+    return true;
+}
+
 bool config_load_directory(const char *directory, ResolvedConfig *out, ConfigError *error) {
     static const char *const names[] = {"crops","upgrades","fertilizer","watering_settings","soil","weather","markets","contracts","buyers","processing","storage"};
     if (out == NULL || directory == NULL) { if(error){error->code=CONFIG_ERROR_ARGUMENT;snprintf(error->message,sizeof(error->message),"invalid argument");} return false; }
@@ -444,6 +462,7 @@ bool config_load_directory(const char *directory, ResolvedConfig *out, ConfigErr
          !parse_contract_optional(&docs[7],out) || !parse_processing(&docs[9],out) ||
          !parse_markets(&docs[6],out) || !parse_buyers(&docs[8],out)) goto fail;
     apply_resolved_defaults(&docs[9], &docs[6], out);
+    if(!validate_ids_are_indexes(out))goto fail;
     /* cJSON trees are kept until every reference has been resolved. */
     for(int i=0;i<11;i++)cJSON_Delete(docs[i].json);
     return true;

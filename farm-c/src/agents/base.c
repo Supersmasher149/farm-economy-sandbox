@@ -66,7 +66,7 @@ void agent_base_choose_processing(const Agent *self, const FarmState *state,
 void agent_base_choose_sales(const Agent *self, const FarmState *state,
                               const ResolvedConfig *config, SalesDecisionBuffer *out) {
     (void)self;
-    ChannelId spot = config_channel_id_by_external_id(config, "spot");
+    ChannelId spot = config->spot_channel_id;
     for (size_t i = 0; i < state->inventory_lots.count; i++) {
         const InventoryLot *lot = &state->inventory_lots.data[i];
         sale_decision_push(out, (SaleDecision){.item_id = lot->item_id,

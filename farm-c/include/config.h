@@ -379,6 +379,14 @@ typedef struct {
 
     ChannelDef *channels;
     size_t channel_count;
+    /* The channel whose external_id is "spot", resolved once at load time
+     * (config_loader.c's markets.channels loop already requires one to
+     * exist). agents/base.c's and agents/fast_seller.c's choose_sales read
+     * this rather than scanning channels by string every day; with those
+     * converted, no per-day path does a by-external-id lookup at all
+     * (config_channel_id_by_external_id is now used only by tests). Always
+     * id_valid() after a successful config_load_directory. */
+    ChannelId spot_channel_id;
 
     FertilizerConfig fertilizer;
     ContractsConfig contracts;
@@ -422,9 +430,9 @@ bool config_load_simulation_settings(const char *directory, SimulationSettings *
                                      ConfigError *error);
 void config_destroy(ResolvedConfig *config);
 
-/* --- Lookups (linear scan; config is small and this is test/decision-time
- * code, not the per-plot-per-day hot path the Python id()-keyed caches in
- * simulation/derived.py exist for -- see farm-c/README.md). --- */
+/* --- Lookups: direct array indexing, not a scan. Every id assigned in
+ * config_loader.c already equals its array position (see src/config.c's
+ * header comment), so these are O(1). --- */
 
 const CropDef *config_find_crop(const ResolvedConfig *config, ItemId item_id);
 const ItemDef *config_find_item(const ResolvedConfig *config, ItemId item_id);

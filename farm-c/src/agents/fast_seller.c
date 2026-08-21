@@ -48,7 +48,7 @@ typedef struct {
 static void fast_seller_choose_sales(const Agent *self, const FarmState *state,
                                       const ResolvedConfig *config, SalesDecisionBuffer *out) {
     (void)self;
-    ChannelId spot = config_channel_id_by_external_id(config, "spot");
+    ChannelId spot = config->spot_channel_id;
 
     ItemQty *items = NULL;
     size_t count = 0, capacity = 0;
