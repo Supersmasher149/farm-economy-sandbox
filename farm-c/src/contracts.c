@@ -31,14 +31,58 @@ static void int_vec_free(IntVec *vec) {
     *vec = (IntVec){0};
 }
 
+/* Grows capacity to at least `needed` in one step, for callers that know
+ * their final size up front -- int_vec_push's doubling would otherwise walk
+ * 4, 8, 16, ... reallocs to get there, and future_crop_arrivals runs this
+ * often enough for that chain to show up in a profile. Never shrinks. */
+static bool int_vec_reserve(IntVec *vec, size_t needed) {
+    if (needed <= vec->capacity) {
+        return true;
+    }
+    int *grown = realloc(vec->data, needed * sizeof(int));
+    if (grown == NULL) {
+        return false;
+    }
+    vec->data = grown;
+    vec->capacity = needed;
+    return true;
+}
+
+/* Ascending sort of ints. A multiset of ints has exactly one ascending
+ * arrangement, so there is no stability question and this is byte-for-byte
+ * interchangeable with the libc qsort it replaces.
+ *
+ * Insertion sort rather than qsort because these arrays are short -- a
+ * feasibility check's replant schedule and its guaranteed-arrival list --
+ * and are built by concatenating already-ascending runs, which is
+ * insertion sort's best case (cost is the inversion count, not n^2).
+ * qsort's per-comparison indirect call through a function pointer costs
+ * more than the whole sort at this size. Large inputs keep the qsort path
+ * so the worst case stays O(n log n). */
 static int cmp_int(const void *a, const void *b) {
     int ia = *(const int *)a;
     int ib = *(const int *)b;
     return (ia > ib) - (ia < ib);
 }
 
+static void int_sort_ascending(int *data, size_t count) {
+    if (count > 512) {
+        qsort(data, count, sizeof(int), cmp_int);
+        return;
+    }
+    for (size_t i = 1; i < count; i++) {
+        int value = data[i];
+        size_t j = i;
+        while (j > 0 && data[j - 1] > value) {
+            data[j] = data[j - 1];
+            j--;
+        }
+        data[j] = value;
+    }
+}
+
 static void int_vec_sort(IntVec *vec) {
-    qsort(vec->data, vec->count, sizeof(int), cmp_int);
+    int_sort_ascending(vec->data, vec->count);
 }
 
 static double min2(double a, double b) {
@@ -107,9 +151,14 @@ static Quality best_possible_grade(const FarmState *state, const ResolvedConfig 
 
 /* --- simulation/contracts.py:216-311 _future_crop_arrivals --- */
 
+/* `*_count` are always filled in; the matching day lists only when the
+ * caller asked for them (see future_crop_arrivals' `want_days`). Everything
+ * this struct feeds except input_supply_build needs the counts alone. */
 typedef struct {
     IntVec guaranteed_days;
     IntVec seeded_days;
+    size_t guaranteed_count;
+    size_t seeded_count;
     double expected_yield;
     double seed_cash_needed;
 } FutureCropArrivals;
@@ -119,18 +168,36 @@ static void future_crop_arrivals_free(FutureCropArrivals *arrivals) {
     int_vec_free(&arrivals->seeded_days);
 }
 
-static void push_replant_cycles(IntVec *seeded_days, int today, int free_after, int growth_days,
-                                 int days_available) {
+/* Records one replant schedule: the harvest days of every further cycle that
+ * still fits before the deadline. `seeded_days` may be NULL, which counts
+ * the cycles without materializing their days. */
+static void push_replant_cycles(IntVec *seeded_days, size_t *seeded_count, int today,
+                                 int free_after, int growth_days, int days_available) {
     int max_cycle = int_floor_div(days_available - free_after, growth_days);
-    for (int cycle = 1; cycle <= max_cycle; cycle++) {
-        int_vec_push(seeded_days, today + free_after + cycle * growth_days);
+    if (max_cycle <= 0) {
+        return;
     }
+    if (seeded_days != NULL) {
+        for (int cycle = 1; cycle <= max_cycle; cycle++) {
+            int_vec_push(seeded_days, today + free_after + cycle * growth_days);
+        }
+    }
+    *seeded_count += (size_t)max_cycle;
 }
 
+/* `want_days` false computes only how many arrivals there are, skipping both
+ * the day lists and the sorts below. That is not an approximation: the sorts
+ * reorder days without changing how many there are, the funding truncation
+ * is by count, and seed_cash_needed derives from counts alone -- so every
+ * scalar this produces is bit-identical either way. future_crop_capacity,
+ * which reads nothing but the two counts, is the overwhelmingly hot caller;
+ * only input_supply_build needs the days themselves. */
 static void future_crop_arrivals(const FarmState *state, const ResolvedConfig *config,
                                   const CropDef *crop, int deadline, Quality min_quality,
-                                  FutureCropArrivals *out) {
+                                  bool want_days, FutureCropArrivals *out) {
     memset(out, 0, sizeof(*out));
+    IntVec *guaranteed = want_days ? &out->guaranteed_days : NULL;
+    IntVec *seeded = want_days ? &out->seeded_days : NULL;
 
     deadline = economy_effective_deadline(state, deadline);
     int growth_days = economy_effective_growth_days(crop, state, config);
@@ -152,8 +219,37 @@ static void future_crop_arrivals(const FarmState *state, const ResolvedConfig *c
         if (open_slots < 0) {
             open_slots = 0;
         }
-        for (int i = 0; i < open_slots; i++) {
-            push_replant_cycles(&out->seeded_days, state->day, 0, growth_days, days_available);
+        /* Exact upper bound on seeded_days: every push below comes from a
+         * push_replant_cycles call, once per open slot and at most once per
+         * planted crop, and a call with free_after >= 0 never emits more
+         * entries than one with free_after == 0. Reserving it here replaces
+         * the whole function's doubling realloc chain with one allocation --
+         * this is the hottest allocation site in a batch. */
+        int cycles_per_slot = int_floor_div(days_available, growth_days);
+        if (cycles_per_slot > 0 && seeded != NULL) {
+            int_vec_reserve(seeded, ((size_t)open_slots + state->planted.count) *
+                                         (size_t)cycles_per_slot);
+        }
+        /* Every open slot gets the identical replant schedule
+         * (push_replant_cycles with free_after == 0), so emitting them
+         * grouped by cycle -- each harvest day repeated open_slots times --
+         * builds the same multiset already ascending. Schedule-by-schedule
+         * instead appends open_slots interleaved copies of one ascending
+         * run, which is close to the worst input any sort can get; this
+         * leaves int_vec_sort below almost nothing to do. The values and
+         * their multiplicities are unchanged, and a multiset of ints has
+         * exactly one ascending arrangement, so the sorted result is
+         * identical either way. */
+        if (cycles_per_slot > 0) {
+            if (seeded != NULL) {
+                for (int cycle = 1; cycle <= cycles_per_slot; cycle++) {
+                    int harvest_day = state->day + cycle * growth_days;
+                    for (int i = 0; i < open_slots; i++) {
+                        int_vec_push(seeded, harvest_day);
+                    }
+                }
+            }
+            out->seeded_count += (size_t)open_slots * (size_t)cycles_per_slot;
         }
     }
 
@@ -169,15 +265,18 @@ static void future_crop_arrivals(const FarmState *state, const ResolvedConfig *c
             }
             Quality best_grade = best_possible_grade(state, config, crop, planted);
             if (best_grade >= min_quality) {
-                int_vec_push(&out->guaranteed_days, state->day + days_until_free);
+                if (guaranteed != NULL) {
+                    int_vec_push(guaranteed, state->day + days_until_free);
+                }
+                out->guaranteed_count++;
             }
             if (guaranteed_grade) {
-                push_replant_cycles(&out->seeded_days, state->day, days_until_free, growth_days,
-                                     days_available);
+                push_replant_cycles(seeded, &out->seeded_count, state->day, days_until_free,
+                                     growth_days, days_available);
             }
         } else if (guaranteed_grade && days_until_free < days_available) {
-            push_replant_cycles(&out->seeded_days, state->day, days_until_free, growth_days,
-                                 days_available);
+            push_replant_cycles(seeded, &out->seeded_count, state->day, days_until_free,
+                                 growth_days, days_available);
         }
     }
 
@@ -188,25 +287,29 @@ static void future_crop_arrivals(const FarmState *state, const ResolvedConfig *c
         double affordable_cash = max2(0.0, state->money - economy_operating_reserve(state));
         cash_seed_units = (long)(affordable_cash / seed_cost);
     } else {
-        cash_seed_units = (long)out->seeded_days.count;
+        cash_seed_units = (long)out->seeded_count;
     }
     long funded_capacity = seed_inventory + cash_seed_units;
-    size_t funded_seeded_cycles =
-        (long)out->seeded_days.count > funded_capacity
-            ? (funded_capacity > 0 ? (size_t)funded_capacity : 0)
-            : out->seeded_days.count;
+    size_t funded_seeded_cycles = (long)out->seeded_count > funded_capacity
+                                       ? (funded_capacity > 0 ? (size_t)funded_capacity : 0)
+                                       : out->seeded_count;
     long purchased = (long)funded_seeded_cycles - seed_inventory;
     if (purchased < 0) {
         purchased = 0;
     }
 
-    int_vec_sort(&out->guaranteed_days);
-    int_vec_sort(&out->seeded_days);
     /* del seeded_days[funded_seeded_cycles:] -- cash funds the earliest
      * cycles, and the list is ascending, so truncating to the first
      * funded_seeded_cycles entries is exactly that. */
-    if (funded_seeded_cycles < out->seeded_days.count) {
-        out->seeded_days.count = funded_seeded_cycles;
+    if (funded_seeded_cycles < out->seeded_count) {
+        out->seeded_count = funded_seeded_cycles;
+    }
+    if (want_days) {
+        int_vec_sort(&out->guaranteed_days);
+        int_vec_sort(&out->seeded_days);
+        if (out->seeded_count < out->seeded_days.count) {
+            out->seeded_days.count = out->seeded_count;
+        }
     }
 
     out->expected_yield = expected_yield;
@@ -220,11 +323,11 @@ static void future_crop_capacity(const FarmState *state, const ResolvedConfig *c
                                   double *out_future, double *out_funding,
                                   double *out_free_future) {
     FutureCropArrivals arrivals;
-    future_crop_arrivals(state, config, crop, deadline, min_quality, &arrivals);
+    future_crop_arrivals(state, config, crop, deadline, min_quality, false, &arrivals);
     *out_future =
-        (double)(arrivals.guaranteed_days.count + arrivals.seeded_days.count) * arrivals.expected_yield;
+        (double)(arrivals.guaranteed_count + arrivals.seeded_count) * arrivals.expected_yield;
     *out_funding = arrivals.seed_cash_needed;
-    *out_free_future = (double)arrivals.guaranteed_days.count * arrivals.expected_yield;
+    *out_free_future = (double)arrivals.guaranteed_count * arrivals.expected_yield;
     future_crop_arrivals_free(&arrivals);
 }
 
@@ -340,7 +443,7 @@ static void input_supply_build(const FarmState *state, const ResolvedConfig *con
     const CropDef *crop = config_find_crop(config, input_id);
     if (crop != NULL) {
         FutureCropArrivals arrivals;
-        future_crop_arrivals(state, config, crop, deadline, min_quality, &arrivals);
+        future_crop_arrivals(state, config, crop, deadline, min_quality, true, &arrivals);
         out->funding = arrivals.seed_cash_needed;
 
         IntVec harvest_days = {0};
@@ -402,7 +505,7 @@ static void slot_free_days(const FarmState *state, int capacity, IntVec *out) {
     for (size_t i = 0; i < job_count; i++) {
         completion_days[i] = state->processing_jobs.data[i].completion_day;
     }
-    qsort(completion_days, job_count, sizeof(int), cmp_int);
+    int_sort_ascending(completion_days, job_count);
 
     size_t busy_count = (size_t)cap < job_count ? (size_t)cap : job_count;
     for (size_t i = 0; i < busy_count; i++) {
@@ -452,9 +555,19 @@ static int schedule_batches(InputSupply *supply, IntVec *slot_free_day, int inpu
  * non-empty one. Intentionally omitted here rather than ported unused.
  */
 
+/* `out_free_future` reports the free (already-growing, no further seed
+ * spend) share of `out_future`. Python's `_item_capacity` returns only the
+ * three totals and lets `is_offer_feasible` recompute the free share with a
+ * second `_future_crop_capacity` call; that call is pure and takes the same
+ * arguments this one already passed, so it is handed back here instead --
+ * the crop branch below computes it either way, and used to discard it.
+ * (The deadline the two calls pass differ textually -- this one has already
+ * applied economy_effective_deadline -- but that function is
+ * min(deadline, last_executable_day) with a state-only bound, hence
+ * idempotent, so both resolve to the same day.) */
 static void item_capacity(const FarmState *state, const ResolvedConfig *config, ItemId item_id,
                            Quality min_quality, int deadline, double *out_current,
-                           double *out_future, double *out_funding) {
+                           double *out_future, double *out_funding, double *out_free_future) {
     deadline = economy_effective_deadline(state, deadline);
     double current = contract_inventory_quantity(state, item_id, min_quality);
     for (size_t i = 0; i < state->processing_jobs.count; i++) {
@@ -473,8 +586,13 @@ static void item_capacity(const FarmState *state, const ResolvedConfig *config, 
         *out_current = current;
         *out_future = future;
         *out_funding = funding;
+        *out_free_future = free_future;
         return;
     }
+
+    /* Non-crop items have no growing stock, so none of their future supply
+     * is free -- it all costs processing input. */
+    *out_free_future = 0.0;
 
     double future = 0.0;
     double funding = 0.0;
@@ -601,20 +719,13 @@ bool contracts_is_offer_feasible(const FarmState *state, const ResolvedConfig *c
     if (contracts_is_offer_expired(state, config, contract)) {
         return false;
     }
-    double current, future, funding;
+    double current, future, funding, free_future;
     item_capacity(state, config, contract->item_id, contract->min_quality, contract->deadline_day,
-                   &current, &future, &funding);
+                   &current, &future, &funding, &free_future);
     if (current + future < contract->quantity) {
         return false;
     }
     double missing = max2(0.0, contract->quantity - current);
-    double free_future = 0.0;
-    const CropDef *crop = config_find_crop(config, contract->item_id);
-    if (crop != NULL) {
-        double crop_future, crop_funding;
-        future_crop_capacity(state, config, crop, contract->deadline_day, contract->min_quality,
-                              &crop_future, &crop_funding, &free_future);
-    }
     double paid_future = max2(0.0, future - free_future);
     double required =
         paid_future > 0 ? funding * (max2(0.0, missing - free_future) / paid_future) : 0.0;
@@ -715,21 +826,18 @@ void contracts_generate_offers(FarmState *state, const ResolvedConfig *config, F
             continue;
         }
 
-        ItemId *eligible =
-            buyer->allowed_item_count > 0 ? malloc(buyer->allowed_item_count * sizeof(ItemId)) : NULL;
-        size_t eligible_count = 0;
-        for (size_t i = 0; i < buyer->allowed_item_count; i++) {
-            if (config_find_item(config, buyer->allowed_items[i]) != NULL) {
-                eligible[eligible_count++] = buyer->allowed_items[i];
-            }
-        }
-        if (eligible_count == 0) {
-            free(eligible);
+        /* Python filters this buyer's items down to the ones the world
+         * actually defines before drawing. Here that filter can never drop
+         * anything -- config_loader.c's buyers parser resolves every entry
+         * to a real item index or fails the load with
+         * CONFIG_ERROR_REFERENCE -- so the draw runs against
+         * `allowed_items` directly. Same count into rng_choice_index, hence
+         * the same draw. */
+        if (buyer->allowed_item_count == 0) {
             continue;
         }
-
-        ItemId item_id = eligible[rng_choice_index(rng, (uint32_t)eligible_count)];
-        free(eligible);
+        ItemId item_id =
+            buyer->allowed_items[rng_choice_index(rng, (uint32_t)buyer->allowed_item_count)];
 
         if (unresolved_triple_exists(&state->contract_offers, &state->active_contracts, buyer->id,
                                       item_id, state->day)) {
