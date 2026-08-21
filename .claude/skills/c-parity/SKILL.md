@@ -127,35 +127,30 @@ summary, which `farm-c single` already prints at full precision.
 
 ## Known open divergences (as of 2026-08-21)
 
-`check` passes at the default `--runs 5 --seed 42` but **not** at wider run
-counts. Two divergences remain, both pre-existing and both distinct from the
-`highest_money` seeding bug this harness first found (fixed in
-`farm-c/src/runner.c`; regression test in `farm-c/tests/test_runner.c`).
-
-1. **Sub-ulp accumulation drift on `random_agent` and
-   `fertilizer_maximalist`.** At `--runs 50 --seed 42`: 11 field mismatches
-   across 550 runs, all in accumulated money fields (`final_money`,
-   `lowest_money`, `total_expenses`, `net_profit`), ranging from 1 ulp
-   (`0x1.62a6666666668p+8` vs `...667p+8`) to ~256 ulps
-   (`0x1.ddb722ec6db00p-3` vs `...6dc00p-3`). **Every integer field matches on
-   these runs** — same plantings, harvests, waterings — so the trajectories
-   are identical and only the last bits of the running sums differ. That
-   points at summation order or a missing compensation step in an accumulator,
-   not at a behavioral difference. `random_agent` carrying 6 of the 7 failing
-   runs is worth a look on its own: it is the one agent driven by the
-   BLAKE2b `decision_random` stream rather than the event RNG.
-2. **`progression_player` diverges mid-run on some seeds.** At base seed 42
-   `--runs 2`, `trace progression_player 127978094` localizes it to **day
-   55**, where C has 8 crops planted to Python's 7 and money differs by
-   exactly 3.00 — one extra seed purchase, i.e. a planting-affordability or
-   decision-boundary difference. Days 1-54 are identical. Confirmed still
-   present after the `highest_money` fix, so it is a separate root cause.
-
-Because #1 only surfaces at wider run counts, use `--runs 50` when
-investigating rather than the default, and re-check the default afterwards.
-
-Delete or update this section as these are fixed, so a stale "expected
+**None.** `check` passes at every run count tried, including 2200 runs
+(`--runs 200 --seed 7`). Keep this section current: if a divergence is found
+and not immediately fixed, record it here with the exact
+`--runs`/`--seed`/`--strategy` that reproduces it, so a stale "expected
 failure" never masks a new one.
+
+Three divergences have been found and fixed via this harness, all in
+`farm-c` rather than the Python reference:
+
+1. **`highest_money` never seeded with the opening balance**
+   (`src/runner.c`). `runner/single_run.py:47` seeds it before the day loop;
+   the C left it unset until the first in-day `track_peak_cash`, so any run
+   that never rose above its start reported too low a peak.
+2. **The water/fertilize pass was split in two** (`src/engine.c` step 17).
+   `simulation/engine.py:176-183` handles both in one pass per crop. Both
+   actions spend money, so two passes reorder the debits: every later balance
+   rounded differently (1-256 ulps in `final_money`/`lowest_money`) and, when
+   cash was tight, a different set of actions was affordable at all.
+3. That second bug also produced what looked like a **separate mid-run
+   `progression_player` divergence** (one extra planting on day 55). Worth
+   remembering as a diagnostic lesson: a handful of runs diverging on every
+   field and a scattering of others diverging by 1 ulp had one root cause.
+   Fix the systematic-looking one first and re-measure before chasing the
+   rest.
 
 ## Files
 

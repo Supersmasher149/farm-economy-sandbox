@@ -234,7 +234,18 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
         agent->should_buy_upgrade(agent, state, upgrade->id))
       acted = actions_buy_upgrade(state, upgrade) || acted;
   }
-  /* 17. */
+  /* 17. Water and fertilize in ONE pass over the planted crops, per crop --
+   * simulation/engine.py:176-183 is a single `for planted in
+   * list(player.planted)` loop doing both. Splitting it into a water pass
+   * followed by a fertilize pass looks equivalent and is not: both actions
+   * spend money, so the split reorders the debits (W,W,F instead of W,F,W)
+   * and every later balance rounds differently, which showed up as 1-256 ulp
+   * drift in final_money/lowest_money against Python. It also changes
+   * behaviour outright whenever cash is tight, since each action's
+   * affordability check (`money < cost`) then sees a different balance.
+   * RNG order is unaffected either way -- rng_chance below is the only draw
+   * in this phase and its per-crop order is the same -- which is exactly why
+   * the split survived the fixture suites undetected. */
   for (size_t i = 0; i < state->planted.count; i++) {
     PlantedCrop *planted = &state->planted.data[i];
     const CropDef *crop = config_find_crop(config, planted->crop_item_id);
@@ -243,26 +254,23 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
     if (agent->should_water(agent, state, (int)i) &&
         rng_chance(rng, agent->watering_diligence))
       acted = actions_water_crop(state, planted, &config->watering) || acted;
-  }
-  /* 18. */
-  for (size_t i = 0; i < state->planted.count; i++) {
-    PlantedCrop *planted = &state->planted.data[i];
-    const CropDef *crop = config_find_crop(config, planted->crop_item_id);
-    if (crop == NULL)
-      continue;
-    if (!planted->fertilized && agent->should_fertilize(agent, state, (int)i)) {
+    /* Operand order matches Python's `should_fertilize(...) and not
+     * planted.fertilized`; no agent's should_fertilize has side effects, so
+     * this is short-circuit-equivalent, but keep it in the reference's
+     * order. */
+    if (agent->should_fertilize(agent, state, (int)i) && !planted->fertilized) {
       if (state->fertilizer_inventory == 0)
         (void)actions_buy_fertilizer(state, &config->fertilizer, 1);
       acted =
           actions_fertilize_crop(state, planted, &config->fertilizer) || acted;
     }
   }
-  /* 19. */ acted = plant_open_slots(state, agent) || acted;
-  /* 20. */ contracts_resolve_expired(state, config);
-  /* 21. */ (void)inventory_collect_storage_liability(state, liability);
-  /* 22. */ if (!acted)
+  /* 18. */ acted = plant_open_slots(state, agent) || acted;
+  /* 19. */ contracts_resolve_expired(state, config);
+  /* 20. */ (void)inventory_collect_storage_liability(state, liability);
+  /* 21. */ if (!acted)
     actions_do_nothing(state);
-  /* 23. */ if (state->money < state->lowest_money)
+  /* 22. */ if (state->money < state->lowest_money)
     state->lowest_money = state->money;
   farm_state_track_peak_cash(state);
   if (no_viable_reinvestment(state)) {
@@ -273,7 +281,7 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
     if (state->bankruptcy_reason != NULL)
       strcpy(state->bankruptcy_reason, "no_viable_reinvestment");
   }
-  /* 24. */ state->day++;
+  /* 23. */ state->day++;
   if (callback != NULL)
     callback(state, &weather, context);
   return true;

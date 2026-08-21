@@ -87,7 +87,7 @@ only the fixture suites catch:
 - **`AGENT_REGISTRY` order (`src/agent_registry.c`) mirrors `../main.py`'s
   dict order.** Reordering it silently changes which minted seed lands on
   which strategy for a default (no `--strategy`) batch.
-- **The 24 numbered steps in `src/engine.c:engine_run_day_observed`** are the
+- **The 23 numbered steps in `src/engine.c:engine_run_day_observed`** are the
   Python `run_day` order. Changing it is a breaking change for every recorded
   seed, exactly as `../CLAUDE.md` says for the Python engine.
 - **Contract forecasting stays timeline-aware.** `contracts.c`'s
@@ -164,8 +164,9 @@ python3 ../.claude/skills/c-parity/scripts/c_parity.py check
 
 Run it before and after touching anything under `src/` or `include/`, and
 after any change to `../simulation/`, `../agents/`, or `../config/` — the port
-is a mirror, so moving the reference moves what the mirror must match. It does
-not pass on a clean tree today; see that skill's "Known open divergences".
+is a mirror, so moving the reference moves what the mirror must match. It
+passes on a clean tree (verified to 2200 runs), so any failure is yours to
+explain before the change is done.
 
 When changing a ported function, regenerate the matching fixture set only if
 the *Python* changed. If the fixture and the C disagree and Python did not

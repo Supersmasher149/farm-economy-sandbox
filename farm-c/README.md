@@ -59,10 +59,15 @@ The six phases so far:
   directory loading for the eleven world configuration files and separate
   simulation settings, with resolved defaults, indexed references, and
   schema/range/enum validation.
-- **Phase 4**, `src/engine.c`: the modern, world-driven 24-step daily engine.
+- **Phase 4**, `src/engine.c`: the modern, world-driven 23-step daily engine.
   It uses the existing mutators and Agent vtable, preserves their iteration
   and RNG order, applies effective storage and processing upgrades, and keeps
-  decision buffers private to each phase. The legacy `water_farm` and
+  decision buffers private to each phase. Step 17 waters *and* fertilizes in
+  one pass per crop, matching `simulation/engine.py:176-183`. It was two
+  separate passes until the `c-parity` skill caught it: both actions spend
+  money, so splitting them reorders the debits, which shifted the rounding of
+  every later balance and changed which actions were affordable when cash was
+  tight. The legacy `water_farm` and
   `sell_all` path is deliberately not implemented.
 - **Phase 5**, `src/runner.c` and `main.c`: the reusable single-run lifecycle
   and `farm-c single` CLI, including explicit or generated seeds, optional
@@ -183,8 +188,9 @@ tests/               test_agents.c (fixture-driven parity test for the
                      test_physics.c (same, for crop_growth.c/weather.c),
                      test_mutation.c (same, for actions.c/inventory.c/
                      markets.c/processing.c/contracts.c's mutators),
-                     test_engine.c (24-step ordering, bookkeeping,
-                     failure cleanup, and repeatability), test_runner.c
+                     test_engine.c (23-step ordering, per-crop water/
+                     fertilize interleaving, bookkeeping, failure cleanup,
+                     and repeatability), test_runner.c
                      (single-run lifecycle), test_batch.c (seed minting
                      against real Python `randrange(2**32)` output, job
                      order, and batch-vs-single-run parity),
