@@ -30,13 +30,28 @@ from agents.random_agent import RandomAgent
 from agents.reckless_spender import RecklessSpender
 from agents.risk_averse_grower import RiskAverseGrower
 from agents.upgrade_rusher import UpgradeRusher
-from metrics import view
+from experiments import sensitivity, uncertainty
+from metrics import analysis_metadata, comparisons, distributions, estimands, view
 from metrics.aggregate_results import BatchAggregator
 from metrics.dashboard import render_dashboard_html, write_no_charts_placeholder
 from metrics.economics_audit import build_economics_audit
+from metrics.inference import (
+    DEFAULT_BOOTSTRAP_REPLICATIONS,
+    DEFAULT_CONFIDENCE,
+    INFERENCE_VERSION,
+    derive_analysis_seed,
+)
 from metrics.report import generate_markdown_report
 from metrics.run_results import write_csv
 from metrics.warnings import evaluate_warnings
+from runner import sampling_plan as sampling_plans
+from runner.adaptive import (
+    AdaptiveBatch,
+    AdaptiveConfig,
+    StoppingRule,
+    fixed_convergence_document,
+    summarize_stability,
+)
 from runner.batch_run import resolve_base_seed, run_batch
 from runner.progress import ProgressReporter, format_duration, format_rate
 from runner.single_run import run_single
@@ -183,7 +198,431 @@ def cmd_replay(args):
     print_player_summary(player, seed, agent.name)
 
 
+UNCERTAINTY_DIRNAME = "uncertainty"
+
+
+def _config_bundle(crops, upgrades, config, world) -> dict:
+    """The whole configuration as one addressable document.
+
+    Uncertainty paths (`crops[id=quickweed].loss_chance`,
+    `simulation_settings.start_money`, `world.weather...`) are resolved against
+    this shape, so a spec can reach any tunable number without the sampler
+    knowing which JSON file it came from.
+    """
+    return {
+        "crops": crops,
+        "upgrades": upgrades,
+        "simulation_settings": config,
+        "world": world,
+    }
+
+
+def _validate_bundle(bundle: dict) -> None:
+    """Validate a sampled configuration with the real validators.
+
+    The same two calls `load_config()` makes. A sampled value that the runtime
+    would reject must fail here, not three thousand simulated days later.
+    """
+    validate(bundle["crops"], bundle["upgrades"], bundle["world"])
+    validate_simulation_config(bundle["simulation_settings"])
+
+
+def cmd_uncertainty(args):
+    """Nested epistemic study: sample configurations, re-run, decompose."""
+    spec = uncertainty.load_spec(args.spec)
+    crops, upgrades, config, world = load_config()
+    config = dict(config)
+    if args.days is not None:
+        config["days"] = args.days
+    bundle = _config_bundle(crops, upgrades, config, world)
+
+    for parameter in spec.parameters:
+        try:
+            uncertainty.read_path(bundle, parameter.path)
+        except uncertainty.UncertaintySpecError as exc:
+            raise SystemExit(f"Specification does not match this config: {exc}") from None
+
+    if args.strategy:
+        unknown = [name for name in args.strategy.split(",") if name not in AGENT_REGISTRY]
+        if unknown:
+            raise SystemExit(f"Unknown strategy/strategies: {unknown}")
+        agent_names = args.strategy.split(",")
+    else:
+        agent_names = list(AGENT_REGISTRY)
+
+    scenarios = None
+    if args.method == "scenarios":
+        if not args.scenarios:
+            raise SystemExit("--method scenarios needs --scenarios PATH (a JSON object of corners)")
+        with open(args.scenarios) as handle:
+            scenarios = json.load(handle)
+
+    try:
+        design, design_metadata = _build_design(args, spec, scenarios)
+    except uncertainty.UncertaintySpecError as exc:
+        raise SystemExit(str(exc)) from None
+
+    base_seed = resolve_base_seed(args.seed)
+    total_simulations = len(design) * args.replicates * len(agent_names)
+    print(
+        f"Design: {design_metadata['design']} -- {len(design)} configuration sample(s) "
+        f"x {args.replicates} replicate(s) x {len(agent_names)} strateg(ies) "
+        f"= {total_simulations} simulations."
+    )
+    if not design_metadata.get("honours_correlation_groups", True) and spec.correlation_groups:
+        print(
+            "  note: this design ignores declared correlation groups (see the error it "
+            "would have raised); results assume independent inputs."
+        )
+
+    def simulate(sampled_bundle, sample_id):
+        agents = [AGENT_REGISTRY[name]() for name in agent_names]
+        # A per-sample seed derived from the study seed, so every configuration
+        # sample gets its own aleatory replicates *and* the whole study
+        # reproduces from one number.
+        sample_seed = derive_analysis_seed(base_seed, "config-sample", sample_id) % (2**32)
+        sampled_world = sampled_bundle["world"]
+        return run_batch(
+            sampled_bundle["simulation_settings"],
+            agents,
+            sampled_bundle["crops"],
+            sampled_bundle["upgrades"],
+            sampled_world["watering"],
+            sampled_world["fertilizer"],
+            num_runs=args.replicates,
+            base_seed=sample_seed,
+            world=sampled_world,
+            workers=args.workers,
+            sampling_plan=sampling_plans.IndependentHashedV1(sample_seed),
+        )
+
+    estimand_ids = (
+        args.estimand.split(",")
+        if args.estimand
+        else ["expected_final_money", "bankruptcy_probability"]
+    )
+    for estimand_id in estimand_ids:
+        estimands.get(estimand_id)
+
+    study = uncertainty.run_study(
+        bundle,
+        spec,
+        simulate,
+        design,
+        estimand_ids=estimand_ids,
+        validator=_validate_bundle,
+        analysis_seed=base_seed,
+        confidence=args.confidence,
+    )
+    study["design"] = design_metadata
+    study["base_seed"] = base_seed
+    study["strategies"] = agent_names
+
+    analysis_strategy = args.report_strategy or agent_names[0]
+    study["sensitivity"] = {
+        estimand_id: sensitivity.analyze(study, design_metadata, estimand_id, analysis_strategy)
+        for estimand_id in estimand_ids
+    }
+
+    out_dir = args.out or os.path.join(
+        REPORTS_DIR,
+        UNCERTAINTY_DIRNAME,
+        f"{time.strftime('%Y%m%dT%H%M%S')}-{design_metadata['design']}",
+    )
+    os.makedirs(out_dir, exist_ok=True)
+    _write_json(os.path.join(out_dir, "study.json"), study)
+    print()
+    print(
+        f"Configuration samples: {study['valid_samples']} valid, "
+        f"{study['rejected_samples']} rejected "
+        f"(policy: {spec.on_invalid})"
+    )
+    print()
+    print(_render_uncertainty(study, estimand_ids, analysis_strategy))
+    print()
+    print(f"Wrote {os.path.join(out_dir, 'study.json')}")
+
+
+def _build_design(args, spec, scenarios):
+    if args.method == "oat":
+        return sensitivity.one_at_a_time_design(spec, low=args.low, high=args.high)
+    if args.method == "scenarios":
+        return sensitivity.scenario_design(spec, scenarios)
+    if args.method == "lhs":
+        return sensitivity.latin_hypercube_design(spec, args.samples, seed=args.seed or 0)
+    if args.method == "morris":
+        return sensitivity.morris_design(
+            spec, trajectories=args.trajectories, levels=args.levels, seed=args.seed or 0
+        )
+    if args.method == "sobol":
+        return sensitivity.sobol_design(spec, base_samples=args.samples, seed=args.seed or 0)
+    return sensitivity.monte_carlo_design(spec, args.samples, seed=args.seed or 0)
+
+
+def _render_uncertainty(study: dict, estimand_ids, strategy: str) -> str:
+    """Terminal read-out: variance split first, then the sensitivity ranking.
+
+    The split comes first deliberately -- it says whether the sensitivity
+    ranking below is even the interesting part, or whether the outcome is
+    dominated by simulation noise that more runs would fix.
+    """
+    lines = [f"Strategy analysed: {strategy}", ""]
+    for entry in study.get("variance_decomposition", []):
+        if entry.get("strategy") != strategy:
+            continue
+        share = entry.get("epistemic_share")
+        lines.append(
+            f"[{entry['estimand']}] epistemic variance "
+            f"{_fmt_opt(entry.get('epistemic_variance'))} | aleatory "
+            f"{_fmt_opt(entry.get('aleatory_variance'))} | epistemic share "
+            + ("—" if share is None else f"{share:.1%}")
+        )
+    for estimand_id in estimand_ids:
+        analysis = study.get("sensitivity", {}).get(estimand_id) or {}
+        lines.append("")
+        lines.append(f"== {estimand_id} ({analysis.get('method')}) ==")
+        if analysis.get("effects"):
+            lines.append(f"{'parameter':<32}{'low':>14}{'base':>14}{'high':>14}{'swing':>14}")
+            for row in analysis["effects"]:
+                lines.append(
+                    f"{row['parameter']:<32}{_fmt_opt(row['low']):>14}{_fmt_opt(row['base']):>14}"
+                    f"{_fmt_opt(row['high']):>14}{_fmt_opt(row['swing']):>14}"
+                )
+        elif analysis.get("indices"):
+            keys = [
+                k
+                for k in ("mu_star", "sigma", "first_order", "total_effect")
+                if k in analysis["indices"][0]
+            ]
+            header = f"{'parameter':<32}" + "".join(f"{k:>16}" for k in keys)
+            lines.append(header)
+            for row in analysis["indices"]:
+                lines.append(
+                    f"{row['parameter']:<32}" + "".join(f"{_fmt_opt(row[k]):>16}" for k in keys)
+                )
+        else:
+            lines.append(
+                f"response mean {_fmt_opt(analysis.get('response_mean'))}, "
+                f"sd {_fmt_opt(analysis.get('response_stdev'))}, "
+                f"range [{_fmt_opt(analysis.get('response_min'))}, "
+                f"{_fmt_opt(analysis.get('response_max'))}]"
+            )
+            if analysis.get("scenarios"):
+                for name, value in analysis["scenarios"].items():
+                    lines.append(f"  {name:<30} {_fmt_opt(value)}")
+        if analysis.get("note"):
+            lines.append(f"  note: {analysis['note']}")
+        if analysis.get("caveat"):
+            lines.append(f"  caveat: {analysis['caveat']}")
+    return "\n".join(lines)
+
+
+def _fmt_opt(value, ndigits: int = 4) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, float):
+        return f"{round(value, ndigits):,}"
+    return str(value)
+
+
+def cmd_analyze(args):
+    """Exact distribution analysis and strategy comparisons over a batch's raw runs.
+
+    Reads a CSV rather than a summary: everything here is computed from the
+    per-run observations, which is what makes the quantiles exact and what
+    lets `--csv` point at a `farm-c` batch. The C port stays a deterministic
+    raw-data producer; the inference layer is this one, for both.
+    """
+    if args.csv:
+        csv_path = args.csv
+        run_dir = None
+        base_seed = args.analysis_seed
+        horizon = args.days
+    else:
+        run_dir = view.resolve_run_dir(REPORTS_DIR, args.run)
+        csv_path = os.path.join(run_dir, "run_results.csv")
+        summary_doc = view.load_run(run_dir)
+        base_seed = (
+            args.analysis_seed if args.analysis_seed is not None else summary_doc.get("base_seed")
+        )
+        horizon = args.days if args.days is not None else summary_doc.get("days")
+    if not os.path.exists(csv_path):
+        raise SystemExit(f"No run_results.csv at {csv_path}")
+
+    probabilities = tuple(float(p) for p in args.quantiles.split(",")) if args.quantiles else None
+    distributions_doc = distributions.analyze_csv(
+        csv_path,
+        horizon_days=horizon,
+        probabilities=probabilities or distributions.DEFAULT_QUANTILE_PROBABILITIES,
+        tail_thresholds=tuple(float(t) for t in args.tail.split(",")) if args.tail else (0.0,),
+        confidence=args.confidence,
+        replications=args.bootstrap_replications,
+        base_seed=base_seed,
+    )
+
+    comparisons_doc = None
+    if args.compare != "none":
+        observations = distributions.load_observations(csv_path)
+        comparisons_doc = comparisons.compare_all_pairs(
+            observations,
+            estimand_ids=args.estimand.split(",") if args.estimand else None,
+            pairing=(
+                comparisons.PAIRING_PAIRED
+                if args.compare == "paired"
+                else comparisons.PAIRING_INDEPENDENT
+            ),
+            confidence=args.confidence,
+            correction=args.correction,
+            replications=args.bootstrap_replications,
+            base_seed=base_seed,
+            baseline=args.baseline,
+        )
+
+    print(f"Source: {csv_path}")
+    print()
+    print(view.render_distributions(distributions_doc, cohort=args.cohort))
+    if comparisons_doc:
+        print()
+        print(view.render_comparisons(comparisons_doc, top=args.top or 10))
+
+    if args.json:
+        document = {
+            "source_csv": csv_path,
+            "run_dir": run_dir,
+            "distributions": distributions_doc,
+            "comparisons": comparisons_doc,
+        }
+        _write_json(args.json, document)
+        print()
+        print(f"Wrote {args.json}")
+
+
+ADAPTIVE_FLAGS = (
+    "min_runs",
+    "max_runs",
+    "checkpoint_runs",
+    "target_half_width",
+    "target_relative_half_width",
+    "bankruptcy_half_width",
+    "min_bankruptcies",
+    "min_survivals",
+)
+
+
+def _adaptive_requested(args) -> bool:
+    return any(getattr(args, flag, None) is not None for flag in ADAPTIVE_FLAGS)
+
+
+def _build_adaptive_config(args):
+    """Turn the adaptive CLI flags into a declared sampling design, or None.
+
+    Adaptive mode is opt-in and all-or-nothing: passing any precision flag
+    without a stopping rule is rejected rather than silently sampling to
+    --max-runs, because "it ran 20,000 times" and "it ran until the interval
+    was narrow" are different experiments and the artifacts must not claim the
+    second when the first happened.
+    """
+    if not _adaptive_requested(args):
+        return None
+
+    rules = []
+    stop_estimands = args.stop_estimand or (
+        ["expected_final_money"]
+        if (args.target_half_width is not None or args.target_relative_half_width is not None)
+        else []
+    )
+    for estimand_id in stop_estimands:
+        try:
+            estimands.get(estimand_id)
+        except estimands.UnknownEstimand as exc:
+            raise SystemExit(str(exc)) from None
+        rules.append(
+            StoppingRule(
+                estimand=estimand_id,
+                target_half_width=args.target_half_width,
+                target_relative_half_width=args.target_relative_half_width,
+            )
+        )
+    if args.bankruptcy_half_width is not None:
+        rules.append(
+            StoppingRule(
+                estimand="bankruptcy_probability",
+                target_half_width=args.bankruptcy_half_width,
+            )
+        )
+    if not rules:
+        raise SystemExit(
+            "Adaptive sampling needs at least one precision target: pass "
+            "--target-half-width (optionally with --stop-estimand), "
+            "--target-relative-half-width, or --bankruptcy-half-width."
+        )
+
+    min_runs = args.min_runs if args.min_runs is not None else min(500, args.runs)
+    max_runs = args.max_runs if args.max_runs is not None else max(min_runs, args.runs)
+    checkpoint_runs = (
+        args.checkpoint_runs
+        if args.checkpoint_runs is not None
+        else max(1, (max_runs - min_runs) // 8 or min_runs)
+    )
+    try:
+        return AdaptiveConfig(
+            min_runs=min_runs,
+            max_runs=max_runs,
+            checkpoint_runs=checkpoint_runs,
+            rules=rules,
+            confidence=args.confidence,
+            mode=args.stopping_mode,
+            min_bankruptcies=args.min_bankruptcies or 0,
+            min_survivals=args.min_survivals or 0,
+            alpha_spending=args.alpha_spending,
+            track_quantiles=args.track_quantiles,
+        )
+    except ValueError as exc:
+        raise SystemExit(f"Invalid adaptive design: {exc}") from None
+
+
+def _resolve_sampling_plan(args, base_seed: int, num_runs: int, adaptive: bool):
+    requested = args.sampling_plan or ("independent" if adaptive else "legacy")
+    plan_id = sampling_plans.PLAN_ALIASES.get(requested)
+    if plan_id is None:
+        raise SystemExit(
+            f"Unknown --sampling-plan {requested!r}; expected legacy, independent or paired."
+        )
+    if adaptive and plan_id == sampling_plans.LEGACY_PLAN:
+        raise SystemExit(
+            "legacy-mt19937-v1 mints a whole batch from one sequential stream, so its "
+            "seeds depend on the total run count -- which adaptive sampling does not know "
+            "up front. Use --sampling-plan independent (or paired)."
+        )
+    return sampling_plans.resolve(requested, base_seed, num_runs)
+
+
+def _write_json(path: str, document) -> None:
+    with open(path, "w") as f:
+        json.dump(document, f, indent=2)
+
+
+def _skipped_document(reason: str) -> dict:
+    return {"skipped": True, "reason": reason}
+
+
+def _with_defaults(args, command: str):
+    """Fill any option the caller did not set with the parser's own default.
+
+    `cmd_batch` is called directly -- by tests and by tools -- with a
+    hand-built args object, and that call site should not have to grow a new
+    attribute every time a flag is added. Defaults are read from the real
+    parser rather than duplicated here, so the two can never drift.
+    """
+    defaults = build_parser().parse_args([command])
+    for name, value in vars(args).items():
+        setattr(defaults, name, value)
+    return defaults
+
+
 def cmd_batch(args):
+    args = _with_defaults(args, "batch")
+    started_at = time.time()
     crops, upgrades, config, world = load_config()
     config = dict(config)
     if args.days is not None:
@@ -192,22 +631,76 @@ def cmd_batch(args):
         config["start_money"] = args.start_money
     validate_simulation_config(config)
     base_seed = resolve_base_seed(args.seed)
+    analysis_seed = args.analysis_seed if args.analysis_seed is not None else base_seed
     watering_settings, fertilizer_config = world["watering"], world["fertilizer"]
     agents = [cls() for cls in AGENT_REGISTRY.values()]
-    total_runs = args.runs * len(agents)
 
-    results = run_batch(
-        config,
-        agents,
-        crops,
-        upgrades,
-        watering_settings,
-        fertilizer_config,
-        num_runs=args.runs,
-        base_seed=base_seed,
-        world=world,
-        workers=args.workers,
-    )
+    adaptive_config = _build_adaptive_config(args)
+    adaptive = adaptive_config is not None
+    requested_runs = adaptive_config.max_runs if adaptive else args.runs
+    plan = _resolve_sampling_plan(args, base_seed, args.runs, adaptive)
+    total_runs = requested_runs * len(agents)
+
+    # One aggregator for the whole batch, descriptive and inferential alike:
+    # summary.json, the markdown report, the terminal view and any stopping
+    # rule all read the same accumulators, so none of them can disagree about
+    # a number (or about the interval around it).
+    aggregator = BatchAggregator(confidence=args.confidence)
+    driver = None
+
+    if adaptive:
+
+        def run_block(block_agents, start_replicate, count):
+            return run_batch(
+                config,
+                block_agents,
+                crops,
+                upgrades,
+                watering_settings,
+                fertilizer_config,
+                num_runs=count,
+                base_seed=base_seed,
+                world=world,
+                workers=args.workers,
+                sampling_plan=plan,
+                start_replicate=start_replicate,
+            )
+
+        driver = AdaptiveBatch(
+            adaptive_config,
+            aggregator,
+            run_block,
+            agents,
+            plan,
+            estimand_ids=sorted(
+                {rule.estimand for rule in adaptive_config.rules}
+                | {"expected_final_money", "bankruptcy_probability"}
+            ),
+        )
+        # AdaptiveBatch feeds the aggregator itself as it streams, so this
+        # path must not tee again -- doing so would double-count every run.
+        results = driver.stream()
+    else:
+        raw_results = run_batch(
+            config,
+            agents,
+            crops,
+            upgrades,
+            watering_settings,
+            fertilizer_config,
+            num_runs=args.runs,
+            base_seed=base_seed,
+            world=world,
+            workers=args.workers,
+            sampling_plan=plan,
+        )
+
+        def _tee(stream):
+            for r in stream:
+                aggregator.add(r)
+                yield r
+
+        results = _tee(raw_results)
 
     # Progress is a pass-through over the result stream (stderr only), so it
     # cannot affect what a given seed produces.
@@ -228,18 +721,13 @@ def cmd_batch(args):
     try:
         # run_batch streams one RunResult at a time rather than returning a
         # materialized list, so CSV output and aggregation stay in one pass.
-        aggregator = BatchAggregator()
-
-        def _tee(stream):
-            for r in stream:
-                aggregator.add(r)
-                yield r
-
         staged_csv_path = os.path.join(staging_dir, "run_results.csv")
-        write_csv(_tee(results), staged_csv_path, crop_ids)
+        write_csv(results, staged_csv_path, crop_ids)
 
         summary = aggregator.finalize()
         warning_list = evaluate_warnings(summary, config)
+        realized_runs = driver.realized_runs if adaptive else args.runs
+        stop_reason = driver.stop_reason if adaptive else "fixed_sample"
 
         snapshot = {
             "base_seed": base_seed,
@@ -249,26 +737,80 @@ def cmd_batch(args):
             "watering_settings": watering_settings,
             "fertilizer": fertilizer_config,
             "world": world,
-            "num_runs": args.runs,
+            "num_runs": realized_runs,
+            "sampling_plan": plan.describe(),
         }
         staged_snapshot_path = os.path.join(staging_dir, "config_snapshot.json")
-        with open(staged_snapshot_path, "w") as f:
-            json.dump(snapshot, f, indent=2)
+        _write_json(staged_snapshot_path, snapshot)
 
         # Machine-readable counterpart to summary_report.md -- exactly the
         # aggregator's own dict, so `main.py view` and any other consumer
         # never re-derive a number the report already computed.
         summary_doc = {
             "base_seed": base_seed,
-            "num_runs": args.runs,
+            "num_runs": realized_runs,
+            "requested_runs": requested_runs,
             "days": config["days"],
             "start_money": config["start_money"],
             "warnings": warning_list,
+            "inference_version": INFERENCE_VERSION,
+            "estimand_registry_version": estimands.ESTIMAND_REGISTRY_VERSION,
+            "confidence": args.confidence,
+            "sampling_plan": plan.describe(),
+            "stop_reason": stop_reason,
+            # Estimand metadata travels with the numbers: a reader of
+            # summary.json can see the population and missing-value policy
+            # behind every interval without opening the source.
+            "estimands": estimands.metadata_document(estimands.DEFAULT_ESTIMANDS),
             "strategies": summary,
         }
         staged_summary_json_path = os.path.join(staging_dir, "summary.json")
-        with open(staged_summary_json_path, "w") as f:
-            json.dump(summary_doc, f, indent=2)
+        _write_json(staged_summary_json_path, summary_doc)
+
+        convergence_doc = (
+            driver.convergence_document()
+            if adaptive
+            else fixed_convergence_document(
+                aggregator,
+                args.confidence,
+                ["expected_final_money", "bankruptcy_probability", "expected_profit_per_day"],
+                realized_runs,
+                plan.describe(),
+            )
+        )
+        staged_convergence_path = os.path.join(staging_dir, "convergence.json")
+        _write_json(staged_convergence_path, convergence_doc)
+
+        # Exact distribution analysis reads the staged CSV, not the streaming
+        # reservoirs -- the two-tier storage policy in metrics/distributions.py.
+        staged_distributions_path = os.path.join(staging_dir, "distributions.json")
+        staged_comparisons_path = os.path.join(staging_dir, "comparisons.json")
+        distributions_doc = _skipped_document("--no-distributions")
+        comparisons_doc = _skipped_document("--no-comparisons")
+        if args.distributions:
+            distributions_doc = distributions.analyze_csv(
+                staged_csv_path,
+                horizon_days=config["days"],
+                confidence=args.confidence,
+                replications=args.bootstrap_replications,
+                base_seed=analysis_seed,
+            )
+            distributions_doc["source_csv"] = "run_results.csv"
+        if args.comparisons:
+            observations = distributions.load_observations(staged_csv_path)
+            comparisons_doc = comparisons.compare_all_pairs(
+                observations,
+                pairing=(
+                    comparisons.PAIRING_PAIRED if plan.paired else comparisons.PAIRING_INDEPENDENT
+                ),
+                confidence=args.confidence,
+                correction=args.correction,
+                replications=args.bootstrap_replications,
+                base_seed=analysis_seed,
+                baseline=args.baseline,
+            )
+        _write_json(staged_distributions_path, distributions_doc)
+        _write_json(staged_comparisons_path, comparisons_doc)
 
         staged_dashboard_path = os.path.join(staging_dir, "dashboard.html")
         if args.charts:
@@ -277,26 +819,59 @@ def cmd_batch(args):
                 staged_dashboard_path,
                 title="Farm Economy Batch Report",
                 subtitle=(
-                    f"{args.runs} runs x {len(agents)} strategies, "
+                    f"{realized_runs} runs x {len(agents)} strategies, "
                     f"{config['days']} days, base seed {base_seed}"
                 ),
+                convergence_path=staged_convergence_path,
+                distributions_path=staged_distributions_path,
             )
         else:
             write_no_charts_placeholder(staged_dashboard_path)
 
         report_text = generate_markdown_report(
             config,
-            args.runs,
+            realized_runs,
             summary,
             warning_list,
             crop_names,
             agent_descriptions,
             economics_audit,
             base_seed=base_seed,
+            confidence=args.confidence,
+            sampling_plan=plan.describe(),
+            stop_reason=stop_reason,
+            convergence=convergence_doc,
+            comparisons_doc=None if comparisons_doc.get("skipped") else comparisons_doc,
         )
         staged_report_path = os.path.join(staging_dir, "summary_report.md")
         with open(staged_report_path, "w") as f:
             f.write(report_text)
+
+        metadata_doc = analysis_metadata.build(
+            base_seed=base_seed,
+            sampling_plan=plan.describe(),
+            requested_runs=requested_runs,
+            realized_runs=realized_runs,
+            strategies=[agent.name for agent in agents],
+            config=config,
+            confidence=args.confidence,
+            analysis_seed=analysis_seed,
+            bootstrap_replications=args.bootstrap_replications,
+            correction_method=args.correction if args.comparisons else None,
+            stopping=(
+                adaptive_config.describe() if adaptive else {"mode": "fixed", "runs": args.runs}
+            ),
+            stop_reason=stop_reason,
+            unmet_criteria=driver.unmet_criteria if adaptive else [],
+            started_at=started_at,
+            repo_dir=BASE_DIR,
+            artifacts=list(ARTIFACT_NAMES),
+            accumulator_state={
+                strategy: accumulator.snapshot()
+                for strategy, accumulator in aggregator.inference_accumulators().items()
+            },
+        )
+        _write_json(os.path.join(staging_dir, "analysis_metadata.json"), metadata_doc)
 
         run_dir = _publish_report_artifacts(staging_dir, REPORTS_DIR)
     finally:
@@ -304,21 +879,29 @@ def cmd_batch(args):
         # only removes it when the batch failed before getting that far.
         shutil.rmtree(staging_dir, ignore_errors=True)
 
-    csv_path = os.path.join(REPORTS_DIR, "run_results.csv")
-    config_snapshot_path = os.path.join(REPORTS_DIR, "config_snapshot.json")
-    report_path = os.path.join(REPORTS_DIR, "summary_report.md")
-    summary_json_path = os.path.join(REPORTS_DIR, "summary.json")
-    dashboard_path = os.path.join(REPORTS_DIR, "dashboard.html")
-
-    print(f"Ran {args.runs} simulations x {len(agents)} strategies = {total_runs} total runs.")
+    print(
+        f"Ran {realized_runs} simulations x {len(agents)} strategies = "
+        f"{realized_runs * len(agents)} total runs."
+    )
+    if adaptive:
+        stability = summarize_stability(convergence_doc)
+        print(
+            f"Sampling:  adaptive ({plan.plan_id}), stopped at "
+            f"{realized_runs}/{adaptive_config.max_runs} runs per strategy -- {stop_reason}"
+        )
+        print(
+            f"Looks:     {stability['checkpoints']} checkpoint(s) of "
+            f"{len(adaptive_config.checkpoint_schedule())} declared"
+        )
+        for entry in driver.unmet_criteria:
+            print(f"  unmet:   {entry}")
+    else:
+        print(f"Sampling:  fixed {args.runs} runs per strategy ({plan.plan_id})")
     print(
         f"Time:      {format_duration(progress.elapsed)} elapsed ({format_rate(progress.rate)} sim/s)"
     )
-    print(f"CSV:       {csv_path}")
-    print(f"Config:    {config_snapshot_path}")
-    print(f"Report:    {report_path}")
-    print(f"Summary:   {summary_json_path}  (python3 main.py view)")
-    print(f"Dashboard: {dashboard_path}" + ("" if args.charts else "  (--no-charts: placeholder)"))
+    for name in ARTIFACT_NAMES:
+        print(f"  {name:<22} {os.path.join(REPORTS_DIR, name)}")
     print(f"Run:       {run_dir}")
     print()
     print(report_text)
@@ -379,9 +962,24 @@ def cmd_view(args):
         f"{doc['num_runs']} runs x {len(doc['strategies'])} strategies, "
         f"{doc['days']} days, base seed {doc['base_seed']}"
     )
+    plan = doc.get("sampling_plan") or {}
+    if plan:
+        stop = doc.get("stop_reason", "fixed_sample")
+        print(f"sampling plan: {plan.get('plan')} | stop reason: {stop}")
     print()
     print(view.render_warnings(doc["warnings"]))
     print()
+
+    if args.intervals:
+        print(
+            view.render_intervals(
+                doc["strategies"], args.estimand.split(",") if args.estimand else None
+            )
+        )
+        print()
+    if args.convergence:
+        print(view.render_convergence(view.load_artifact(run_dir, "convergence.json")))
+        print()
     print(
         view.render_table(
             doc["strategies"],
@@ -400,6 +998,14 @@ ARTIFACT_NAMES = (
     "summary_report.md",
     "summary.json",
     "dashboard.html",
+    # Written on every batch, adaptive or not, so the published set is always
+    # the same shape: a fixed-sample batch's convergence document is a
+    # single terminal checkpoint, and a skipped analysis writes a document
+    # that says it was skipped rather than leaving a dangling symlink.
+    "convergence.json",
+    "distributions.json",
+    "comparisons.json",
+    "analysis_metadata.json",
 )
 STAGING_PREFIX = ".batch-"
 # Age past which a leftover staging directory is assumed to be from an
@@ -640,7 +1246,7 @@ def build_parser():
         dest="command",
         required=True,
         title="commands",
-        metavar="{single,replay,batch,view}",
+        metavar="{single,replay,batch,view,analyze,uncertainty}",
     )
 
     single = subparsers.add_parser(
@@ -847,6 +1453,202 @@ def build_parser():
             "dependency-free batch."
         ),
     )
+    statistics_group = batch.add_argument_group(
+        "statistical analysis",
+        "Formal inference around the same simulated runs. Nothing here changes "
+        "what is simulated: analysis never touches the simulation RNG, and a "
+        "fixed --runs batch keeps its legacy seed schedule byte for byte.",
+    )
+    statistics_group.add_argument(
+        "--confidence",
+        type=_probability,
+        default=DEFAULT_CONFIDENCE,
+        metavar="P",
+        help=(
+            "Confidence level for every interval in the report (default: 0.95). "
+            "Means use a Student-t interval, proportions a Wilson score interval, "
+            "quantiles a deterministic percentile bootstrap."
+        ),
+    )
+    statistics_group.add_argument(
+        "--sampling-plan",
+        choices=("legacy", "independent", "paired"),
+        default=None,
+        help=(
+            "Seed schedule (default: legacy for fixed --runs, independent for "
+            "adaptive). legacy = the frozen historical stream, unchanged. "
+            "independent = addressed per (strategy, replicate), so blocks extend "
+            "and adding a strategy remaps nobody. paired = shared-initial-seed-v1, "
+            "every strategy gets the same run seed per replicate (weak common "
+            "random numbers; measured correlation is reported, not assumed)."
+        ),
+    )
+    statistics_group.add_argument(
+        "--analysis-seed",
+        type=int,
+        default=None,
+        metavar="INT",
+        help=(
+            "Root seed for bootstrap resampling (default: the batch base seed). "
+            "Separate from the simulation stream, so re-running an analysis can "
+            "never perturb a recorded run."
+        ),
+    )
+    statistics_group.add_argument(
+        "--bootstrap-replications",
+        type=_positive_int,
+        default=DEFAULT_BOOTSTRAP_REPLICATIONS,
+        metavar="N",
+        help=f"Bootstrap replications for quantile and paired intervals (default: {DEFAULT_BOOTSTRAP_REPLICATIONS}).",
+    )
+    statistics_group.add_argument(
+        "--correction",
+        choices=comparisons.CORRECTION_METHODS,
+        default="holm",
+        help=(
+            "Multiple-comparison correction for the all-pairs table (default: holm). "
+            "bonferroni widens the intervals themselves for simultaneous coverage; "
+            "holm adjusts p-values at the same family-wise error rate; "
+            "benjamini_hochberg controls the false discovery rate and is exploratory only."
+        ),
+    )
+    statistics_group.add_argument(
+        "--baseline",
+        default=None,
+        metavar="STRATEGY",
+        help=(
+            "Compare every strategy against this one instead of all 55 pairs -- "
+            "far less multiplicity to pay for when a baseline is what you actually "
+            "want to know about."
+        ),
+    )
+    statistics_group.add_argument(
+        "--distributions",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Write distributions.json: exact quantiles, ECDFs, histograms, tail "
+            "probabilities and shape diagnostics from this batch's raw CSV "
+            "(default: on). --no-distributions skips the bootstrap work."
+        ),
+    )
+    statistics_group.add_argument(
+        "--comparisons",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Write comparisons.json: strategy-vs-strategy differences (default: on).",
+    )
+
+    adaptive_group = batch.add_argument_group(
+        "adaptive sampling",
+        "Run until a declared precision target is met. Stopping is evaluated only "
+        "at predeclared checkpoints, each spending its own slice of the error "
+        "budget, so an early stop keeps its stated coverage.",
+    )
+    adaptive_group.add_argument(
+        "--min-runs",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help="Minimum runs per strategy before any stopping check (default: min(500, --runs)).",
+    )
+    adaptive_group.add_argument(
+        "--max-runs",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help=(
+            "Hard ceiling on runs per strategy. Reaching it publishes the result "
+            "with the precision target recorded as unmet rather than sampling on."
+        ),
+    )
+    adaptive_group.add_argument(
+        "--checkpoint-runs",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help="Runs per strategy between checkpoints (default: an eighth of the range).",
+    )
+    adaptive_group.add_argument(
+        "--stop-estimand",
+        action="append",
+        default=None,
+        metavar="ID",
+        help=(
+            "Estimand a precision target applies to; repeatable "
+            f"(default: expected_final_money). Known: {', '.join(estimands.adaptive_estimands())}."
+        ),
+    )
+    adaptive_group.add_argument(
+        "--target-half-width",
+        type=_nonnegative_float,
+        default=None,
+        metavar="X",
+        help="Stop once the interval half-width is at most X, in the estimand's own unit.",
+    )
+    adaptive_group.add_argument(
+        "--target-relative-half-width",
+        type=_nonnegative_float,
+        default=None,
+        metavar="F",
+        help=(
+            "Stop once the half-width is at most this fraction of the estimate. "
+            "Never satisfied while the estimate sits at ~0, where relative "
+            "precision is meaningless."
+        ),
+    )
+    adaptive_group.add_argument(
+        "--bankruptcy-half-width",
+        type=_nonnegative_float,
+        default=None,
+        metavar="X",
+        help="Precision target on the bankruptcy probability (Wilson interval half-width).",
+    )
+    adaptive_group.add_argument(
+        "--min-bankruptcies",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help=(
+            "Require at least N bankruptcies per strategy before stopping. If the "
+            "maximum is reached without them, the batch publishes with stop reason "
+            "rare_event_minimum_unmet."
+        ),
+    )
+    adaptive_group.add_argument(
+        "--min-survivals",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help="Require at least N surviving runs per strategy before stopping.",
+    )
+    adaptive_group.add_argument(
+        "--stopping-mode",
+        choices=("all", "any"),
+        default="all",
+        help="Whether every precision target must be met (default) or just one.",
+    )
+    adaptive_group.add_argument(
+        "--alpha-spending",
+        choices=("obrien_fleming", "pocock", "none"),
+        default="obrien_fleming",
+        help=(
+            "How the error budget is spread over checkpoints (default: "
+            "obrien_fleming -- spends almost nothing early, so an early stop has "
+            "to clear a high bar). 'none' disables sequential correction and is "
+            "only honest for a single look."
+        ),
+    )
+    adaptive_group.add_argument(
+        "--track-quantiles",
+        action="store_true",
+        help=(
+            "Also record an exact median at every checkpoint. Keeps every run's "
+            "final money in memory (O(runs) rather than O(1)), so it is off by "
+            "default."
+        ),
+    )
+
     batch.set_defaults(func=cmd_batch)
 
     view_parser = subparsers.add_parser(
@@ -938,7 +1740,294 @@ def build_parser():
         action="store_true",
         help="Also open this run's dashboard.html in the default browser.",
     )
+    view_parser.add_argument(
+        "--intervals",
+        action="store_true",
+        help=(
+            "Also print each strategy's confidence intervals, with the effective "
+            "sample count and interval method behind every estimate."
+        ),
+    )
+    view_parser.add_argument(
+        "--convergence",
+        action="store_true",
+        help="Also print the checkpoint history and why sampling stopped.",
+    )
+    view_parser.add_argument(
+        "--estimand",
+        default=None,
+        metavar="IDS",
+        help=(
+            "Comma-separated estimand ids to show with --intervals "
+            f"(default: all recorded). Known: {', '.join(estimands.REGISTRY)}."
+        ),
+    )
     view_parser.set_defaults(func=cmd_view)
+
+    analyze = subparsers.add_parser(
+        "analyze",
+        help="Exact distribution analysis and strategy comparisons for a batch.",
+        description=(
+            "Formal analysis over a batch's *raw* per-run observations.\n\n"
+            "Quantiles, ECDFs, tails and shape diagnostics are computed from\n"
+            "run_results.csv, not from the bounded median reservoir the streaming\n"
+            "aggregator keeps -- so they are exact, and they are labelled with the\n"
+            "empirical quantile convention that produced them.\n\n"
+            "Bootstrap intervals are deterministic: the resampling stream is derived\n"
+            "from the batch's base seed (or --analysis-seed) and the estimand id, and\n"
+            "is entirely separate from the simulation RNG, so analysis can never\n"
+            "perturb a recorded run.\n\n"
+            "--csv accepts any batch CSV with the same columns, including one written\n"
+            "by `farm-c batch --csv`: the C port stays a raw-data producer and its\n"
+            "output goes through this same inference layer."
+        ),
+        epilog=(
+            "examples:\n"
+            "  # The latest published batch\n"
+            "  python3 main.py analyze\n\n"
+            "  # A specific published run, compared against one baseline strategy\n"
+            "  python3 main.py analyze --run latest-1 --baseline profit_optimizer\n\n"
+            "  # A paired experiment (batch run with --sampling-plan paired)\n"
+            "  python3 main.py analyze --compare paired\n\n"
+            "  # A farm-c batch, through the same inference code\n"
+            "  python3 main.py analyze --csv farm-c/reports/run_results.csv\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    analyze.add_argument(
+        "--run",
+        default=None,
+        metavar="REF",
+        help="Published run to analyze: 'latest' (default), 'latest-N', or a run id.",
+    )
+    analyze.add_argument(
+        "--csv",
+        default=None,
+        metavar="PATH",
+        help="Analyze this CSV instead of a published run (accepts farm-c output).",
+    )
+    analyze.add_argument(
+        "--confidence",
+        type=_probability,
+        default=DEFAULT_CONFIDENCE,
+        metavar="P",
+        help="Confidence level for every interval (default: 0.95).",
+    )
+    analyze.add_argument(
+        "--bootstrap-replications",
+        type=_positive_int,
+        default=DEFAULT_BOOTSTRAP_REPLICATIONS,
+        metavar="N",
+        help=f"Bootstrap replications (default: {DEFAULT_BOOTSTRAP_REPLICATIONS}).",
+    )
+    analyze.add_argument(
+        "--analysis-seed",
+        type=int,
+        default=None,
+        metavar="INT",
+        help="Bootstrap seed root (default: the batch's own base seed).",
+    )
+    analyze.add_argument(
+        "--quantiles",
+        default=None,
+        metavar="P,P,...",
+        help="Quantile probabilities to report (default: 0.05,0.25,0.5,0.75,0.95).",
+    )
+    analyze.add_argument(
+        "--tail",
+        default=None,
+        metavar="X,X,...",
+        help="Report P(final money < X) for each threshold (default: 0).",
+    )
+    analyze.add_argument(
+        "--cohort",
+        choices=("all_runs", "survivors", "bankrupt", "bankruptcy_day"),
+        default="all_runs",
+        help="Which cohort the printed table describes (default: all_runs).",
+    )
+    analyze.add_argument(
+        "--compare",
+        choices=("independent", "paired", "none"),
+        default="independent",
+        help=(
+            "Comparison mode (default: independent). 'paired' joins runs on "
+            "replicate_id and needs a batch run with --sampling-plan paired."
+        ),
+    )
+    analyze.add_argument(
+        "--estimand",
+        default=None,
+        metavar="IDS",
+        help="Comma-separated estimand ids to compare (default: money, profit/day, bankruptcy).",
+    )
+    analyze.add_argument(
+        "--correction",
+        choices=comparisons.CORRECTION_METHODS,
+        default="holm",
+        help="Multiple-comparison correction across each estimand's pair family.",
+    )
+    analyze.add_argument(
+        "--baseline",
+        default=None,
+        metavar="STRATEGY",
+        help="Compare every strategy against this one instead of all pairs.",
+    )
+    analyze.add_argument(
+        "--top",
+        type=_positive_int,
+        default=10,
+        metavar="N",
+        help="How many of the largest differences to print per estimand (default: 10).",
+    )
+    analyze.add_argument(
+        "--days",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help="Horizon to censor survival curves at (default: the batch's own).",
+    )
+    analyze.add_argument(
+        "--json",
+        default=None,
+        metavar="PATH",
+        help="Also write the full analysis document to this path.",
+    )
+    analyze.set_defaults(func=cmd_analyze)
+
+    uncertainty_parser = subparsers.add_parser(
+        "uncertainty",
+        help="Sample uncertain config parameters and measure what the outcome depends on.",
+        description=(
+            "Epistemic parameter uncertainty: re-run the economy under sampled\n"
+            "configurations and report how much of the outcome is 'we do not know\n"
+            "the parameters' versus 'the simulation is stochastic'.\n\n"
+            "The uncertainty specification is a separate document (schema\n"
+            "farm-uncertainty-v1) and never config/*.json -- those stay the runtime\n"
+            "contract that both this simulator and farm-c read. Every sampled\n"
+            "configuration is deep-copied and passed through the same validators\n"
+            "load_config() uses; rejects are counted and published rather than\n"
+            "clamped into range.\n\n"
+            "Cost is the thing to watch: a design's configuration count times\n"
+            "--replicates times the strategy count is how many simulations run. The\n"
+            "count is printed before any of them start."
+        ),
+        epilog=(
+            "methods (cheapest first):\n"
+            "  oat        low/base/high per parameter -- 2k+1 configs, no interactions\n"
+            "  scenarios  named corners from a JSON file\n"
+            "  monte-carlo  plain sampling; the ONLY design that honours correlation groups\n"
+            "  lhs        Latin hypercube -- stratified coverage at --samples configs\n"
+            "  morris     screening -- --trajectories * (k+1) configs, ranks by mu*\n"
+            "  sobol      variance decomposition -- --samples * (k+2) configs\n\n"
+            "examples:\n"
+            "  python3 main.py uncertainty --spec experiments/specs/example-uncertainty.json \\\n"
+            "      --method oat --replicates 50 --strategy profit_optimizer\n\n"
+            "  python3 main.py uncertainty --spec experiments/specs/example-uncertainty.json \\\n"
+            "      --method morris --trajectories 8 --replicates 25\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    uncertainty_parser.add_argument(
+        "--spec", required=True, metavar="PATH", help="farm-uncertainty-v1 specification file."
+    )
+    uncertainty_parser.add_argument(
+        "--method",
+        choices=("oat", "scenarios", "monte-carlo", "lhs", "morris", "sobol"),
+        default="oat",
+        help="Sampling/sensitivity design (default: oat).",
+    )
+    uncertainty_parser.add_argument(
+        "--samples",
+        type=_positive_int,
+        default=16,
+        metavar="N",
+        help="Configuration samples for monte-carlo/lhs, or the Sobol base sample count.",
+    )
+    uncertainty_parser.add_argument(
+        "--trajectories",
+        type=_positive_int,
+        default=8,
+        metavar="R",
+        help="Morris trajectories (default: 8).",
+    )
+    uncertainty_parser.add_argument(
+        "--levels",
+        type=_positive_int,
+        default=4,
+        metavar="P",
+        help="Morris grid levels, must be even (default: 4).",
+    )
+    uncertainty_parser.add_argument(
+        "--low",
+        type=_probability,
+        default=0.05,
+        metavar="Q",
+        help="Quantile used as the 'low' level for --method oat (default: 0.05).",
+    )
+    uncertainty_parser.add_argument(
+        "--high",
+        type=_probability,
+        default=0.95,
+        metavar="Q",
+        help="Quantile used as the 'high' level for --method oat (default: 0.95).",
+    )
+    uncertainty_parser.add_argument(
+        "--scenarios",
+        default=None,
+        metavar="PATH",
+        help='JSON object of named corners, e.g. {"pessimistic": {"greenleaf_base_price": 0.05}}.',
+    )
+    uncertainty_parser.add_argument(
+        "--replicates",
+        type=_positive_int,
+        default=25,
+        metavar="N",
+        help=(
+            "Aleatory replicates per configuration sample per strategy (default: 25). "
+            "This is the within-configuration sample size the variance split uses."
+        ),
+    )
+    uncertainty_parser.add_argument(
+        "--strategy",
+        default=None,
+        metavar="NAMES",
+        help="Comma-separated strategies to run (default: all). Fewer strategies, fewer runs.",
+    )
+    uncertainty_parser.add_argument(
+        "--report-strategy",
+        default=None,
+        metavar="NAME",
+        help="Strategy the printed sensitivity table describes (default: the first one run).",
+    )
+    uncertainty_parser.add_argument(
+        "--estimand",
+        default=None,
+        metavar="IDS",
+        help="Comma-separated response estimands (default: expected_final_money,bankruptcy_probability).",
+    )
+    uncertainty_parser.add_argument(
+        "--seed", type=int, default=None, metavar="INT", help="Study seed (omit for a fresh one)."
+    )
+    uncertainty_parser.add_argument(
+        "--confidence", type=_probability, default=DEFAULT_CONFIDENCE, metavar="P"
+    )
+    uncertainty_parser.add_argument(
+        "--days",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help="Override simulated days per run (shorter runs make a big design affordable).",
+    )
+    uncertainty_parser.add_argument(
+        "--workers", type=_positive_int, default=None, metavar="N", help="Worker processes."
+    )
+    uncertainty_parser.add_argument(
+        "--out",
+        default=None,
+        metavar="DIR",
+        help="Output directory (default: reports/uncertainty/<timestamp>-<design>/).",
+    )
+    uncertainty_parser.set_defaults(func=cmd_uncertainty)
 
     return parser
 
@@ -954,6 +2043,13 @@ def _nonnegative_float(value):
     parsed = float(value)
     if not math.isfinite(parsed) or parsed < 0:
         raise argparse.ArgumentTypeError("must be nonnegative")
+    return parsed
+
+
+def _probability(value):
+    parsed = float(value)
+    if not math.isfinite(parsed) or not 0.0 < parsed < 1.0:
+        raise argparse.ArgumentTypeError("must be strictly between 0 and 1")
     return parsed
 
 

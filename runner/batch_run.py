@@ -3,6 +3,15 @@
 A single base_seed drives a dedicated RNG that mints one per-run seed for
 each simulation, so a whole batch is itself reproducible from one seed
 while every individual run still has its own recorded seed.
+
+Which seeds those are is decided by a named, versioned schedule in
+`runner/sampling_plan.py`. The default is `legacy-mt19937-v1`, which is the
+schedule this module has always used, minted in the same order and producing
+the same values -- passing no `sampling_plan` is therefore exactly the old
+behaviour. Alternative plans exist for block/adaptive sampling and for paired
+(common-random-number) experiments; each run records the `replicate_id` its
+plan assigned it, which is what lets a paired comparison line two strategies
+up run-for-run.
 Verbose per-run history is disabled here by default for batch performance.
 
 Runs are executed across a process pool by default: each (agent, run_seed)
@@ -39,6 +48,7 @@ import random
 from concurrent.futures import ProcessPoolExecutor
 
 from metrics.run_results import build_run_result
+from runner.sampling_plan import LegacyMT19937V1
 from runner.single_run import run_single
 from simulation.configuration import validate_simulation_config
 
@@ -57,7 +67,17 @@ def _init_worker(config, crops, upgrades, watering_settings, fertilizer_config, 
     _worker_config = (config, crops, upgrades, watering_settings, fertilizer_config, world)
 
 
-def _execute(agent, run_seed, config, crops, upgrades, watering_settings, fertilizer_config, world):
+def _execute(
+    agent,
+    run_seed,
+    config,
+    crops,
+    upgrades,
+    watering_settings,
+    fertilizer_config,
+    world,
+    replicate_id=None,
+):
     # Every run gets its own agent instance, on both the sequential and the
     # pooled path. Relying on the process boundary for this was not sound:
     # ProcessPoolExecutor.map pickles a whole *chunk* as one message, so
@@ -78,7 +98,15 @@ def _execute(agent, run_seed, config, crops, upgrades, watering_settings, fertil
             record_history=False,
             world=world,
         )
-        return build_run_result(player, agent.name, used_seed, player.day, crops, upgrades)
+        return build_run_result(
+            player,
+            agent.name,
+            used_seed,
+            player.day,
+            crops,
+            upgrades,
+            replicate_id=replicate_id,
+        )
     except Exception as exc:
         raise RuntimeError(
             f"Batch run failed: strategy={agent.name}, seed={run_seed}: {exc}"
@@ -86,10 +114,18 @@ def _execute(agent, run_seed, config, crops, upgrades, watering_settings, fertil
 
 
 def _run_in_worker(job):
-    agent, run_seed = job
+    agent, run_seed, replicate_id = job
     config, crops, upgrades, watering_settings, fertilizer_config, world = _worker_config
     return _execute(
-        agent, run_seed, config, crops, upgrades, watering_settings, fertilizer_config, world
+        agent,
+        run_seed,
+        config,
+        crops,
+        upgrades,
+        watering_settings,
+        fertilizer_config,
+        world,
+        replicate_id=replicate_id,
     )
 
 
@@ -105,6 +141,8 @@ def run_batch(
     world=None,
     workers=None,
     window_size=None,
+    sampling_plan=None,
+    start_replicate: int = 0,
 ):
     _validate_batch_inputs(config, num_runs, workers)
     return _iter_batch(
@@ -119,6 +157,8 @@ def run_batch(
         world,
         workers,
         window_size,
+        sampling_plan,
+        start_replicate,
     )
 
 
@@ -144,18 +184,24 @@ def _iter_batch(
     world=None,
     workers=None,
     window_size=None,
+    sampling_plan=None,
+    start_replicate: int = 0,
 ):
     base_seed = resolve_base_seed(base_seed)
-    seed_rng = random.Random(base_seed)
+    if sampling_plan is None:
+        sampling_plan = LegacyMT19937V1(base_seed, num_runs)
     total_jobs = len(agents) * num_runs
     if total_jobs <= 0:
         return
 
-    # Lazy -- a whole batch's (agent, seed) pairs are never held in memory at
-    # once. Seeds are still minted single-threaded and in the same
-    # agent-major order as before, so a given base_seed keeps producing the
-    # same per-run seeds regardless of worker count or window size.
-    jobs = ((agent, seed_rng.randrange(2**32)) for agent in agents for _ in range(num_runs))
+    # Lazy -- a whole batch's jobs are never held in memory at once. Seeds are
+    # still minted single-threaded, in the plan's own order, before any work is
+    # dispatched, so a given base_seed keeps producing the same per-run seeds
+    # regardless of worker count or window size.
+    jobs = (
+        (job.agent, job.seed, job.replicate_id)
+        for job in sampling_plan.jobs(agents, start_replicate, num_runs)
+    )
 
     if workers is None:
         workers = os.cpu_count() or 1
@@ -164,7 +210,7 @@ def _iter_batch(
     if workers <= 1:
         # Both paths isolate the agent inside _execute, so this runs every
         # job against its own copy exactly as a pool worker does.
-        for agent, run_seed in jobs:
+        for agent, run_seed, replicate_id in jobs:
             yield _execute(
                 agent,
                 run_seed,
@@ -174,6 +220,7 @@ def _iter_batch(
                 watering_settings,
                 fertilizer_config,
                 world,
+                replicate_id=replicate_id,
             )
         return
 

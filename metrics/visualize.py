@@ -498,7 +498,197 @@ def chart_watering_vs_crop_loss(plt, grouped, out_dir, dpi):
     return _save(fig, out_dir, "watering_vs_crop_loss.png", dpi)
 
 
-def render_all(csv_path: str, out_dir: str, dpi: int, show: bool) -> list[str]:
+# ---------------------------------------------------------------------------
+# Convergence and distribution charts
+#
+# These read canonical documents (`convergence.json`, `distributions.json`)
+# rather than recomputing a statistic from the CSV. That is a hard rule, not a
+# convenience: a chart that re-derived its own mean or its own interval could
+# disagree with the report beside it, and the reader would have no way to tell
+# which one to believe.
+# ---------------------------------------------------------------------------
+
+
+def _load_document(path):
+    if not path or not os.path.exists(path):
+        return None
+    with open(path) as f:
+        document = json.load(f)
+    return None if document.get("skipped") else document
+
+
+def _checkpoint_series(convergence: dict, estimand_id: str, key: str):
+    """{strategy: ([runs], [values])} for one estimand and one recorded key."""
+    series = {}
+    for checkpoint in convergence.get("checkpoints", []):
+        runs = checkpoint.get("runs_per_strategy")
+        for strategy, entry in checkpoint.get("strategies", {}).items():
+            estimate = entry.get("estimates", {}).get(estimand_id)
+            if not estimate or estimate.get(key) is None:
+                continue
+            xs, ys = series.setdefault(strategy, ([], []))
+            xs.append(runs)
+            ys.append(estimate[key])
+    return series
+
+
+def _line_chart(plt, series, title, subtitle, ylabel, out_dir, dpi, name, bands=None):
+    if not series:
+        return None
+    fig, ax = plt.subplots(figsize=(9, 5), facecolor=SURFACE)
+    _style_axes(ax, horizontal_grid=False)
+    for index, (strategy, (xs, ys)) in enumerate(sorted(series.items())):
+        color = CATEGORICAL[index % len(CATEGORICAL)]
+        ax.plot(xs, ys, marker="o", markersize=3, linewidth=1.6, color=color, label=strategy)
+        if bands and strategy in bands:
+            lower, upper = bands[strategy]
+            ax.fill_between(xs, lower, upper, color=color, alpha=0.12, linewidth=0)
+    ax.set_xlabel("runs per strategy")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title, color=INK_PRIMARY, fontsize=13, loc="left", pad=18)
+    ax.text(0, 1.02, subtitle, transform=ax.transAxes, color=INK_SECONDARY, fontsize=9, ha="left")
+    if len(series) <= 12:
+        ax.legend(frameon=False, fontsize=8, ncol=2, labelcolor=INK_SECONDARY)
+    fig.tight_layout()
+    return _save(fig, out_dir, name, dpi)
+
+
+def chart_convergence_estimate(plt, convergence, out_dir, dpi):
+    return _line_chart(
+        plt,
+        _checkpoint_series(convergence, "expected_final_money", "estimate"),
+        "Expected final money vs runs",
+        "Each point is a declared checkpoint; a flat tail means the estimate has settled.",
+        "expected final money",
+        out_dir,
+        dpi,
+        "convergence_estimate.png",
+    )
+
+
+def chart_convergence_half_width(plt, convergence, out_dir, dpi):
+    return _line_chart(
+        plt,
+        _checkpoint_series(convergence, "expected_final_money", "half_width"),
+        "Interval half-width vs runs",
+        "Precision of the estimate (not the spread of outcomes); shrinks with sqrt(n).",
+        "half-width",
+        out_dir,
+        dpi,
+        "convergence_half_width.png",
+    )
+
+
+def chart_convergence_bankruptcy(plt, convergence, out_dir, dpi):
+    series = _checkpoint_series(convergence, "bankruptcy_probability", "estimate")
+    lowers = _checkpoint_series(convergence, "bankruptcy_probability", "lower")
+    uppers = _checkpoint_series(convergence, "bankruptcy_probability", "upper")
+    bands = {
+        strategy: (lowers[strategy][1], uppers[strategy][1])
+        for strategy in series
+        if strategy in lowers and strategy in uppers
+    }
+    return _line_chart(
+        plt,
+        series,
+        "Bankruptcy probability vs runs",
+        "Shaded band is the Wilson score interval at each checkpoint's own alpha slice.",
+        "P(bankrupt)",
+        out_dir,
+        dpi,
+        "convergence_bankruptcy.png",
+        bands=bands,
+    )
+
+
+def chart_convergence_quantile(plt, convergence, out_dir, dpi):
+    series = {}
+    for checkpoint in convergence.get("checkpoints", []):
+        runs = checkpoint.get("runs_per_strategy")
+        for strategy, entry in checkpoint.get("strategies", {}).items():
+            quantile = entry.get("quantile")
+            if not quantile or quantile.get("value") is None:
+                continue
+            xs, ys = series.setdefault(strategy, ([], []))
+            xs.append(runs)
+            ys.append(quantile["value"])
+    return _line_chart(
+        plt,
+        series,
+        "Exact median final money vs runs",
+        "Recorded only with --track-quantiles; exact order statistic, not a reservoir estimate.",
+        "median final money",
+        out_dir,
+        dpi,
+        "convergence_quantile.png",
+    )
+
+
+def chart_checkpoint_change(plt, convergence, out_dir, dpi):
+    return _line_chart(
+        plt,
+        _checkpoint_series(convergence, "expected_final_money", "change_from_previous"),
+        "Checkpoint-to-checkpoint change",
+        "Movement of the estimate between successive looks; converging to zero is the signal.",
+        "change in estimate",
+        out_dir,
+        dpi,
+        "convergence_change.png",
+    )
+
+
+def chart_final_money_ecdf(plt, distributions_doc, out_dir, dpi):
+    """ECDF of final money per strategy, over ALL runs.
+
+    The cohort is named in the subtitle because it matters: this curve
+    includes bankrupt runs, and a survivor-only ECDF of the same batch looks
+    materially better for exactly the strategies that fail most.
+    """
+    series = {}
+    for strategy, entry in distributions_doc.get("strategies", {}).items():
+        curve = entry.get("ecdf", {}).get("final_money_all_runs", {})
+        if curve.get("values"):
+            series[strategy] = (curve["values"], curve["probabilities"])
+    return _line_chart(
+        plt,
+        series,
+        "Final money ECDF",
+        "Cohort: all runs, bankrupt and surviving. Exact observations, not a reservoir sample.",
+        "F(final money)",
+        out_dir,
+        dpi,
+        "final_money_ecdf.png",
+    )
+
+
+def chart_time_to_bankruptcy(plt, distributions_doc, out_dir, dpi):
+    """Kaplan-Meier survival curve, censoring runs that finished solvent."""
+    series = {}
+    for strategy, entry in distributions_doc.get("strategies", {}).items():
+        curve = entry.get("time_to_bankruptcy", {})
+        if curve.get("times"):
+            series[strategy] = (curve["times"], curve["survival"])
+    chart = _line_chart(
+        plt,
+        series,
+        "Time to bankruptcy (Kaplan-Meier)",
+        "Runs still solvent at the horizon are censored, not counted as failures.",
+        "P(still solvent)",
+        out_dir,
+        dpi,
+        "time_to_bankruptcy.png",
+    )
+    return chart
+
+
+def render_all(
+    csv_path: str,
+    out_dir: str,
+    dpi: int,
+    show: bool,
+    convergence_path: str = None,
+    distributions_path: str = None,
+) -> list[str]:
     import matplotlib
 
     if not show:
@@ -519,6 +709,29 @@ def render_all(csv_path: str, out_dir: str, dpi: int, show: bool) -> list[str]:
         chart_contract_completion_rate(plt, grouped, out_dir, dpi),
         chart_watering_vs_crop_loss(plt, grouped, out_dir, dpi),
     ]
+
+    # Optional, and absent by design when the batch did not produce them --
+    # an older published run has no convergence.json, and the dashboard must
+    # still render the charts it does have rather than failing.
+    convergence = _load_document(convergence_path)
+    if convergence:
+        paths.extend(
+            [
+                chart_convergence_estimate(plt, convergence, out_dir, dpi),
+                chart_convergence_half_width(plt, convergence, out_dir, dpi),
+                chart_convergence_bankruptcy(plt, convergence, out_dir, dpi),
+                chart_convergence_quantile(plt, convergence, out_dir, dpi),
+                chart_checkpoint_change(plt, convergence, out_dir, dpi),
+            ]
+        )
+    distributions_doc = _load_document(distributions_path)
+    if distributions_doc:
+        paths.extend(
+            [
+                chart_final_money_ecdf(plt, distributions_doc, out_dir, dpi),
+                chart_time_to_bankruptcy(plt, distributions_doc, out_dir, dpi),
+            ]
+        )
     paths = [p for p in paths if p]
 
     if show:
@@ -541,13 +754,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--out", default=DEFAULT_OUT_DIR, help="Output directory for PNGs (default: reports/charts)"
     )
     parser.add_argument("--dpi", type=int, default=150)
+    parser.add_argument(
+        "--convergence",
+        default=None,
+        help="Path to convergence.json, to also render the checkpoint charts.",
+    )
+    parser.add_argument(
+        "--distributions",
+        default=None,
+        help="Path to distributions.json, to also render the ECDF and survival charts.",
+    )
     parser.add_argument("--show", action="store_true", help="Also display each chart in a window")
     return parser
 
 
 if __name__ == "__main__":
     args = build_parser().parse_args()
-    written = render_all(args.csv, args.out, args.dpi, args.show)
+    written = render_all(
+        args.csv, args.out, args.dpi, args.show, args.convergence, args.distributions
+    )
     print(f"Wrote {len(written)} chart(s) to {args.out}:")
     for p in written:
         print(f"  {p}")

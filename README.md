@@ -159,10 +159,18 @@ python3 main.py view --sort bankruptcy_rate --top 5
   `python3 main.py view` reads
 - `dashboard.html` -- every chart from `metrics.visualize`, bundled into one
   self-contained page (needs matplotlib; skipped with `--no-charts`)
+- `distributions.json` -- exact quantiles, histograms, ECDFs, tail
+  probabilities and survival curves computed from the CSV
+- `comparisons.json` -- every strategy pair, with difference intervals and
+  multiplicity-corrected p-values
+- `convergence.json` -- the checkpoint history behind the estimates (one
+  terminal look for a fixed batch, the full schedule for an adaptive one)
+- `analysis_metadata.json` -- seeds, sampling plan, interval methods,
+  environment and git provenance for the run
 
-Each of those five is a symlink through `reports/latest` into an immutable
+Each of those nine is a symlink through `reports/latest` into an immutable
 `reports/runs/<id>/` directory holding one batch's output. Publishing a new
-batch swaps that single `latest` pointer, so the five artifacts always come
+batch swaps that single `latest` pointer, so the artifacts always come
 from the same run, and the last few runs stay on disk for comparison.
 
 `python3 main.py view` reads that comparison table straight from the
@@ -198,16 +206,104 @@ Optional `--days N` and `--start-money N` batch arguments override those two
 simulation settings for the diagnostic run only; the effective values are
 recorded in the config snapshot and report.
 
+## Statistical analysis
+
+A batch is a Monte Carlo experiment, so every number it reports is an
+estimate with sampling error. The analysis layer wraps the simulator
+without touching it: it adds confidence intervals, convergence
+diagnostics, exact distribution analysis and strategy comparisons, and it
+consumes no simulation RNG draws, so a `--seed` still reproduces exactly
+the runs it always did.
+
+```bash
+# Every batch now carries intervals; widen or narrow them
+python3 main.py batch --runs 1000 --confidence 0.99
+
+# Stop when the estimate is precise enough instead of at a fixed run count
+python3 main.py batch --min-runs 200 --max-runs 5000 --checkpoint-runs 200 \
+    --stop-estimand expected_final_money --target-relative-half-width 0.02
+
+# Compare strategies on shared random numbers (paired, lower-variance)
+python3 main.py batch --runs 1000 --sampling-plan paired --baseline profit_optimizer
+
+# Intervals and convergence in the terminal
+python3 main.py view --intervals
+python3 main.py view --convergence --estimand bankruptcy_probability
+
+# Re-analyze any published run, or any CSV -- including one from farm-c
+python3 main.py analyze --run latest
+python3 main.py analyze --csv farm-c/reports/run_results.csv
+
+# Propagate uncertainty in the config itself through the simulator
+python3 main.py uncertainty --spec experiments/specs/example-uncertainty.json \
+    --method sobol --samples 64 --replicates 20
+```
+
+**Estimands are declared, not implied.** `metrics/estimands.py` is the
+registry: each entry names its unit of analysis (one simulation run), its
+cohort (all runs, survivors only, bankrupt runs only), how it is extracted
+from a `RunResult`, and which interval method applies. `main.py view
+--intervals` and `summary.json` both read it, so a number means the same
+thing everywhere it appears.
+
+**Intervals are computed in exactly one place** (`metrics/inference.py`):
+Student-t for means, Wilson or Clopper-Pearson for proportions, and a
+deterministic percentile bootstrap for quantiles and for differences whose
+sampling distribution is not analytic. Its bootstrap seeds are derived with
+`blake2b` from the batch seed, never from `hash()`, so a bootstrap interval
+is reproducible across processes and Python invocations. Published numbers
+are quantized to 12 significant digits so the artifacts are byte-stable
+regardless of worker count -- the streaming variance accumulator is
+ULP-order-dependent, and that quantization is what keeps a 4-worker batch
+and a 1-worker batch from differing in the last digit of a standard
+deviation.
+
+**Sampling plans are versioned** (`runner/sampling_plan.py`). The default,
+`legacy-mt19937-v1`, is the historical seed schedule and is frozen -- it is
+what every recorded seed and the farm-c parity harness depend on.
+`independent-hashed-v1` addresses a seed by `(strategy, replicate)` instead
+of by position, which is what makes adaptive sampling extendable (a later
+block does not renumber an earlier one) and roster-invariant.
+`shared-initial-seed-v1` gives every strategy the same per-replicate seed,
+a weak form of common random numbers that supports paired comparison. The
+pairing is weak by construction -- agent decisions diverge and the two runs
+then consume the shared stream differently -- and measurably so: across all
+ten pairs against `profit_optimizer` at 400 replicates, the median measured
+correlation is 0.069 and the median variance reduction 0.5%. Only pairs
+whose agents behave similarly benefit (`progression_player` 20%,
+`no_upgrade_player` 17%). Numbers and method in
+`docs/design/2026-08-22-statistical-analysis-validation-status.md`.
+
+**Comparisons are corrected for multiplicity** (`metrics/comparisons.py`):
+Welch's t or Newcombe's hybrid-score interval for independent strategies, a
+paired t and paired bootstrap under a shared-seed plan, with Holm by
+default and Bonferroni or Benjamini-Hochberg available. A family is one
+estimand's set of pairs.
+
+**Config uncertainty is separate from config** (`experiments/`). A
+`farm-uncertainty-v1` spec declares distributions over specific config
+paths -- `crops[id=greenleaf].base_price`, `simulation_settings.start_money`
+-- outside `config/*.json`, so the shipped config stays a single concrete
+economy. Sampled configurations go through the real validator before they
+run. `experiments/specs/example-uncertainty.json` is a worked example; its
+distributions are **placeholders, not calibrated evidence** -- see
+`docs/design/2026-08-22-statistical-analysis-validation-status.md`.
+
 ## Project layout
 
 ```
-main.py                 CLI entry point (single / replay / batch / view)
+main.py                 CLI entry point (single / replay / batch / view /
+                        analyze / uncertainty)
 config/                 All tunable game data (crops, upgrades, markets, ...)
 simulation/             Pure rules + the deterministic daily engine
 agents/                 Scripted strategies used as balance-testing probes
-runner/                 Drives one run / a batch of runs
-metrics/                Aggregation, warnings, CSV + Markdown + JSON reporting,
-                        the `view` table/diff renderer, and the HTML dashboard
+runner/                 Drives one run / a batch of runs, the versioned seed
+                        sampling plans, and adaptive stopping
+metrics/                Aggregation, statistical inference, distributions,
+                        strategy comparisons, warnings, CSV + Markdown + JSON
+                        reporting, the `view` renderer, and the HTML dashboard
+experiments/            Epistemic parameter uncertainty and sensitivity designs
+                        (OAT / scenarios / LHS / Morris / Sobol)
 tests/                  pytest suite for the simulation and engine
 docs/design/            Design notes for the simulation architecture
 vectorized/             Separate, experimental Monte Carlo sampler (numpy/numba,
@@ -283,6 +379,15 @@ ruff format --check
 4. Re-run with the **same seed** to isolate the effect of the change from
    run-to-run noise, then check `python3 main.py view --diff latest-1 latest`
    to see exactly what moved before dropping `--seed` for the final report.
+5. Before calling a movement real, check it against the interval:
+   `python3 main.py view --intervals` says how much of the change the
+   sample size could have produced on its own. A shift smaller than the
+   half-width is not evidence of anything. `comparisons.json` answers the
+   sharper question directly: it tests each strategy pair's *difference*,
+   corrected for the number of pairs tested. `--sampling-plan paired` runs
+   that comparison on shared seeds, but measure before assuming it helps --
+   on this economy it narrows the difference interval only for pairs whose
+   agents make similar decisions (see the validation-status doc).
 
 ### Example output
 

@@ -1,6 +1,13 @@
 """Assembles the markdown summary report for a batch run. Written for a
 game designer, not just a programmer -- plain language, one section per
 strategy, warnings called out at the top.
+
+Statistical sections (design, intervals, comparisons, convergence) are
+rendered from documents built elsewhere -- `metrics/inference.py`,
+`metrics/comparisons.py`, `runner/adaptive.py` -- and this module never
+computes an interval or a p-value itself. It is a renderer: if a number
+appears here it appears identically in `summary.json`, and a reader can point
+at either.
 """
 
 
@@ -24,6 +31,11 @@ def generate_markdown_report(
     agent_descriptions: dict = None,
     economics_audit: dict = None,
     base_seed: int = None,
+    confidence: float = None,
+    sampling_plan: dict = None,
+    stop_reason: str = None,
+    convergence: dict = None,
+    comparisons_doc: dict = None,
 ) -> str:
     agent_descriptions = agent_descriptions or {}
     lines = []
@@ -90,6 +102,14 @@ def generate_markdown_report(
     else:
         lines.append("- No balance warnings triggered.")
     lines.append("")
+
+    if sampling_plan or confidence is not None:
+        lines.extend(_statistical_design_section(sampling_plan, confidence, stop_reason))
+    lines.extend(_intervals_section(summary, confidence))
+    if convergence and len(convergence.get("checkpoints", [])) > 1:
+        lines.extend(_convergence_section(convergence))
+    if comparisons_doc:
+        lines.extend(_comparisons_section(comparisons_doc))
 
     lines.append("## Results by Strategy")
     lines.append("")
@@ -191,3 +211,167 @@ def generate_markdown_report(
         lines.append("")
 
     return "\n".join(lines)
+
+
+def _fmt(value, ndigits: int = 2) -> str:
+    """Render a possibly-undefined number. `—` means "not observed", which is
+    deliberately not the same glyph as a zero."""
+    if value is None:
+        return "—"
+    if isinstance(value, float):
+        return f"{round(value, ndigits):,}"
+    return f"{value:,}" if isinstance(value, int) else str(value)
+
+
+def _statistical_design_section(sampling_plan, confidence, stop_reason) -> list:
+    plan = sampling_plan or {}
+    lines = ["## Statistical Design", ""]
+    lines.append(f"- Sampling plan: `{plan.get('plan', 'unknown')}`")
+    if plan.get("paired"):
+        lines.append(
+            "- Pairing: **weak** -- strategies share a run seed per replicate, but "
+            "differing decisions consume differing RNG draws, so environments diverge "
+            "within a run. Measured correlation and variance reduction are reported "
+            "per comparison rather than assumed."
+        )
+    if confidence is not None:
+        lines.append(f"- Confidence level: {confidence:.0%}")
+    lines.append(
+        "- Interval methods: Student-t for means, Wilson score for proportions, "
+        "deterministic percentile bootstrap for quantiles."
+    )
+    if stop_reason:
+        lines.append(f"- Stop reason: `{stop_reason}`")
+    lines.append(
+        "- Every interval below is an interval on the *estimate*, not the spread of "
+        "outcomes: the outcome standard deviation is reported separately."
+    )
+    lines.append("")
+    return lines
+
+
+def _intervals_section(summary: dict, confidence) -> list:
+    """Per-strategy intervals for the headline estimands.
+
+    Standard deviation and interval half-width sit in adjacent columns on
+    purpose: they answer different questions ("how varied are runs?" versus
+    "how well do we know the average?") and are the two numbers most often
+    conflated when a batch is read quickly.
+    """
+    rows = []
+    for strategy, stats in summary.items():
+        inference = stats.get("inference") or {}
+        for estimand_id in (
+            "expected_final_money",
+            "bankruptcy_probability",
+            "expected_profit_per_day",
+        ):
+            estimate = inference.get(estimand_id)
+            if not estimate:
+                continue
+            rows.append((strategy, estimand_id, estimate))
+    if not rows:
+        return []
+
+    level = f"{confidence:.0%}" if confidence is not None else "95%"
+    lines = ["## Confidence Intervals", ""]
+    lines.append(
+        f"{level} intervals over the runs each estimand is actually defined on "
+        "(`n` below), with the method that produced them."
+    )
+    lines.append("")
+    lines.append(
+        "| Strategy | Estimand | n | Estimate | Interval | Half-width | Outcome SD | Method |"
+    )
+    lines.append("| --- | --- | ---: | ---: | --- | ---: | ---: | --- |")
+    for strategy, estimand_id, estimate in rows:
+        interval = (
+            f"[{_fmt(estimate.get('lower'))}, {_fmt(estimate.get('upper'))}]"
+            if estimate.get("lower") is not None
+            else "undefined"
+        )
+        lines.append(
+            f"| {strategy} | {estimand_id} | {_fmt(estimate.get('n'))} | "
+            f"{_fmt(estimate.get('value'), 4)} | {interval} | "
+            f"{_fmt(estimate.get('half_width'), 4)} | {_fmt(estimate.get('stdev'), 4)} | "
+            f"`{estimate.get('method')}` |"
+        )
+    lines.append("")
+    return lines
+
+
+def _convergence_section(convergence: dict) -> list:
+    design = convergence.get("design", {})
+    checkpoints = convergence.get("checkpoints", [])
+    lines = ["## Convergence", ""]
+    lines.append(
+        f"- Declared checkpoints: {design.get('checkpoint_schedule')} "
+        f"(alpha spending: `{design.get('alpha_spending')}`)"
+    )
+    lines.append(f"- Checkpoints evaluated: {len(checkpoints)}")
+    lines.append(f"- Stop reason: `{convergence.get('stop_reason')}`")
+    if convergence.get("unmet_criteria"):
+        lines.append("- Criteria still unmet at the maximum:")
+        for entry in convergence["unmet_criteria"]:
+            lines.append(f"  - {entry}")
+    lines.append("")
+    last = checkpoints[-1]
+    lines.append("| Strategy | Runs | Estimate | Half-width | Change vs previous look |")
+    lines.append("| --- | ---: | ---: | ---: | ---: |")
+    for strategy, entry in sorted(last.get("strategies", {}).items()):
+        estimate = entry.get("estimates", {}).get("expected_final_money")
+        if not estimate:
+            continue
+        lines.append(
+            f"| {strategy} | {_fmt(entry.get('runs'))} | {_fmt(estimate.get('estimate'))} | "
+            f"{_fmt(estimate.get('half_width'), 4)} | "
+            f"{_fmt(estimate.get('change_from_previous'), 4)} |"
+        )
+    lines.append("")
+    return lines
+
+
+def _comparisons_section(comparisons_doc: dict, top: int = 10) -> list:
+    """The largest strategy differences, with multiplicity stated up front."""
+    lines = ["## Strategy Comparisons", ""]
+    pairing = comparisons_doc.get("pairing")
+    correction = comparisons_doc.get("correction")
+    lines.append(f"- Pairing: `{pairing}`")
+    lines.append(f"- Multiple-comparison correction: `{correction}`")
+    if comparisons_doc.get("baseline"):
+        lines.append(f"- Baseline: `{comparisons_doc['baseline']}`")
+    lines.append("")
+    for estimand_id, pairs in comparisons_doc.get("estimands", {}).items():
+        if not pairs:
+            continue
+        family_size = pairs[0].get("family_size")
+        lines.append(f"### {estimand_id}")
+        lines.append("")
+        lines.append(
+            f"{len(pairs)} comparison(s) in this family (family size {family_size}); "
+            "the correction above applies across them."
+        )
+        lines.append("")
+        lines.append("| A | B | Difference | Interval | P(A > B) | p (adjusted) |")
+        lines.append("| --- | --- | ---: | --- | ---: | ---: |")
+        ranked = sorted(pairs, key=lambda c: abs(c.get("difference") or 0.0), reverse=True)[:top]
+        for pair in ranked:
+            interval = (
+                f"[{_fmt(pair.get('lower'), 3)}, {_fmt(pair.get('upper'), 3)}]"
+                if pair.get("lower") is not None
+                else "undefined"
+            )
+            lines.append(
+                f"| {pair['strategy_a']} | {pair['strategy_b']} | "
+                f"{_fmt(pair.get('difference'), 3)} | {interval} | "
+                f"{_fmt(pair.get('win_probability'), 3)} | "
+                f"{_fmt(pair.get('adjusted_p_value'), 4)} |"
+            )
+        if len(pairs) > top:
+            lines.append("")
+            lines.append(
+                f"Showing the {top} largest differences of {len(pairs)}; "
+                "the full set is in `comparisons.json`."
+            )
+        lines.append("")
+    return lines
