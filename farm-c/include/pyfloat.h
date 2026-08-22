@@ -45,4 +45,26 @@ double py_neumaier_sum(const double *values, int count);
  * and non-negative in every caller, so that's all this needs to support. */
 double py_round_ndigits(double x, int ndigits);
 
+/* Bytes needed by py_float_hex, including the NUL: the longest output is a
+ * negative subnormal, "-0x0.0000000000001p-1022" (24 chars). */
+#define PY_FLOAT_HEX_BUFSIZE 32
+
+/* CPython's float.hex() (Objects/floatobject.c float_hex), written into
+ * `out` (at least PY_FLOAT_HEX_BUFSIZE bytes) and returned for convenient
+ * use as a printf argument.
+ *
+ * Built from the IEEE-754 bit pattern rather than libc's "%a" on purpose:
+ * C99 leaves the leading hex digit of "%a" unspecified (glibc prints 0.5 as
+ * "0x1p-1", other libcs may pick "0x8p-4"), and it also trims trailing
+ * mantissa zeros, while float.hex() always emits exactly 13 fractional hex
+ * digits with a leading 1 for normals and 0 for subnormals. Depending on
+ * "%a" would make the trajectory digest libc-dependent -- the precise thing
+ * the multi-platform CI matrix exists to rule out.
+ *
+ * Signed zero is preserved ("-0x0.0p+0" vs "0x0.0p+0"), which is the whole
+ * reason the digest hashes this text rather than comparing doubles with ==:
+ * the literal max/min forms in crop_growth.c exist to keep that distinction
+ * and nothing else would notice if they stopped. */
+const char *py_float_hex(double x, char *out);
+
 #endif /* FARM_PYFLOAT_H */

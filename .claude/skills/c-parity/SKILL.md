@@ -1,6 +1,6 @@
 ---
 name: c-parity
-description: Cross-language parity check for the farm-c port - runs the same minted seeds through farm-c and the Python simulator and diffs every run bit-for-bit. Use before/after touching anything under farm-c/src or farm-c/include, when asked whether the C port still matches Python, to verify seed minting, or to localize a known C-vs-Python divergence to its first simulated day.
+description: Cross-language parity check for the farm-c port - runs the same minted seeds through farm-c and the Python simulator and diffs every run bit-for-bit, and verifies farm-c's committed golden baseline (including per-day trajectory digests) against live Python. Use before/after touching anything under farm-c/src or farm-c/include, when asked whether the C port still matches Python, after re-capturing the C golden baseline, to verify seed minting, or to localize a known C-vs-Python divergence to its first simulated day.
 ---
 
 # c-parity
@@ -16,6 +16,14 @@ development. This skill is that check, automated and widened.
 It is the farm-c analogue of `replay-guard`, and it fills a gap that skill
 cannot reach: `replay-guard` pins `simulation/` against its own committed
 baseline, so it says nothing about whether the C reproduces it.
+
+farm-c now has a committed baseline of its own
+(`farm-c/tests/golden_baseline.json`, checked by `make test` with no Python
+involved). That baseline and this skill are two halves of one gate, and the
+half this skill owns is the one that stops the other from going circular: a
+baseline captured from an already-drifted C would be internally consistent
+forever after. `baseline` re-derives every recorded number — the chained
+per-day trajectory digest included — from the live Python modules.
 
 Like the other two skills here, this one only **runs and reports** — it never
 edits `farm-c/src`, `simulation/`, or `config/`. Deciding whether a diff is a
@@ -52,10 +60,49 @@ python3 .claude/skills/c-parity/scripts/c_parity.py seeds --runs 5
 
 # Localize a failing pair to its first divergent day
 python3 .claude/skills/c-parity/scripts/c_parity.py trace progression_player 127978094
+
+# Verify farm-c's committed golden baseline against Python (trajectory
+# digests included). Run this after any `make golden-capture`.
+python3 .claude/skills/c-parity/scripts/c_parity.py baseline
+
+# Print Python's exact hashed bytes for one day, to diff against
+# `./farm-c golden payload STRATEGY SEED --day N`
+python3 .claude/skills/c-parity/scripts/c_parity.py payload fast_seller 1 --day 17
 ```
 
-`check` exits non-zero on any mismatch and prints the offending fields with
-both sides in hex.
+`check` and `baseline` exit non-zero on any mismatch and print the offending
+fields with both sides in hex.
+
+## `check` vs `baseline`
+
+Both compare the C against Python; they differ in *what* and *how much*.
+
+| | `check` | `baseline` |
+|---|---|---|
+| Seeds | minted from `--seed`, any number of runs | the four fixed golden seeds |
+| C side | a live `farm-c batch`, read from its CSV | the committed `golden_baseline.json` |
+| Compares | 20 end-of-run scalars | 24 fields **plus the per-day trajectory digest** |
+| Catches | seed minting, final-tally drift | the above, plus a divergence that cancels out before the last day |
+
+Use `check` for breadth while developing (it scales to any seed count) and
+`baseline` whenever the committed file is or might be stale. A run that passes
+`check` can still fail `baseline`: identical final money reached by a
+different route is exactly what the trajectory digest exists to catch.
+
+**If only `trajectory` differs**, the two agree on every end-of-run number but
+took different daily routes. Bisect it:
+
+```bash
+cd farm-c && ./farm-c golden trace fast_seller 1     # first differing day, say 17
+./farm-c golden payload fast_seller 1 --day 17 > /tmp/c.txt
+cd .. && python3 .claude/skills/c-parity/scripts/c_parity.py payload fast_seller 1 --day 17 > /tmp/py.txt
+diff /tmp/c.txt /tmp/py.txt
+```
+
+If the payloads are identical on *every* day and only the digest differs, the
+bug is in the chaining, not the simulation — the payload format is a
+cross-language contract shared by `farm-c/src/trajectory.c` and this script's
+`_day_payload`, and both must also chain from the same starting prefix.
 
 ## Interpreting a result
 

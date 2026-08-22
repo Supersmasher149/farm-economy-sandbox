@@ -27,7 +27,13 @@ scope boundary. Deliberately **out of scope**: the legacy `world=None`
 All from `farm-c/`.
 
 ```bash
-make test              # build + run all 9 test binaries under ASan+UBSan, then tests/test_cli.sh
+make test              # build + run all 12 test binaries under ASan+UBSan, then
+                       # tests/test_cli.sh, then the committed golden baseline
+                       # against both the -O0 sanitized and the -O2 build
+make golden-check      # just the golden baseline (no Python needed)
+make golden-check-profile   # the same baseline against the -O2 build; the only
+                       # target that compiles the simulator with the optimizer on
+make golden-capture    # re-record it -- see "The two replay gates" below
 make farm-c            # build the CLI (also ASan+UBSan)
 make profile           # build/farm-c-profile: -O2, NO sanitizers -- the only build to time
 make clean
@@ -48,6 +54,10 @@ make fixtures-mutation   # mutation.json  <- actions/inventory/markets/processin
 ./farm-c single --strategy profit_optimizer --seed 42 --verbose
 ./farm-c batch --runs 1000 --seed 42 --csv reports/run_results.csv --html reports/dashboard.html
 ./farm-c batch --runs 100 --days 30 --start-money 300     # diagnostic overrides
+
+# Debugging a golden/parity failure
+./farm-c golden trace profit_optimizer 42          # first divergent day
+./farm-c golden payload profit_optimizer 42 --day 17   # the exact hashed bytes
 ```
 
 Default config directory is `../config` (the same JSON the Python simulator
@@ -70,12 +80,24 @@ only the fixture suites catch:
   one rounded FMA where Python does two roundings. This already caught
   `rng_uniform`/`rng_roll_price` drifting in ~2% of `test_rng.c`'s cases. Any
   new build rule must carry `$(FP)`. Same requirement as
-  `../simulation/_fastplotmodule.c`.
-- **`py_min`/`py_max`/`clamp01`/`py_neumaier_sum`/`py_round_ndigits`
-  (`include/pyfloat.h`).** Use these, never `fmin`/`fmax`, a comparison chain,
-  plain accumulation, or a hand-rolled round. They reproduce CPython's exact
-  bytecode semantics (ties and signed zero keep the first argument; `sum()`
-  has been Neumaier-compensated since 3.12).
+  `../simulation/_fastplotmodule.c`. **`make golden-check-profile` is what
+  enforces this**, and `make test` runs it: every other target builds at
+  `-O0`, where the optimizer never gets the chance to fuse, so a profile rule
+  that loses `$(FP)` passes the entire rest of the suite. Rebuilding the
+  profile objects with `-ffp-contract=fast` diverges all 44 baseline combos
+  by 1 ulp -- that is the check firing, not a flaky test.
+- **`py_min`/`py_max`/`clamp01`/`py_neumaier_sum`/`py_round_ndigits`/
+  `py_float_hex` (`include/pyfloat.h`).** Use these, never `fmin`/`fmax`, a
+  comparison chain, plain accumulation, a hand-rolled round, or `"%a"`. They
+  reproduce CPython's exact bytecode semantics (ties and signed zero keep the
+  first argument; `sum()` has been Neumaier-compensated since 3.12).
+  `py_float_hex` is built from the IEEE-754 bit pattern rather than libc's
+  `"%a"`, whose leading hex digit is unspecified by C99 and which trims
+  trailing mantissa zeros — `float.hex()` does neither.
+- **The trajectory payload is a cross-language contract.**
+  `src/trajectory.c` and `c_parity.py`'s `_day_payload` must emit identical
+  bytes; changing one without the other turns every committed digest into a
+  false failure. See `include/trajectory.h`.
 - **Ties keep the first element.** Python's `min`/`max`/`sorted` are stable,
   so every C loop here replaces its running best only on a *strict*
   inequality, and every sort is stable or explicitly decorated.
@@ -141,7 +163,8 @@ record (`%.17g` vs the page's display-only `%.10g`).
 
 ## Tests
 
-Nine binaries plus `tests/test_cli.sh`, all driven by `make test`. Each
+Twelve binaries plus `tests/test_cli.sh` and the golden-replay check, all
+driven by `make test`. Each
 fixture-driven suite (`test_agents`, `test_rng`, `test_physics`,
 `test_mutation`) replays recorded Python output and asserts `==`, never an
 epsilon — floats are exchanged as `float.hex()` strings, so a fixture loader
@@ -150,23 +173,81 @@ compares a *full snapshot* of every mutable state field before and after each
 call, not just the function's documented return, which is what catches an
 incidental extra mutation.
 
-There is **no golden-replay baseline for the C engine** yet (contrast
-`../.claude/skills/replay-guard`, which guards the Python `simulation/`
-package). `test_engine.c` covers step ordering, bookkeeping, failure cleanup,
-and same-seed repeatability. Whole-trajectory confidence comes instead from
-`../.claude/skills/c-parity`, which runs the same minted seeds through both
-implementations and diffs every run bit-for-bit against raw `PlayerState`
-values:
+### The two replay gates
+
+`test_engine.c` covers step ordering, bookkeeping, failure cleanup, and
+same-seed repeatability. Whole-trajectory confidence comes from two gates that
+answer different questions — **both are required, and neither substitutes for
+the other**:
+
+**1. The committed baseline (`tests/golden_baseline.json`) — does the C still
+do what it did?** The C analogue of `../.claude/skills/replay-guard`. Every
+strategy against four fixed seeds (the same seeds replay-guard uses, so a
+failure is comparable combo-for-combo), recorded as a chained per-day digest
+plus 24 end-of-run fields. `make test` runs it; it needs no Python, so it is
+the gate that still works where there is no interpreter and no live Python
+tree.
 
 ```bash
-python3 ../.claude/skills/c-parity/scripts/c_parity.py check
+make golden-check                        # or just `make test`
+./farm-c golden trace STRATEGY SEED      # bisect a failure to its first day
+./farm-c golden payload STRATEGY SEED --day N   # the exact hashed bytes
 ```
 
-Run it before and after touching anything under `src/` or `include/`, and
+**2. c-parity — is what the C does still what Python does?** The baseline
+alone is circular: capture it from an already-drifted C and every later check
+agrees with the drift forever. `baseline` re-derives the same numbers from the
+live Python modules, digests included.
+
+```bash
+python3 ../.claude/skills/c-parity/scripts/c_parity.py check     # 20 scalars, run-for-run
+python3 ../.claude/skills/c-parity/scripts/c_parity.py baseline  # + trajectory digests
+```
+
+Run both before and after touching anything under `src/` or `include/`, and
 after any change to `../simulation/`, `../agents/`, or `../config/` — the port
-is a mirror, so moving the reference moves what the mirror must match. It
-passes on a clean tree (verified to 2200 runs), so any failure is yours to
+is a mirror, so moving the reference moves what the mirror must match. Both
+pass on a clean tree (parity verified to 2200 runs), so any failure is yours to
 explain before the change is done.
+
+**Re-capturing the baseline is how an unintended change gets blessed.** It is
+a separate target you have to ask for (`make golden-capture`), never part of
+`make test`. Re-capture only after `c_parity.py baseline` confirms the new
+numbers are Python's, and commit the baseline in the same commit as the change
+that moved it.
+
+The digest is a **cross-language contract**: `src/trajectory.c`'s
+`trajectory_day_payload` and `c_parity.py`'s `_day_payload` build the same
+bytes from a `FarmState` and a `PlayerState` respectively. Editing either is a
+coordinated edit to both — see `include/trajectory.h` for the two rules
+(sorted/default-skipped dicts, `float.hex()` floats) that make the format
+reproducible on both sides. When only `trajectory` differs and every scalar
+matches, the two agree on the final tally but took different routes there;
+`golden trace` finds the day and `golden payload` / `c_parity.py payload`
+turn it into a text diff.
+
+### What each non-fixture suite is for
+
+- `test_engine.c` — agent-callback order, plus the **step-ordering
+  boundaries** where no agent is consulted and no RNG draw moves: the slot
+  census before the harvest, the storage bill captured at dawn and collected
+  at dusk, planting after the care pass, the day counter incremented before
+  the observer sees it. Those are precisely the swaps a fixture suite cannot
+  see, because they change neither a decision nor a draw. It also covers
+  allocation-failure cleanup — a latched state failure and each of the four
+  decision buffers in turn, under ASan so a leaked buffer fails the process.
+- `test_config_invalid.c` — the loader's *rejection* surface. Copies
+  `../config` to a temp directory and mutates one document through cJSON (not
+  by text substitution, which would rot the moment a file is reformatted),
+  then asserts the error code, the message, and that `config_destroy` is safe
+  on the partially-initialised object the failure left behind.
+- `test_reporting.c` — every `warnings.c` threshold tested *on* its boundary
+  as well as either side of it, since strict-vs-non-strict is all that
+  separates a correct port from one that misfires by a single run; plus
+  `aggregate.c`'s undefined-vs-zero discipline (a rate no run observed is not
+  0%) and its mean-of-ratios definition of `avg_profit_per_day`.
+- `test_trajectory.c` — the digest's own sensitivity; see the replay gates
+  above.
 
 When changing a ported function, regenerate the matching fixture set only if
 the *Python* changed. If the fixture and the C disagree and Python did not

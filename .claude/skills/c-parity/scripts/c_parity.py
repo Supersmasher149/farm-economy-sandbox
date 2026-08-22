@@ -34,10 +34,14 @@ Usage:
     python3 .claude/skills/c-parity/scripts/c_parity.py check [--runs N] [--seed S]
     python3 .claude/skills/c-parity/scripts/c_parity.py seeds [--runs N] [--seed S]
     python3 .claude/skills/c-parity/scripts/c_parity.py trace STRATEGY SEED
+    python3 .claude/skills/c-parity/scripts/c_parity.py baseline
+    python3 .claude/skills/c-parity/scripts/c_parity.py payload STRATEGY SEED --day N
 """
 
 import argparse
 import csv
+import hashlib
+import json
 import os
 import random
 import subprocess
@@ -52,8 +56,226 @@ DEFAULT_BINARY = os.path.join(FARM_C_DIR, "farm-c")
 # to point it elsewhere, so letting the C side take a different --config would
 # only let the two sides silently diverge on inputs.
 CONFIG_DIR = os.path.join(REPO_ROOT, "config")
+# The baseline `farm-c golden capture` writes and `farm-c golden check`
+# re-checks without needing Python at all. `baseline` below is the other half
+# of that gate: it re-derives the same numbers from the live Python modules,
+# so the committed file is a statement about Python's behavior and not just
+# about the C agreeing with its own past self.
+BASELINE_PATH = os.path.join(FARM_C_DIR, "tests", "golden_baseline.json")
 
 sys.path.insert(0, REPO_ROOT)
+
+
+# --- the trajectory payload: a byte-for-byte mirror of C -------------------
+#
+# `farm-c/src/trajectory.c:trajectory_day_payload` builds this same text from
+# a `FarmState` at the end of every simulated day, chains a blake2b-8 over it,
+# and records the result in farm-c/tests/golden_baseline.json. This function
+# builds it from a Python `PlayerState`. The two must agree byte for byte --
+# that equality is what makes the committed C baseline a statement about
+# *Python's* behavior rather than just about the C's self-consistency, and
+# it is checked directly by `check --trajectory`.
+#
+# Read trajectory.h before editing either side. The two rules that make the
+# format reproducible in both languages:
+#
+#   * Dict-shaped state is emitted sorted by key with default values skipped,
+#     because Python's dicts are sparse in a way the C's dense arrays cannot
+#     reproduce (markets.py:36 creates a 0.0 `market_supply` entry for every
+#     item it loops over; the C cannot tell that from untouched).
+#   * Floats are emitted as float.hex() -- exact, and unlike `==` it keeps
+#     -0.0 distinct from 0.0.
+#
+# Anything that could legitimately be 0.0 is in the fixed scalar section
+# instead, where it is always emitted.
+
+QUALITY_ORDER = {"rejected": 0, "processing": 1, "standard": 2, "premium": 3}
+ITEM_TYPE_ORDER = {"crop": 0, "product": 1}
+
+
+def _hex(value):
+    """float.hex(), which py_float_hex reproduces exactly (bit-pattern based,
+    not libc "%a" -- see pyfloat.h)."""
+    return float(value).hex()
+
+
+def _sorted_map(mapping, render, default):
+    """Sorted, default-skipped rendering of one dict-shaped field."""
+    parts = []
+    for key in sorted(mapping):
+        value = mapping[key]
+        if value == default:
+            continue
+        parts.append(f" {key}={render(value)}")
+    return "".join(parts)
+
+
+def _optint(label, value):
+    return f" {label}={value}" if value is not None else f" {label}=-"
+
+
+def _day_payload(player) -> str:
+    """The exact bytes trajectory.c hashes for this day."""
+    weather = player.current_weather or {}
+    out = []
+
+    out.append(f"day {player.day}\n")
+
+    season = weather.get("season")
+    line = f"weather season={season if season is not None else '-'}"
+    if weather:
+        line += f" temperature={_hex(weather.get('temperature', 0.0))}"
+        line += f" rainfall={_hex(weather.get('rainfall', 0.0))}"
+        line += f" evaporation={_hex(weather.get('evaporation', 0.0))}"
+    out.append(line + "\n")
+
+    # highest_money stays None-able: economy_rules reads "never sold anything
+    # yet" as a real state, so it must not be coerced to 0.0 here.
+    highest = "-" if player.highest_money is None else _hex(player.highest_money)
+    out.append(
+        f"cash money={_hex(player.money)} revenue={_hex(player.total_revenue)}"
+        f" expenses={_hex(player.total_expenses)} reputation={_hex(player.reputation)}"
+        f" lowest={_hex(player.lowest_money or 0.0)} highest={highest}"
+        f" processing_revenue={_hex(player.processing_revenue)}"
+        f" contract_penalties={_hex(player.contract_penalties)}"
+        f" contract_revenue={_hex(player.revenue_by_channel.get('contract', 0.0))}\n"
+    )
+
+    reason = player.bankruptcy_reason if player.bankruptcy_reason is not None else "-"
+    out.append(
+        f"farm bankrupt={1 if player.bankrupt else 0}"
+        + _optint("bankruptcy_day", player.bankruptcy_day)
+        + f" reason={reason} slots={player.slots_total} planted={len(player.planted)}"
+        f" fertilizer={player.fertilizer_inventory}"
+        f" water_units={_hex(player.water_units)}\n"
+    )
+
+    out.append(
+        f"tally planted={player.total_planted} harvested={player.total_harvested}"
+        f" sold={player.total_sold} spoiled={player.total_spoiled}"
+        f" processed={player.total_processed} waterings={player.total_waterings}"
+        f" harvest_events={player.total_harvest_events} lost={player.total_crops_lost}"
+        f" fert_bought={player.total_fertilizer_bought}"
+        f" fert_applied={player.total_fertilizer_applied}"
+        f" contracts_done={player.contracts_completed}"
+        f" contracts_failed={player.contracts_failed} idle={player.idle_days}"
+        f" slot_days={player.slot_days} occupied={player.occupied_slot_days}\n"
+    )
+
+    out.append("expenses" + _sorted_map(player.expenses_by_category, _hex, 0.0) + "\n")
+    out.append("quality" + _sorted_map(player.quality_harvested, str, 0) + "\n")
+    out.append("losses" + _sorted_map(player.losses_by_cause, str, 0) + "\n")
+
+    out.append("prices" + _sorted_map(player.market_prices, _hex, 0.0) + "\n")
+    out.append("supply" + _sorted_map(player.market_supply, _hex, 0.0) + "\n")
+    out.append("seeds" + _sorted_map(player.seed_inventory, str, 0) + "\n")
+    out.append("plant_counts" + _sorted_map(player.crop_plant_counts, str, 0) + "\n")
+    out.append("buyers" + _sorted_map(player.buyer_relationships, _hex, 0.0) + "\n")
+
+    # The C keeps the "contract" pseudo-channel in its own scalar (emitted on
+    # the cash line above), so it is excluded here to match; every remaining
+    # key is a real config channel.
+    channel_revenue = {
+        key: value for key, value in player.revenue_by_channel.items() if key != "contract"
+    }
+    out.append("channel_revenue" + _sorted_map(channel_revenue, _hex, 0.0) + "\n")
+    out.append("channel_used" + _sorted_map(player.channel_capacity_used, str, 0) + "\n")
+
+    upgrades = []
+    for upgrade_id in sorted(player.upgrades_owned):
+        day = player.upgrade_purchase_days.get(upgrade_id)
+        upgrades.append(f" {upgrade_id}@{day if day is not None else '-'}")
+    out.append("upgrades" + "".join(upgrades) + "\n")
+
+    # Positional from here down: order is part of the comparison, because a
+    # reordered inventory changes which lot a FIFO consume takes.
+    for index, lot in enumerate(player.inventory_lots):
+        effective = lot.effective_shelf_life_days
+        out.append(
+            f"lot {index} item={lot.item_id} qty={lot.quantity}"
+            f" quality={QUALITY_ORDER[lot.quality]} produced={lot.produced_day}"
+            f" age={lot.age_days} shelf={lot.shelf_life_days}"
+            + _optint("eff_shelf", effective if effective else None)
+            + f" type={ITEM_TYPE_ORDER[lot.item_type]} unit_cost={_hex(lot.unit_cost)}\n"
+        )
+
+    for index, job in enumerate(player.processing_jobs):
+        out.append(
+            f"job {index} recipe={job.recipe_id} out={job.output_item_id}"
+            f" qty={job.output_quantity} done={job.completion_day}"
+            f" shelf={job.shelf_life_days} unit_cost={_hex(job.unit_cost)}\n"
+        )
+
+    for label, contracts in (
+        ("active", player.active_contracts),
+        ("offer", player.contract_offers),
+    ):
+        for index, contract in enumerate(contracts):
+            out.append(
+                f"{label} {index} buyer={contract.buyer_id} item={contract.item_id}"
+                f" qty={contract.quantity} delivered={contract.delivered}"
+                f" minq={QUALITY_ORDER[contract.min_quality]}"
+                f" price={_hex(contract.unit_price)} penalty={_hex(contract.penalty_rate)}"
+                f" offered={contract.offered_day} deadline={contract.deadline_day}"
+                f" accepted={1 if contract.accepted else 0}"
+                f" resolved={1 if contract.resolved else 0}\n"
+            )
+
+    for index, crop in enumerate(player.planted):
+        plot_index = crop.plot_index if crop.plot_index is not None else -1
+        out.append(
+            f"crop {index} item={crop.crop_id} planted={crop.day_planted}"
+            f" grow={crop.growth_days_required} watered={crop.last_watered_day}"
+            f" neglect={crop.neglect_days} fert={1 if crop.fertilized else 0}"
+            f" plot={plot_index} accrued={_hex(crop.accrued_cost)}"
+            f" water_stress={_hex(crop.water_stress)}"
+            f" nutrient_stress={_hex(crop.nutrient_stress)}"
+            f" temperature_stress={_hex(crop.temperature_stress)}"
+            f" pest_stress={_hex(crop.pest_stress)}"
+            f" disease_stress={_hex(crop.disease_stress)}\n"
+        )
+
+    # The C stores a plot's crop as an index into its `planted` vector; Python
+    # holds the object itself. Recovering the position by identity compares
+    # the C's plot<->planted bookkeeping against Python's object graph rather
+    # than just re-emitting the crop's fields a second time.
+    planted_positions = {id(crop): index for index, crop in enumerate(player.planted)}
+    for index, plot in enumerate(player.plots):
+        family = plot.previous_crop_family if plot.previous_crop_family is not None else "-"
+        crop_index = planted_positions.get(id(plot.crop)) if plot.crop is not None else None
+        out.append(
+            f"plot {index} moisture={_hex(plot.moisture)} nitrogen={_hex(plot.nitrogen)}"
+            f" phosphorus={_hex(plot.phosphorus)} potassium={_hex(plot.potassium)}"
+            f" ph={_hex(plot.ph)} soil_health={_hex(plot.soil_health)}"
+            f" pest_pressure={_hex(plot.pest_pressure)}"
+            f" disease_pressure={_hex(plot.disease_pressure)}"
+            f" family={family}" + _optint("crop", crop_index) + "\n"
+        )
+
+    return "".join(out)
+
+
+class Trajectory:
+    """Chained blake2b-8 over every day's payload.
+
+    Chained rather than a hash of the concatenation so the first differing
+    per-day digest is the first day that actually diverged -- the same
+    property `farm-c golden trace` relies on, and the same construction as
+    replay-guard's _Trajectory.
+    """
+
+    def __init__(self):
+        self.running = b""
+        self.per_day = []
+
+    def __call__(self, player) -> None:
+        payload = _day_payload(player).encode("utf-8")
+        self.running = hashlib.blake2b(self.running + payload, digest_size=8).digest()
+        self.per_day.append(self.running.hex())
+
+    @property
+    def digest(self) -> str:
+        return self.running.hex()
 
 
 # --- the comparable field set --------------------------------------------
@@ -351,6 +573,146 @@ def cmd_seeds(args):
     return 0
 
 
+def python_baseline_record(player, trajectory):
+    """The Python-side mirror of src/golden.c:build_record.
+
+    Same field names, same order-independent string forms: floats as
+    float.hex(), a missing optional as "-". Anything added there gets added
+    here or `baseline` silently stops checking it -- which is why the
+    comparison below reports fields present in the baseline but absent here.
+    """
+    record = {
+        "trajectory": trajectory.digest,
+        "trajectory_days": str(len(trajectory.per_day)),
+        "days_simulated": str(player.day),
+        "final_money": _hex(player.money),
+        "total_revenue": _hex(player.total_revenue),
+        "total_expenses": _hex(player.total_expenses),
+        # snapshot_result's literal subtraction, not an equivalent.
+        "net_profit": _hex(player.total_revenue - player.total_expenses),
+        "lowest_money": _hex(player.lowest_money or 0.0),
+        "highest_money": "-" if player.highest_money is None else _hex(player.highest_money),
+        "reputation": _hex(player.reputation),
+        "contract_penalties": _hex(player.contract_penalties),
+        "processing_revenue": _hex(player.processing_revenue),
+        "total_planted": str(player.total_planted),
+        "total_harvested": str(player.total_harvested),
+        "total_sold": str(player.total_sold),
+        "total_spoiled": str(player.total_spoiled),
+        "total_processed": str(player.total_processed),
+        "total_waterings": str(player.total_waterings),
+        "total_fertilizer_applied": str(player.total_fertilizer_applied),
+        "total_crops_lost": str(player.total_crops_lost),
+        "idle_days": str(player.idle_days),
+        "contracts_completed": str(player.contracts_completed),
+        "contracts_failed": str(player.contracts_failed),
+        "bankrupt": "true" if player.bankrupt else "false",
+        "bankruptcy_day": "-" if player.bankruptcy_day is None else str(player.bankruptcy_day),
+    }
+    return record
+
+
+def cmd_baseline(args):
+    """Verify farm-c's committed golden baseline against the Python oracle.
+
+    `farm-c golden check` proves the C still reproduces the committed file.
+    This proves the committed file is what *Python* produces -- without it,
+    a capture taken from an already-broken C would lock the drift in and
+    every later check would happily agree with it.
+    """
+    path = args.baseline
+    if not os.path.exists(path):
+        raise SystemExit(f"no baseline at {path} -- run `make golden-capture` in farm-c/")
+    with open(path) as handle:
+        document = json.load(handle)
+    runs = document.get("runs")
+    if not isinstance(runs, dict):
+        raise SystemExit(f'{path} has no "runs" object')
+
+    meta = document.get("_meta", {})
+    print(
+        f"{path}: {len(runs)} combos, captured with {meta.get('compiler', '?')} "
+        f"on {meta.get('platform', '?')}"
+    )
+
+    registry, crops, upgrades, config, world = load_python_side(args.days, args.start_money)
+
+    failures = []
+    for index, key in enumerate(sorted(runs)):
+        strategy, _, seed_text = key.rpartition(":")
+        if strategy not in registry:
+            failures.append((key, [f"    unknown strategy {strategy!r} (removed since capture?)"]))
+            continue
+        trajectory = Trajectory()
+        player = run_python_single(
+            registry, crops, upgrades, config, world, strategy, int(seed_text), on_day=trajectory
+        )
+        actual = python_baseline_record(player, trajectory)
+        expected = runs[key]
+
+        diffs = []
+        for field in sorted(set(expected) | set(actual)):
+            want = expected.get(field)
+            got = actual.get(field)
+            if got is None:
+                diffs.append(f"    {field:<24} in baseline but not checked by this script")
+            elif want != got:
+                diffs.append(f"    {field:<24} baseline={want}  python={got}")
+        if diffs:
+            failures.append((key, diffs))
+            print(f"\nFAIL  {key}")
+            for line in diffs:
+                print(line)
+        elif args.verbose:
+            print(f"ok    {key}")
+
+        if args.progress and (index + 1) % 5 == 0:
+            sys.stderr.write(f"\r  checked {index + 1}/{len(runs)} combos")
+            sys.stderr.flush()
+    if args.progress:
+        sys.stderr.write("\r" + " " * 40 + "\r")
+
+    print(f"\n{len(runs)} combos checked, {len(failures)} diverged")
+    if failures:
+        print("BASELINE: FAIL")
+        script = os.path.relpath(os.path.abspath(__file__), REPO_ROOT)
+        strategy, _, seed_text = failures[0][0].rpartition(":")
+        print(
+            f"\nIf only `trajectory` differs, the two agree on the final tally but took\n"
+            f"different routes. Bisect it to a day:\n"
+            f"  cd farm-c && ./farm-c golden trace {strategy} {seed_text}\n"
+            f"then diff the exact hashed bytes for the first differing day N:\n"
+            f"  cd farm-c && ./farm-c golden payload {strategy} {seed_text} --day N\n"
+            f"  python3 {script} payload {strategy} {seed_text} --day N"
+        )
+        return 1
+    print("BASELINE: OK -- the committed C baseline is what Python produces")
+    return 0
+
+
+def cmd_payload(args):
+    """Print Python's exact hashed bytes for one day.
+
+    The counterpart to `farm-c golden payload`; diff the two to turn a
+    digest mismatch into a one-line difference.
+    """
+    resolve_strategies([args.strategy])
+    registry, crops, upgrades, config, world = load_python_side(args.days, args.start_money)
+    captured = []
+
+    def on_day(player):
+        if len(captured) < args.day:
+            captured.append(_day_payload(player))
+
+    run_python_single(
+        registry, crops, upgrades, config, world, args.strategy, args.seed, on_day=on_day
+    )
+    if len(captured) < args.day:
+        raise SystemExit(f"day {args.day} out of range (run simulated {len(captured)} days)")
+    sys.stdout.write(captured[args.day - 1])
+    return 0
+
+
 def cmd_trace(args):
     """Localize a divergence to its first simulated day.
 
@@ -500,6 +862,22 @@ def main():
     p_seeds.add_argument("--strategy", action="append")
     add_common(p_seeds)
     p_seeds.set_defaults(func=cmd_seeds)
+
+    p_baseline = sub.add_parser(
+        "baseline", help="verify farm-c's committed golden baseline against Python"
+    )
+    p_baseline.add_argument("--baseline", default=BASELINE_PATH)
+    p_baseline.add_argument("--verbose", action="store_true", help="print passing combos too")
+    p_baseline.add_argument("--progress", action="store_true", help="progress on stderr")
+    add_common(p_baseline)
+    p_baseline.set_defaults(func=cmd_baseline)
+
+    p_payload = sub.add_parser("payload", help="print Python's hashed bytes for one day")
+    p_payload.add_argument("strategy")
+    p_payload.add_argument("seed", type=int)
+    p_payload.add_argument("--day", type=int, required=True)
+    add_common(p_payload)
+    p_payload.set_defaults(func=cmd_payload)
 
     p_trace = sub.add_parser("trace", help="localize a divergence to its first day")
     p_trace.add_argument("strategy")

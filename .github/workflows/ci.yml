@@ -193,3 +193,92 @@ jobs:
 
       - name: Kernel-vs-reference validation (component E)
         run: python3 -m pytest tests/test_vectorized.py
+
+  # ---------------------------------------------------------------------------
+  # farm-c: the pure-C port. Nothing above touches it -- every job so far runs
+  # Python, and the C tree has its own Makefile, its own test binaries and its
+  # own committed replay baseline. Until these two jobs existed the port was
+  # verified only by whoever remembered to run `make test` locally.
+  # ---------------------------------------------------------------------------
+
+  # Gate 1: the C reproduces its committed baseline. Needs no Python at all,
+  # which is the point -- it is the gate that still works on a machine or a
+  # job that has no interpreter and no live Python tree.
+  #
+  # The matrix is about libc and codegen, not about coverage for its own sake:
+  # pyfloat.c's py_round_ndigits is a *deliberate* dependency on the host
+  # libc's snprintf/strtod being correctly rounded (see its header comment), so
+  # "does this still hold on the other platform's libc" is a real question that
+  # only a second platform can answer. glibc and Darwin's libc are the two this
+  # port actually targets. macOS `gcc` is a clang shim, so pairing it there
+  # would buy nothing and is left out rather than padding the matrix.
+  farm-c:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, cc: gcc}
+          - {os: ubuntu-latest, cc: clang}
+          - {os: macos-latest, cc: clang}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: farm-c
+    steps:
+      - uses: actions/checkout@v4
+
+      # Builds every test binary under ASan+UBSan, runs all twelve, then diffs
+      # every (strategy, seed) combo against tests/golden_baseline.json.
+      - name: Build and test (ASan+UBSan) + golden replay
+        env:
+          CC: ${{ matrix.cc }}
+        run: make test
+
+      # The suite above is -O0 with sanitizers. -ffp-contract=off is what stops
+      # an optimizer from fusing `a + (b - a) * x` into a single rounded FMA
+      # where Python does two roundings -- and that only has teeth at -O2, so a
+      # matrix that never optimizes never tests the flag that matters most.
+      # `make test` above already runs this via the golden-check-profile
+      # target, so it is redundant on the happy path -- kept as its own step
+      # so that when it is the -O2 build that drifts, the failure is named
+      # rather than buried at the end of the test log.
+      - name: Golden replay against the -O2 build
+        env:
+          CC: ${{ matrix.cc }}
+        run: make golden-check-profile
+
+  # Gate 2: that committed baseline is what *Python* produces. Without this,
+  # a baseline captured from an already-drifted C would lock the drift in and
+  # gate 1 would agree with it forever after.
+  #
+  # `check` compares 20 end-of-run scalars run-for-run; `baseline` additionally
+  # compares the chained per-day trajectory digest, which is what catches a
+  # divergence that cancels out before the final tally.
+  farm-c-parity:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both ends of the supported range. Exact float results are not
+        # guaranteed portable across interpreter versions (3.12 is the floor
+        # for sum()'s Neumaier compensation), so "the C matches Python" has to
+        # mean "matches every Python this repo supports", not just the newest.
+        python-version: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # c_parity.py imports the simulator directly and is stdlib-only, like
+      # the rest of the reporting path -- no requirements install needed.
+      - name: Build farm-c
+        working-directory: farm-c
+        run: make farm-c
+
+      - name: Run-for-run field parity (farm-c vs Python)
+        run: python3 .claude/skills/c-parity/scripts/c_parity.py check --runs 20 --progress
+
+      - name: Verify the committed C baseline against Python
+        run: python3 .claude/skills/c-parity/scripts/c_parity.py baseline --progress

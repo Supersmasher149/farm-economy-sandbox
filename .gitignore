@@ -46,3 +46,8 @@ reports/
 # has no [project] table (see its own header comment) and the Makefile drives
 # everything through python3, not uv, so there's nothing for this to lock.
 uv.lock
+
+# Editor/IDE-local config -- machine-specific, not shared.
+.vscode/
+.vim/
+.SpaceVim.d/

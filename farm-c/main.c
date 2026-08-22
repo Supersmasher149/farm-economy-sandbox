@@ -12,8 +12,16 @@
 #include "batch.h"
 #include "config.h"
 #include "dashboard.h"
+#include "golden.h"
+#include "mem0_client.h"
 #include "runner.h"
 #include "warnings.h"
+
+/* Fixed Mem0 user_id for every memory this CLI records -- farm-c is a
+ * single-user local tool, so there is exactly one "user" whose memories
+ * these are; the strategy name is passed as agent_id instead, which is
+ * what makes the memories filterable per strategy on the Mem0 side. */
+#define MEM0_USER_ID "farm-c"
 
 #define MAX_BATCH_STRATEGIES 64
 
@@ -22,6 +30,7 @@ typedef struct {
     const char *config_dir;
     RunSeed seed;
     bool verbose;
+    bool mem0;
 } SingleOptions;
 
 typedef struct {
@@ -37,13 +46,52 @@ typedef struct {
     double start_money;
     const char *csv_path;
     const char *html_path;
+    bool mem0;
 } BatchOptions;
 
 static void usage(FILE *stream) {
     fprintf(stream,
            "usage: farm-c single [--strategy NAME] [--seed INT] [--config DIR] [--verbose]\n"
+           "                     [--mem0]\n"
            "       farm-c batch --runs N [--strategy NAME]... [--seed INT] [--config DIR]\n"
-           "                    [--days N] [--start-money N] [--csv PATH] [--html PATH]\n");
+           "                    [--days N] [--start-money N] [--csv PATH] [--html PATH]\n"
+           "                    [--mem0]\n"
+           "       farm-c golden capture|check [--config DIR] [--baseline PATH]\n"
+           "       farm-c golden trace|payload STRATEGY SEED [--day N]\n"
+           "\n"
+           "--mem0 records a one-line summary (per run for `single`, per strategy for\n"
+           "`batch`) to the Mem0 Platform (https://mem0.ai). Requires farm-c to be built\n"
+           "with `make WITH_MEM0=1` and the MEM0_API_KEY environment variable to be set;\n"
+           "farm-c fails fast if --mem0 is passed and either is missing, before running\n"
+           "anything.\n");
+}
+
+/* Shared by cmd_single/cmd_batch: fail fast, before doing any simulation
+ * work, when --mem0 was requested but can't succeed -- either this binary
+ * was built without WITH_MEM0 or MEM0_API_KEY isn't set. Mirrors how
+ * cmd_batch already refuses to start rather than run a batch and discover
+ * at the end that --html's path couldn't be opened. */
+static bool mem0_precheck(bool requested) {
+    if (!requested) return true;
+    if (mem0_client_configured()) return true;
+    fprintf(stderr,
+           "mem0: --mem0 requested, but mem0 is not configured -- build with "
+           "`make WITH_MEM0=1` and export MEM0_API_KEY\n");
+    return false;
+}
+
+/* Records one memory and reports the outcome; never changes the caller's
+ * exit code -- by the time this runs (after a run or batch has already
+ * completed and its own output already printed/written), the requested
+ * work has succeeded, and a network hiccup recording it in Mem0 is a
+ * best-effort follow-up, not a reason to call the run a failure. */
+static void mem0_record(const char *label, const char *text, const char *agent_id) {
+    char error[MEM0_ERROR_BUFFER_SIZE];
+    if (mem0_add_memory(text, MEM0_USER_ID, agent_id, error, sizeof(error))) {
+        printf("mem0: recorded %s\n", label);
+    } else {
+        fprintf(stderr, "mem0: failed to record %s: %s\n", label, error);
+    }
 }
 
 static bool parse_seed(const char *text, uint64_t *seed) {
@@ -77,10 +125,12 @@ static bool parse_double(const char *text, double *out) {
 }
 
 static bool parse_single_args(int argc, char **argv, SingleOptions *options) {
-    *options = (SingleOptions){"profit_optimizer", "../config", {false, 0}, false};
+    *options = (SingleOptions){"profit_optimizer", "../config", {false, 0}, false, false};
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--verbose") == 0) {
             options->verbose = true;
+        } else if (strcmp(argv[i], "--mem0") == 0) {
+            options->mem0 = true;
         } else if (strcmp(argv[i], "--strategy") == 0 && i + 1 < argc) {
             options->strategy = argv[++i];
         } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
@@ -108,9 +158,12 @@ static bool parse_batch_args(int argc, char **argv, BatchOptions *options) {
         .start_money = 0.0,
         .csv_path = NULL,
         .html_path = NULL,
+        .mem0 = false,
     };
     for (int i = 2; i < argc; i++) {
-        if (strcmp(argv[i], "--runs") == 0 && i + 1 < argc) {
+        if (strcmp(argv[i], "--mem0") == 0) {
+            options->mem0 = true;
+        } else if (strcmp(argv[i], "--runs") == 0 && i + 1 < argc) {
             if (!parse_positive_long(argv[++i], &options->runs)) return false;
             options->has_runs = true;
         } else if (strcmp(argv[i], "--strategy") == 0 && i + 1 < argc) {
@@ -204,6 +257,7 @@ static int cmd_single(int argc, char **argv) {
         fprintf(stderr, "unknown strategy: %s\n", options.strategy);
         return 2;
     }
+    if (!mem0_precheck(options.mem0)) return 2;
     ResolvedConfig config = {0};
     SimulationSettings settings = {0};
     if (!load_config_or_report(options.config_dir, &config, &settings)) return 1;
@@ -218,6 +272,20 @@ static int cmd_single(int argc, char **argv) {
         return 1;
     }
     print_result(&options, &result);
+    if (options.mem0) {
+        const FarmState *state = &result.state;
+        char text[768];
+        snprintf(text, sizeof(text),
+                "farm-c single run: strategy=%s seed=%" PRIu64 " days_simulated=%d "
+                "final_money=%.2f revenue=%.2f expenses=%.2f net_profit=%.2f "
+                "bankrupt=%s planted=%d harvested=%d sold=%d idle_days=%d",
+                options.strategy, result.seed, result.days_simulated, state->money,
+                state->total_revenue, state->total_expenses,
+                state->total_revenue - state->total_expenses,
+                state->bankrupt ? "true" : "false", state->total_planted,
+                state->total_harvested, state->total_sold, state->idle_days);
+        mem0_record("run summary", text, options.strategy);
+    }
     runner_run_result_destroy(&result);
     config_destroy(&config);
     return 0;
@@ -330,6 +398,7 @@ static int cmd_batch(int argc, char **argv) {
         usage(stderr);
         return 2;
     }
+    if (!mem0_precheck(options.mem0)) return 2;
 
     const Agent *agents[MAX_BATCH_STRATEGIES];
     const char *names[MAX_BATCH_STRATEGIES];
@@ -441,6 +510,28 @@ static int cmd_batch(int argc, char **argv) {
     print_batch_summary(names, agg, agent_count, config.crop_count);
     print_batch_warnings(&config, names, agg, agent_count, settings.days, settings.start_money);
 
+    if (options.mem0) {
+        /* One memory per strategy, not per run -- a batch can be thousands
+         * of runs, and StrategySummary is already the exactly-once-computed
+         * source for these numbers (see include/aggregate.h), so this reads
+         * the same accumulators the terminal table and warnings did above
+         * rather than re-deriving anything. */
+        for (size_t i = 0; i < agent_count; i++) {
+            StrategySummary s;
+            aggregate_finalize(&agg[i], config.crop_count, NULL, &s);
+            char text[768];
+            snprintf(text, sizeof(text),
+                    "farm-c batch: strategy=%s base_seed=%" PRIu64 " runs=%ld "
+                    "bankruptcy_rate=%.2f%% avg_final_money=%.2f avg_net_profit=%.2f "
+                    "avg_days_simulated=%.2f",
+                    names[i], resolved_seed, s.runs, s.bankruptcy_rate, s.avg_final_money,
+                    s.avg_net_profit, s.avg_days_simulated);
+            char label[96];
+            snprintf(label, sizeof(label), "batch summary for %s", names[i]);
+            mem0_record(label, text, names[i]);
+        }
+    }
+
     free(crop_totals);
     config_destroy(&config);
     return 0;
@@ -453,6 +544,7 @@ int main(int argc, char **argv) {
     }
     if (strcmp(argv[1], "single") == 0) return cmd_single(argc, argv);
     if (strcmp(argv[1], "batch") == 0) return cmd_batch(argc, argv);
+    if (strcmp(argv[1], "golden") == 0) return golden_main(argc, argv);
     usage(stderr);
     return 2;
 }

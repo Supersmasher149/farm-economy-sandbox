@@ -99,6 +99,12 @@ The six phases so far:
   states for the Python reporting path. `summary.json` and
   `summary_report.md` remain out of scope.
 
+- **Phase 8**, `src/trajectory.c` and `src/golden.c`: the port's own
+  replay gate. `trajectory.c` hashes a full per-day state snapshot into a
+  chained digest whose bytes are reproducible from Python; `golden.c` adds
+  `farm-c golden capture|check|trace|payload` over a committed baseline.
+  See Verification below.
+
 The engine is wired into a reusable single-run runner (`farm-c single`) and a
 batch driver (`farm-c batch`). The legacy `world=None` path remains out of
 scope.
@@ -245,12 +251,15 @@ make fixtures-mutation # regenerates tests/fixtures/mutation.json from the
                         # ../tools/export_mutation_fixtures.py)
  make test              # builds and runs every tests/test_* binary under
                          # -fsanitize=address,undefined, including runner
-                         # and batch tests
+                         # and batch tests, then checks the committed
+                         # golden baseline
+ make golden-check      # just the golden baseline
+ make golden-capture    # re-records it (see Verification)
  make farm-c            # builds the single-run/batch CLI
 ```
 
 `make test` alone (no Python needed) re-runs against whatever fixtures are
-already checked in.
+already checked in, and re-checks the committed golden baseline the same way.
 
 ### Single runs
 
@@ -351,13 +360,81 @@ in ~2% of `test_rng.c`'s cases before the flag was added (see
 header comment for the same requirement on the existing weather/crop-growth
 kernel).
 
+### Recording run/batch summaries to Mem0
+
+`--mem0`, accepted by both `single` and `batch`, records a one-line free-text
+summary to the [Mem0 Platform](https://mem0.ai) after the run/batch
+completes normally -- `single` records one memory for the run; `batch`
+records one memory per strategy, built from the same `StrategySummary` the
+terminal table and warnings already read (`include/aggregate.h`), not one
+per individual run.
+
+This is an optional, off-by-default network dependency, kept out of the
+default build the same way `simulation/_fastplotmodule.c` and the Cython
+build are in the Python tree (see `../CLAUDE.md`):
+
+```bash
+make WITH_MEM0=1 farm-c            # links libcurl; default `make farm-c` does not
+export MEM0_API_KEY=...            # from https://app.mem0.ai/dashboard/api-keys
+./farm-c single --strategy profit_optimizer --seed 42 --mem0
+./farm-c batch --runs 1000 --seed 42 --mem0
+```
+
+Without `WITH_MEM0=1`, `src/mem0_client.c` compiles to a stub that always
+fails with a message saying so, so `--mem0` fails fast (before running
+anything, exit code 2) rather than being silently unavailable. The same
+fail-fast happens if the binary was built with `WITH_MEM0=1` but
+`MEM0_API_KEY` isn't set. A failure recording an individual memory *after*
+the run/batch already completed (a network error, a bad key) is reported to
+stderr but does not change the run's exit code -- the simulation work it's
+summarizing already succeeded by that point.
+
+`src/mem0_client.c`/`include/mem0_client.h` never touch `FarmState` or any
+other engine type directly; callers in `main.c` hand it a plain string, the
+same read-only-consumer boundary `../CLAUDE.md` draws around the Python
+statistical layer. It draws no simulation RNG and runs after
+`runner_run_single`/`batch_run` return, so it cannot affect a run's
+determinism or replay under `--seed`.
+
 ## Verification
 
-The engine has no separate golden-replay file yet (contrast
-`.claude/skills/replay-guard`, which verifies the Python `simulation/` package).
-Its focused test uses a recording agent for callback order and a registered
-agent for same-seed multi-day repeatability. Verification remains
-fixture-based for the lower layers, with the real Python modules as the oracle:
+Whole-run verification rests on two gates that answer different questions.
+Neither is sufficient alone, and CI runs both (`.github/workflows/ci.yml`,
+jobs `farm-c` and `farm-c-parity`).
+
+**The committed baseline — does the C still do what it did?**
+`tests/golden_baseline.json` records all 11 strategies against four fixed
+seeds (the same set `.claude/skills/replay-guard` uses for the Python
+package, so a failure is comparable combo-for-combo). Each combo stores 24
+end-of-run fields *and* a chained per-day trajectory digest — a blake2b over
+every simulated day's full state, so a divergence that cancels out before the
+final tally still fails. `make test` checks it; it needs no Python, which is
+what makes it usable where there is no interpreter or no live Python tree.
+`make golden-capture` re-records it, deliberately a separate target rather
+than something `make test` can do for you.
+
+**c-parity — is what the C does still what *Python* does?** The baseline on
+its own is circular: captured from an already-drifted C, it would agree with
+that drift forever. `python3 ../.claude/skills/c-parity/scripts/c_parity.py
+baseline` re-derives every recorded number, digests included, from the live
+Python modules. The digest format is a cross-language contract implemented
+twice — `src/trajectory.c` builds it from a `FarmState`, the skill's
+`_day_payload` from a `PlayerState` — so a mismatch localizes to a day via
+`./farm-c golden trace` and then to a line via `./farm-c golden payload` vs
+`c_parity.py payload`.
+
+`tests/test_engine.c` covers callback order, same-seed multi-day
+repeatability, the step-ordering boundaries no agent decision or RNG draw
+would reveal, and allocation-failure cleanup;
+`tests/test_config_invalid.c` covers the loader's rejection surface (IO,
+malformed JSON, schema, range, reference and argument errors, each asserting
+teardown is safe afterwards); `tests/test_reporting.c` pins every balance
+threshold on its boundary and the aggregator's undefined-vs-zero rules; and
+`tests/test_trajectory.c` covers the digest's own sensitivity (a 1-ulp soil
+change, `-0.0` vs `0.0`, list ordering, and the empty-prefix chaining rule)
+without needing Python.
+Verification of the lower layers remains fixture-based, with the real Python
+modules as the oracle:
 
 1. `tools/export_agent_fixtures.py` builds a handful of `PlayerState`
    scenarios in the same directly-constructed style as
