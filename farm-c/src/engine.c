@@ -126,7 +126,18 @@ static bool plant_open_slots(FarmState *state, const Agent *agent) {
 }
 
 static bool no_viable_reinvestment(const FarmState *state) {
-  /* Cheap O(1) checks first: on the overwhelming majority of days this
+  /* Mirrors simulation/engine.py:_finish_day's bankruptcy condition exactly:
+   * money below the cheapest seed, nothing planted, no processing jobs, and
+   * no positive-quantity inventory lot (crop or processed). Python does NOT
+   * additionally check seed_inventory here -- held seed the agent isn't
+   * currently choosing to plant does not save a player from bankruptcy in
+   * the oracle, so this must not check it either. (Python's `_finish_day`
+   * also ANDs in `not any(player.crop_inventory.values())`, but
+   * `crop_inventory` is rebuilt from `inventory_lots` after every mutation
+   * and is always a subset of it -- the `inventory_lots` loop below already
+   * implies that condition, so it is not ported separately.)
+   *
+   * Cheap O(1) checks first: on the overwhelming majority of days this
    * returns false right here, so the crop-catalog scan below (invariant
    * for the config's lifetime) only runs on the rare days it's needed. */
   if (state->planted.count != 0 || state->processing_jobs.count != 0)
@@ -144,10 +155,6 @@ static bool no_viable_reinvestment(const FarmState *state) {
     return false;
   for (size_t i = 0; i < state->inventory_lots.count; i++) {
     if (state->inventory_lots.data[i].quantity > 0)
-      return false;
-  }
-  for (size_t i = 0; i < state->config->crop_count; i++) {
-    if (state->seed_inventory[state->config->crops[i].item_id] > 0)
       return false;
   }
   return true;
