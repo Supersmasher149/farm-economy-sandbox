@@ -22,12 +22,23 @@ static void set_error(EngineError *error, EngineErrorCode code,
 }
 
 /* The four decision-buffer steps (12/13/14/15 below) all share this shape:
- * call the agent, and if the buffer's own growth allocation failed, free it
- * and bail with a matching error message. */
-#define ENGINE_CHECK_ALLOC(buf, free_fn, what)                               \
+ * reset the buffer, call the agent, and if the buffer's own growth
+ * allocation failed, bail with a matching error message.
+ *
+ * The buffers live on FarmState and are reused day to day, so nothing is
+ * freed here -- farm_state_destroy releases them, on the success and the
+ * failure path alike. Resetting to count 0 (and clearing the latch) before
+ * the agent runs is what makes a reused buffer behave exactly like the
+ * freshly-zeroed local this used to be: the agents only ever append. */
+#define ENGINE_RESET_BUFFER(buf)                                             \
+  do {                                                                       \
+    (buf).count = 0;                                                         \
+    (buf).allocation_failed = false;                                         \
+  } while (0)
+
+#define ENGINE_CHECK_ALLOC(buf, what)                                        \
   do {                                                                       \
     if ((buf).allocation_failed) {                                           \
-      free_fn(&(buf));                                                       \
       set_error(error, ENGINE_ERROR_ALLOCATION, what " buffer allocation failed"); \
       return false;                                                          \
     }                                                                        \
@@ -229,76 +240,72 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
   /* 11. */ contracts_generate_offers(state, config, rng);
   ENGINE_CHECK_STATE_ALLOC("contract offer");
 
-  /* 12. */ ContractDecisionBuffer accepts = {0};
-  agent->choose_contracts(agent, state, config, &accepts);
-  ENGINE_CHECK_ALLOC(accepts, contract_decision_free, "contract decision");
+  /* 12. */ ContractDecisionBuffer *accepts = &state->decide_contracts;
+  ENGINE_RESET_BUFFER(*accepts);
+  agent->choose_contracts(agent, state, config, accepts);
+  ENGINE_CHECK_ALLOC(*accepts, "contract decision");
   ENGINE_CHECK_STATE_ALLOC("contract decision");
-  for (size_t i = 0; i < accepts.count; i++) {
-    acted = contracts_accept(state, config, accepts.data[i]) || acted;
+  for (size_t i = 0; i < accepts->count; i++) {
+    acted = contracts_accept(state, config, accepts->data[i]) || acted;
     if (state->allocation_failed) {
-      contract_decision_free(&accepts);
       set_error(error, ENGINE_ERROR_ALLOCATION, "contract acceptance allocation failed");
       return false;
     }
   }
-  contract_decision_free(&accepts);
   ENGINE_CHECK_STATE_ALLOC("contract acceptance");
-  /* 13. */ DeliveryDecisionBuffer deliveries = {0};
-  agent->choose_contract_deliveries(agent, state, &deliveries);
-  ENGINE_CHECK_ALLOC(deliveries, delivery_decision_free, "delivery decision");
+  /* 13. */ DeliveryDecisionBuffer *deliveries = &state->decide_deliveries;
+  ENGINE_RESET_BUFFER(*deliveries);
+  agent->choose_contract_deliveries(agent, state, deliveries);
+  ENGINE_CHECK_ALLOC(*deliveries, "delivery decision");
   ENGINE_CHECK_STATE_ALLOC("delivery decision");
-  for (size_t i = 0; i < deliveries.count; i++) {
+  for (size_t i = 0; i < deliveries->count; i++) {
     int delivered = 0;
-    (void)contracts_deliver(state, config, deliveries.data[i].contract_id,
-                            deliveries.data[i].quantity, &delivered);
+    (void)contracts_deliver(state, config, deliveries->data[i].contract_id,
+                            deliveries->data[i].quantity, &delivered);
     acted = delivered > 0 || acted;
     if (state->allocation_failed) {
-      delivery_decision_free(&deliveries);
       set_error(error, ENGINE_ERROR_ALLOCATION, "contract delivery allocation failed");
       return false;
     }
   }
-  delivery_decision_free(&deliveries);
-  /* 14. */ ProcessingDecisionBuffer processing = {0};
-  agent->choose_processing(agent, state, config, &processing);
-  ENGINE_CHECK_ALLOC(processing, processing_decision_free, "processing decision");
+  /* 14. */ ProcessingDecisionBuffer *processing = &state->decide_processing;
+  ENGINE_RESET_BUFFER(*processing);
+  agent->choose_processing(agent, state, config, processing);
+  ENGINE_CHECK_ALLOC(*processing, "processing decision");
   ENGINE_CHECK_STATE_ALLOC("processing decision");
-  for (size_t i = 0; i < processing.count; i++) {
+  for (size_t i = 0; i < processing->count; i++) {
     const RecipeDef *recipe =
-        config_find_recipe(config, processing.data[i].recipe_id);
+        config_find_recipe(config, processing->data[i].recipe_id);
     if (recipe != NULL)
-      acted = processing_start_job(state, recipe, processing.data[i].batches,
+      acted = processing_start_job(state, recipe, processing->data[i].batches,
                                    state->processing_capacity) ||
               acted;
     if (state->allocation_failed) {
-      processing_decision_free(&processing);
       set_error(error, ENGINE_ERROR_ALLOCATION, "processing allocation failed");
       return false;
     }
   }
-  processing_decision_free(&processing);
-  /* 15. */ SalesDecisionBuffer sales = {0};
-  agent->choose_sales(agent, state, config, &sales);
-  ENGINE_CHECK_ALLOC(sales, sales_decision_free, "sales decision");
+  /* 15. */ SalesDecisionBuffer *sales = &state->decide_sales;
+  ENGINE_RESET_BUFFER(*sales);
+  agent->choose_sales(agent, state, config, sales);
+  ENGINE_CHECK_ALLOC(*sales, "sales decision");
   ENGINE_CHECK_STATE_ALLOC("sales decision");
-  for (size_t i = 0; i < sales.count; i++) {
+  for (size_t i = 0; i < sales->count; i++) {
     const ChannelDef *channel =
-        config_find_channel(config, sales.data[i].channel_id);
+        config_find_channel(config, sales->data[i].channel_id);
     if (channel == NULL)
       continue;
     int sold = 0;
-    bool exact = sales.data[i].quality != SALE_QUALITY_ANY;
-    (void)markets_sell(state, sales.data[i].item_id, sales.data[i].quantity,
-                       channel, exact, sales.data[i].quality, false,
+    bool exact = sales->data[i].quality != SALE_QUALITY_ANY;
+    (void)markets_sell(state, sales->data[i].item_id, sales->data[i].quantity,
+                       channel, exact, sales->data[i].quality, false,
                        QUALITY_REJECTED, &sold);
     acted = sold > 0 || acted;
     if (state->allocation_failed) {
-      sales_decision_free(&sales);
       set_error(error, ENGINE_ERROR_ALLOCATION, "sale allocation failed");
       return false;
     }
   }
-  sales_decision_free(&sales);
   /* 16. */
   for (size_t i = 0; i < config->upgrade_count; i++) {
     const UpgradeDef *upgrade = &config->upgrades[i];

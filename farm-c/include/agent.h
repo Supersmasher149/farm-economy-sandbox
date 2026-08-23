@@ -31,76 +31,11 @@
 typedef struct AgentVTable AgentVTable;
 typedef AgentVTable Agent;
 
-/* --- Decision buffers: the engine-side counterpart to Python's plain lists
- * of dicts (agents/base.py's default choose_sales, choose_contracts, ...).
- * Caller allocates a zeroed buffer, passes it in; the agent pushes zero or
- * more entries via the vec_util-backed push functions below. Caller frees
- * with the matching `*_free`. --- */
-
-typedef struct {
-    ContractId *data;
-    size_t count;
-    size_t capacity;
-    bool allocation_failed;
-} ContractDecisionBuffer;
-
-bool contract_decision_push(ContractDecisionBuffer *buffer, ContractId contract_id);
-void contract_decision_free(ContractDecisionBuffer *buffer);
-
-typedef struct {
-    ContractId contract_id;
-    int quantity;
-} DeliveryDecision;
-
-typedef struct {
-    DeliveryDecision *data;
-    size_t count;
-    size_t capacity;
-    bool allocation_failed;
-} DeliveryDecisionBuffer;
-
-bool delivery_decision_push(DeliveryDecisionBuffer *buffer, DeliveryDecision decision);
-void delivery_decision_free(DeliveryDecisionBuffer *buffer);
-
-typedef struct {
-    RecipeId recipe_id;
-    int batches;
-} ProcessingDecision;
-
-typedef struct {
-    ProcessingDecision *data;
-    size_t count;
-    size_t capacity;
-    bool allocation_failed;
-} ProcessingDecisionBuffer;
-
-bool processing_decision_push(ProcessingDecisionBuffer *buffer, ProcessingDecision decision);
-void processing_decision_free(ProcessingDecisionBuffer *buffer);
-
-/* docs/c-port-plan.md:638-644 SaleDecision, plus `quality`: base.py's
- * default choose_sales sells a lot's full mixed-quality quantity (no
- * quality field at all), but route_sales_by_best_price sells per
- * (item, quality) bucket -- both are representable by making quality
- * explicit and letting the default set it to the sentinel below. */
-#define SALE_QUALITY_ANY ((Quality)(QUALITY_COUNT))
-
-typedef struct {
-    ItemId item_id;
-    ChannelId channel_id;
-    Quality quality; /* SALE_QUALITY_ANY for the naive default (sell whatever
-                       * quality the lot happens to be) */
-    int quantity;
-} SaleDecision;
-
-typedef struct {
-    SaleDecision *data;
-    size_t count;
-    size_t capacity;
-    bool allocation_failed;
-} SalesDecisionBuffer;
-
-bool sale_decision_push(SalesDecisionBuffer *buffer, SaleDecision decision);
-void sales_decision_free(SalesDecisionBuffer *buffer);
+/* The decision-buffer types (ContractDecisionBuffer, ...) and their
+ * push/free functions moved to state.h, because FarmState now owns one
+ * of each for the engine to reuse across days -- see "Decision buffers"
+ * there. This header still declares the vtable that consumes them, and
+ * still includes state.h, so every agent sees them exactly as before. */
 
 struct AgentVTable {
     const char *name;

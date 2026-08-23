@@ -304,6 +304,14 @@ void farm_state_destroy(FarmState *state) {
     scratch_buffer_free(&state->scratch_lot_sort);
     scratch_buffer_free(&state->scratch_sell_candidates);
     scratch_buffer_free(&state->scratch_sell_planned);
+    /* The per-day decision buffers. engine.c resets these to count 0 rather
+     * than freeing them between days, so this is the only place they are
+     * released -- including on the failure paths, where the engine returns
+     * with a buffer still holding its allocation. */
+    contract_decision_free(&state->decide_contracts);
+    delivery_decision_free(&state->decide_deliveries);
+    processing_decision_free(&state->decide_processing);
+    sales_decision_free(&state->decide_sales);
     memset(state, 0, sizeof(*state));
 }
 

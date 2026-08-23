@@ -201,6 +201,77 @@ typedef enum {
     EXPENSE_COUNT
 } ExpenseCategory;
 
+/* --- Decision buffers: the engine-side counterpart to Python's plain lists
+ * of dicts (agents/base.py's default choose_sales, choose_contracts, ...).
+ * Caller allocates a zeroed buffer, passes it in; the agent pushes zero or
+ * more entries via the vec_util-backed push functions below. Caller frees
+ * with the matching `*_free`. --- */
+
+typedef struct {
+    ContractId *data;
+    size_t count;
+    size_t capacity;
+    bool allocation_failed;
+} ContractDecisionBuffer;
+
+bool contract_decision_push(ContractDecisionBuffer *buffer, ContractId contract_id);
+void contract_decision_free(ContractDecisionBuffer *buffer);
+
+typedef struct {
+    ContractId contract_id;
+    int quantity;
+} DeliveryDecision;
+
+typedef struct {
+    DeliveryDecision *data;
+    size_t count;
+    size_t capacity;
+    bool allocation_failed;
+} DeliveryDecisionBuffer;
+
+bool delivery_decision_push(DeliveryDecisionBuffer *buffer, DeliveryDecision decision);
+void delivery_decision_free(DeliveryDecisionBuffer *buffer);
+
+typedef struct {
+    RecipeId recipe_id;
+    int batches;
+} ProcessingDecision;
+
+typedef struct {
+    ProcessingDecision *data;
+    size_t count;
+    size_t capacity;
+    bool allocation_failed;
+} ProcessingDecisionBuffer;
+
+bool processing_decision_push(ProcessingDecisionBuffer *buffer, ProcessingDecision decision);
+void processing_decision_free(ProcessingDecisionBuffer *buffer);
+
+/* docs/c-port-plan.md:638-644 SaleDecision, plus `quality`: base.py's
+ * default choose_sales sells a lot's full mixed-quality quantity (no
+ * quality field at all), but route_sales_by_best_price sells per
+ * (item, quality) bucket -- both are representable by making quality
+ * explicit and letting the default set it to the sentinel below. */
+#define SALE_QUALITY_ANY ((Quality)(QUALITY_COUNT))
+
+typedef struct {
+    ItemId item_id;
+    ChannelId channel_id;
+    Quality quality; /* SALE_QUALITY_ANY for the naive default (sell whatever
+                       * quality the lot happens to be) */
+    int quantity;
+} SaleDecision;
+
+typedef struct {
+    SaleDecision *data;
+    size_t count;
+    size_t capacity;
+    bool allocation_failed;
+} SalesDecisionBuffer;
+
+bool sale_decision_push(SalesDecisionBuffer *buffer, SaleDecision decision);
+void sales_decision_free(SalesDecisionBuffer *buffer);
+
 typedef struct {
     const ResolvedConfig *config; /* borrowed, never freed by FarmState */
 
@@ -376,6 +447,26 @@ typedef struct {
                                              * the plan is written). */
     /* contracts.c's equivalent buffer is deliberately not here -- it sits
      * behind a const-FarmState call chain; see its comment in that file. */
+
+    /* The four decision buffers engine.c fills from the agent on steps
+     * 12/13/14/15. They live here, rather than as locals in
+     * engine_run_day_observed, purely so their backing allocation survives
+     * from one simulated day to the next: as locals they were `= {0}` and
+     * freed at the bottom of every day, which is four malloc/free pairs per
+     * day per run and made the allocator a measurable share of a batch.
+     * Reused, they reach their steady-state capacity within the first few
+     * days and never allocate again.
+     *
+     * This does not loosen agent.h's "caller allocates, agent pushes,
+     * caller frees" contract -- the engine is still the caller, FarmState is
+     * just where it keeps the storage, exactly as with the scratch buffers
+     * above. `engine_reset_decision_buffer`-style resetting to count 0
+     * before each agent call is what makes a reused buffer observationally
+     * identical to a fresh one; the agents only ever append. */
+    ContractDecisionBuffer decide_contracts;
+    DeliveryDecisionBuffer decide_deliveries;
+    ProcessingDecisionBuffer decide_processing;
+    SalesDecisionBuffer decide_sales;
 } FarmState;
 
 /* Gather/scatter a single plot's fields to/from PlotColumns, for the handful
