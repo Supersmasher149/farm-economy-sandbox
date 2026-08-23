@@ -140,8 +140,7 @@ static bool progression_player_should_buy_upgrade(const Agent *self, const FarmS
 static bool progression_player_should_fertilize(const Agent *self, const FarmState *state,
                                                   int planted_index) {
     (void)self;
-    const PlantedCrop *planted = &state->planted.data[planted_index];
-    const CropDef *crop = config_find_crop(state->config, planted->crop_item_id);
+    const CropDef *crop = config_find_crop(state->config, state->planted.crop_item_id[planted_index]);
     if (crop->role == CROP_ROLE_FAST) {
         return false;
     }

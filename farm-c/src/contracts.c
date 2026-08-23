@@ -274,7 +274,8 @@ static void future_crop_arrivals(const FarmState *state, const ResolvedConfig *c
     }
 
     for (size_t i = 0; i < state->planted.count; i++) {
-        const PlantedCrop *planted = &state->planted.data[i];
+        PlantedCrop planted_row = planted_crop_columns_get(&state->planted, i);
+        const PlantedCrop *planted = &planted_row;
         int days_until_free = planted->growth_days_required - (state->day - planted->day_planted);
         if (days_until_free < 0) {
             days_until_free = 0;

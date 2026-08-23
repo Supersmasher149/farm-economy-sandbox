@@ -77,21 +77,22 @@ bool actions_plant_seed(FarmState *state, const CropDef *crop, int growth_days, 
 
 /* --- simulation/actions.py:68-82 --- */
 
-bool actions_water_crop(FarmState *state, PlantedCrop *planted, const WateringConfig *watering) {
+bool actions_water_crop(FarmState *state, size_t planted_index, const WateringConfig *watering) {
     double cost = watering->cost_per_plot;
     if (state->money < cost) {
         return false;
     }
-    if (planted->plot_index < 0 || (size_t)planted->plot_index >= state->plots.count) {
+    int plot_index = state->planted.plot_index[planted_index];
+    if (plot_index < 0 || (size_t)plot_index >= state->plots.count) {
         return false;
     }
     state->money -= cost;
     farm_state_record_expense(state, EXPENSE_WATERING, cost);
-    planted->accrued_cost += cost;
-    planted->last_watered_day = state->day;
-    planted->neglect_days = 0;
-    state->plots.moisture[planted->plot_index] =
-        py_min(1.0, state->plots.moisture[planted->plot_index] + watering->moisture_added);
+    state->planted.accrued_cost[planted_index] += cost;
+    state->planted.last_watered_day[planted_index] = state->day;
+    state->planted.neglect_days[planted_index] = 0;
+    state->plots.moisture[plot_index] =
+        py_min(1.0, state->plots.moisture[plot_index] + watering->moisture_added);
     state->total_waterings += 1;
     return true;
 }
@@ -115,17 +116,17 @@ bool actions_buy_fertilizer(FarmState *state, const FertilizerConfig *fertilizer
 
 /* --- simulation/actions.py:121-135 --- */
 
-bool actions_fertilize_crop(FarmState *state, PlantedCrop *planted,
+bool actions_fertilize_crop(FarmState *state, size_t planted_index,
                              const FertilizerConfig *fertilizer) {
-    if (planted->fertilized || state->fertilizer_inventory <= 0) {
+    if (state->planted.fertilized[planted_index] || state->fertilizer_inventory <= 0) {
         return false;
     }
-    planted->fertilized = true;
+    state->planted.fertilized[planted_index] = true;
     state->fertilizer_inventory -= 1;
     state->total_fertilizer_applied += 1;
-    planted->accrued_cost += fertilizer->cost;
-    if (planted->plot_index >= 0 && (size_t)planted->plot_index < state->plots.count) {
-        int plot_index = planted->plot_index;
+    state->planted.accrued_cost[planted_index] += fertilizer->cost;
+    int plot_index = state->planted.plot_index[planted_index];
+    if (plot_index >= 0 && (size_t)plot_index < state->plots.count) {
         state->plots.nitrogen[plot_index] =
             py_min(1.0, state->plots.nitrogen[plot_index] + fertilizer->nutrients_added.nitrogen);
         state->plots.phosphorus[plot_index] = py_min(
@@ -143,8 +144,9 @@ bool actions_harvest_mature(FarmState *state, const ResolvedConfig *config, Farm
     bool harvested_any = false;
     size_t mature_count = 0;
     for (size_t i = 0; i < state->planted.count; i++) {
-        const PlantedCrop *planted = &state->planted.data[i];
-        if (state->day - planted->day_planted >= planted->growth_days_required)
+        int day_planted = state->planted.day_planted[i];
+        int growth_days_required = state->planted.growth_days_required[i];
+        if (state->day - day_planted >= growth_days_required)
             mature_count++;
     }
     if (mature_count > 0 &&
@@ -167,10 +169,10 @@ bool actions_harvest_mature(FarmState *state, const ResolvedConfig *config, Farm
      * in this exact sequence, so reordering would silently desynchronize
      * replay for every recorded seed -- see actions.h's header comment. */
     for (size_t read = 0; read < state->planted.count; read++) {
-        PlantedCrop planted = state->planted.data[read];
+        PlantedCrop planted = planted_crop_columns_get(&state->planted, read);
         bool mature = (state->day - planted.day_planted) >= planted.growth_days_required;
         if (!mature) {
-            state->planted.data[write] = planted;
+            planted_crop_columns_set(&state->planted, write, planted);
             if (planted.plot_index >= 0 && (size_t)planted.plot_index < state->plots.count) {
                 state->plots.planted_index[planted.plot_index] = (int)write;
             }

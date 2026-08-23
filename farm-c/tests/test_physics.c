@@ -414,7 +414,7 @@ static void run_apply_weather(const ResolvedConfig *config, cJSON *cases) {
         int plot_count = cJSON_GetArraySize(before);
 
         PlotColumns plots = alloc_plot_columns((size_t)plot_count);
-        PlantedCropVec planted_vec = {0};
+        PlantedCropColumns planted_vec = {0};
 
         for (int i = 0; i < plot_count; i++) {
             cJSON *plot_json = cJSON_GetArrayItem(before, i);
@@ -454,8 +454,9 @@ static void run_apply_weather(const ResolvedConfig *config, cJSON *cases) {
             check_plot("apply_weather", name, &actual_plot, expected_plot);
             cJSON *expected_crop = cJSON_GetObjectItem(expected_plot, "crop");
             if (expected_crop != NULL && !cJSON_IsNull(expected_crop)) {
-                const PlantedCrop *planted = &state.planted.data[actual_plot.planted_index];
-                check_planted("apply_weather", name, planted, expected_crop);
+                PlantedCrop planted =
+                    planted_crop_columns_get(&state.planted, (size_t)actual_plot.planted_index);
+                check_planted("apply_weather", name, &planted, expected_crop);
             }
         }
 

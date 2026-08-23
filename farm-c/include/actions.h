@@ -31,16 +31,15 @@ bool actions_buy_seeds(FarmState *state, const CropDef *crop, int quantity);
 bool actions_plant_seed(FarmState *state, const CropDef *crop, int growth_days, bool fertilized,
                          const FertilizerConfig *fertilizer);
 
-/* simulation/actions.py:68-82. `planted` must point into
- * `state->planted.data` (or otherwise be a crop whose `plot_index` is
- * valid) -- mutated in place. */
-bool actions_water_crop(FarmState *state, PlantedCrop *planted, const WateringConfig *watering);
+/* simulation/actions.py:68-82. `planted_index` must be a valid index into
+ * `state->planted` -- mutated in place via state->planted's columns. */
+bool actions_water_crop(FarmState *state, size_t planted_index, const WateringConfig *watering);
 
 /* simulation/actions.py:108-118 */
 bool actions_buy_fertilizer(FarmState *state, const FertilizerConfig *fertilizer, int quantity);
 
 /* simulation/actions.py:121-135 */
-bool actions_fertilize_crop(FarmState *state, PlantedCrop *planted,
+bool actions_fertilize_crop(FarmState *state, size_t planted_index,
                              const FertilizerConfig *fertilizer);
 
 /* simulation/actions.py:138-206 (the modern-path call shape only: `rng,

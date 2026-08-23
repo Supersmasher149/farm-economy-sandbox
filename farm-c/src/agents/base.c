@@ -15,10 +15,9 @@
 /* agents/base.py:31-32 */
 bool agent_base_should_water(const Agent *self, const FarmState *state, int planted_index) {
     (void)self;
-    const PlantedCrop *planted = &state->planted.data[planted_index];
-    const CropDef *crop = config_find_crop(state->config, planted->crop_item_id);
+    const CropDef *crop = config_find_crop(state->config, state->planted.crop_item_id[planted_index]);
     int water_interval_days = crop != NULL ? crop->water_interval_days : 3; /* crop.get(..., 3) */
-    return (state->day - planted->last_watered_day) >= water_interval_days;
+    return (state->day - state->planted.last_watered_day[planted_index]) >= water_interval_days;
 }
 
 /* agents/base.py:34-35 */

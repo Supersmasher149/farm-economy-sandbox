@@ -76,11 +76,32 @@ typedef struct {
     double accrued_cost;
 } PlantedCrop;
 
+/* Structure-of-arrays storage for FarmState.planted -- same rationale as
+ * PlotColumns above. PlantedCrop stays the gather/scatter "row" type used by
+ * crop_growth.c's unchanged pointer-taking API and by trajectory.c/test
+ * fixtures; every hot per-day call site indexes a column directly. */
 typedef struct {
-    PlantedCrop *data;
+    ItemId *crop_item_id;
+    int *day_planted;
+    int *growth_days_required;
+
+    int *last_watered_day;
+    int *neglect_days;
+
+    bool *fertilized;
+    int *plot_index;
+
+    double *water_stress;
+    double *nutrient_stress;
+    double *temperature_stress;
+    double *pest_stress;
+    double *disease_stress;
+
+    double *accrued_cost;
+
     size_t count;
     size_t capacity;
-} PlantedCropVec;
+} PlantedCropColumns;
 
 typedef struct {
     ItemId item_id;
@@ -194,7 +215,7 @@ typedef struct {
 
     PlotColumns plots;
 
-    PlantedCropVec planted;
+    PlantedCropColumns planted;
     InventoryLotVec inventory_lots;
     ProcessingJobVec processing_jobs;
 
@@ -365,12 +386,31 @@ typedef struct {
 PlotState plot_columns_get(const PlotColumns *cols, size_t i);
 void plot_columns_set(PlotColumns *cols, size_t i, PlotState value);
 
+/* Gather/scatter a single crop's fields to/from PlantedCropColumns, for the
+ * handful of call sites that need a whole PlantedCrop value (crop_growth.c's
+ * pointer-taking API, trajectory.c's per-day emission, test fixtures)
+ * rather than a single field -- most call sites should index a column
+ * directly (state->planted.water_stress[i]), not go through these. */
+PlantedCrop planted_crop_columns_get(const PlantedCropColumns *cols, size_t i);
+void planted_crop_columns_set(PlantedCropColumns *cols, size_t i, PlantedCrop value);
+
+/* Grows every PlantedCropColumns array to hold at least `needed` elements,
+ * sharing one capacity counter (see vec_util.h's multi_vec_reserve for why
+ * this can't just be vec_reserve called 13 times). Exposed (not static in
+ * state.c) so engine.c's plant_open_slots can bulk-reserve room for a day's
+ * worth of new plantings in one call, same as it does today via vec_reserve
+ * for other Vec-backed collections. */
+bool planted_crop_columns_reserve(PlantedCropColumns *cols, size_t needed);
+
 /* --- Vector push/free, backed by vec_util.c (see its header for why these
  * aren't hand-rolled per type). Push returns false only on allocation
- * failure, leaving the vector unchanged. --- */
+ * failure, leaving the vector unchanged. planted_crop_vec_push/free keep
+ * their AoS-era names (call sites are unaffected by the SoA conversion
+ * beyond the type rename) even though PlantedCropColumns is no longer a
+ * "Vec" in the vec_util.c generic-primitive sense. --- */
 
-bool planted_crop_vec_push(PlantedCropVec *vec, PlantedCrop item);
-void planted_crop_vec_free(PlantedCropVec *vec);
+bool planted_crop_vec_push(PlantedCropColumns *cols, PlantedCrop item);
+void planted_crop_vec_free(PlantedCropColumns *cols);
 
 bool inventory_lot_vec_push(InventoryLotVec *vec, InventoryLot item);
 void inventory_lot_vec_free(InventoryLotVec *vec);

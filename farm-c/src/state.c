@@ -17,16 +17,93 @@
         return true;                                                                     \
     }
 
-DEFINE_VEC_PUSH(planted_crop_vec_push, PlantedCropVec, PlantedCrop)
 DEFINE_VEC_PUSH(inventory_lot_vec_push, InventoryLotVec, InventoryLot)
 DEFINE_VEC_PUSH(processing_job_vec_push, ProcessingJobVec, ProcessingJob)
 DEFINE_VEC_PUSH(contract_vec_push, ContractVec, ContractRecord)
 
 #undef DEFINE_VEC_PUSH
 
-void planted_crop_vec_free(PlantedCropVec *vec) {
-    free(vec->data);
-    *vec = (PlantedCropVec){0};
+PlantedCrop planted_crop_columns_get(const PlantedCropColumns *cols, size_t i) {
+    return (PlantedCrop){
+        .crop_item_id = cols->crop_item_id[i],
+        .day_planted = cols->day_planted[i],
+        .growth_days_required = cols->growth_days_required[i],
+        .last_watered_day = cols->last_watered_day[i],
+        .neglect_days = cols->neglect_days[i],
+        .fertilized = cols->fertilized[i],
+        .plot_index = cols->plot_index[i],
+        .water_stress = cols->water_stress[i],
+        .nutrient_stress = cols->nutrient_stress[i],
+        .temperature_stress = cols->temperature_stress[i],
+        .pest_stress = cols->pest_stress[i],
+        .disease_stress = cols->disease_stress[i],
+        .accrued_cost = cols->accrued_cost[i],
+    };
+}
+
+void planted_crop_columns_set(PlantedCropColumns *cols, size_t i, PlantedCrop value) {
+    cols->crop_item_id[i] = value.crop_item_id;
+    cols->day_planted[i] = value.day_planted;
+    cols->growth_days_required[i] = value.growth_days_required;
+    cols->last_watered_day[i] = value.last_watered_day;
+    cols->neglect_days[i] = value.neglect_days;
+    cols->fertilized[i] = value.fertilized;
+    cols->plot_index[i] = value.plot_index;
+    cols->water_stress[i] = value.water_stress;
+    cols->nutrient_stress[i] = value.nutrient_stress;
+    cols->temperature_stress[i] = value.temperature_stress;
+    cols->pest_stress[i] = value.pest_stress;
+    cols->disease_stress[i] = value.disease_stress;
+    cols->accrued_cost[i] = value.accrued_cost;
+}
+
+bool planted_crop_columns_reserve(PlantedCropColumns *cols, size_t needed) {
+    VecColumn columns[] = {
+        {(void **)&cols->crop_item_id, sizeof(*cols->crop_item_id)},
+        {(void **)&cols->day_planted, sizeof(*cols->day_planted)},
+        {(void **)&cols->growth_days_required, sizeof(*cols->growth_days_required)},
+        {(void **)&cols->last_watered_day, sizeof(*cols->last_watered_day)},
+        {(void **)&cols->neglect_days, sizeof(*cols->neglect_days)},
+        {(void **)&cols->fertilized, sizeof(*cols->fertilized)},
+        {(void **)&cols->plot_index, sizeof(*cols->plot_index)},
+        {(void **)&cols->water_stress, sizeof(*cols->water_stress)},
+        {(void **)&cols->nutrient_stress, sizeof(*cols->nutrient_stress)},
+        {(void **)&cols->temperature_stress, sizeof(*cols->temperature_stress)},
+        {(void **)&cols->pest_stress, sizeof(*cols->pest_stress)},
+        {(void **)&cols->disease_stress, sizeof(*cols->disease_stress)},
+        {(void **)&cols->accrued_cost, sizeof(*cols->accrued_cost)},
+    };
+    return multi_vec_reserve(columns, sizeof(columns) / sizeof(columns[0]), &cols->capacity,
+                              needed);
+}
+
+bool planted_crop_vec_push(PlantedCropColumns *cols, PlantedCrop item) {
+    if (cols->count == SIZE_MAX) {
+        return false;
+    }
+    if (!planted_crop_columns_reserve(cols, cols->count + 1)) {
+        return false;
+    }
+    planted_crop_columns_set(cols, cols->count, item);
+    cols->count++;
+    return true;
+}
+
+void planted_crop_vec_free(PlantedCropColumns *cols) {
+    free(cols->crop_item_id);
+    free(cols->day_planted);
+    free(cols->growth_days_required);
+    free(cols->last_watered_day);
+    free(cols->neglect_days);
+    free(cols->fertilized);
+    free(cols->plot_index);
+    free(cols->water_stress);
+    free(cols->nutrient_stress);
+    free(cols->temperature_stress);
+    free(cols->pest_stress);
+    free(cols->disease_stress);
+    free(cols->accrued_cost);
+    *cols = (PlantedCropColumns){0};
 }
 
 void inventory_lot_vec_free(InventoryLotVec *vec) {

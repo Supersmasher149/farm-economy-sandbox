@@ -383,17 +383,17 @@ const char *trajectory_day_payload(Trajectory *t, const FarmState *state,
     emit_contracts(t, "offer", config, &state->contract_offers);
 
     for (size_t i = 0; i < state->planted.count; i++) {
-        const PlantedCrop *crop = &state->planted.data[i];
         sb_printf(t, "crop %zu item=%s planted=%d grow=%d watered=%d neglect=%d fert=%d plot=%d", i,
-                  item_key(config, crop->crop_item_id), crop->day_planted,
-                  crop->growth_days_required, crop->last_watered_day, crop->neglect_days,
-                  crop->fertilized ? 1 : 0, crop->plot_index);
-        sb_hex(t, "accrued", crop->accrued_cost);
-        sb_hex(t, "water_stress", crop->water_stress);
-        sb_hex(t, "nutrient_stress", crop->nutrient_stress);
-        sb_hex(t, "temperature_stress", crop->temperature_stress);
-        sb_hex(t, "pest_stress", crop->pest_stress);
-        sb_hex(t, "disease_stress", crop->disease_stress);
+                  item_key(config, state->planted.crop_item_id[i]), state->planted.day_planted[i],
+                  state->planted.growth_days_required[i], state->planted.last_watered_day[i],
+                  state->planted.neglect_days[i], state->planted.fertilized[i] ? 1 : 0,
+                  state->planted.plot_index[i]);
+        sb_hex(t, "accrued", state->planted.accrued_cost[i]);
+        sb_hex(t, "water_stress", state->planted.water_stress[i]);
+        sb_hex(t, "nutrient_stress", state->planted.nutrient_stress[i]);
+        sb_hex(t, "temperature_stress", state->planted.temperature_stress[i]);
+        sb_hex(t, "pest_stress", state->planted.pest_stress[i]);
+        sb_hex(t, "disease_stress", state->planted.disease_stress[i]);
         sb_printf(t, "\n");
     }
 

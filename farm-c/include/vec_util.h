@@ -22,6 +22,28 @@ bool vec_reserve(void **data, size_t *capacity, size_t needed, size_t elem_size)
  * (current live count `count`). */
 bool vec_grow(void **data, size_t *capacity, size_t count, size_t elem_size);
 
+/* One column of a structure-of-arrays collection sharing one count/capacity
+ * pair (see multi_vec_reserve below) -- `slot` is the address of the
+ * column's own pointer field (e.g. `(void **)&cols->moisture`), so
+ * multi_vec_reserve can realloc it in place. */
+typedef struct {
+    void **slot;
+    size_t elem_size;
+} VecColumn;
+
+/* Grows every column in `columns` (there are `column_count` of them) to hold
+ * at least `needed` elements, sharing one `*capacity` counter -- the SoA
+ * analogue of vec_reserve, which cannot be called N times against one
+ * shared *capacity (its `needed <= *capacity` short-circuit would skip
+ * reallocating columns 2..N once column 1's call already grew *capacity).
+ * Computes the doubling target once, validates every column's realloc size
+ * against overflow before touching any column, and only commits *capacity
+ * once every column's realloc has succeeded. On failure, columns already
+ * reallocated keep their larger (but under-reported, since *capacity is
+ * left unchanged) allocation -- safe, never leaked, never read past
+ * *capacity by any caller -- matching vec_reserve's own failure contract. */
+bool multi_vec_reserve(VecColumn *columns, size_t column_count, size_t *capacity, size_t needed);
+
 /* Floor division (Python's `//`): C's `/` truncates toward zero, so this
  * disagrees with `/` only when exactly one operand is negative. Shared by
  * every faithful port of a Python `//` expression over possibly-negative

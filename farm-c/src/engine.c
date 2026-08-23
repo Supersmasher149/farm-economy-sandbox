@@ -67,9 +67,8 @@ static bool plant_open_slots(FarmState *state, const Agent *agent) {
   int open_slots = farm_state_open_slots(state);
   if (open_slots > 0) {
     if ((size_t)open_slots > SIZE_MAX - state->planted.count ||
-        !vec_reserve((void **)&state->planted.data, &state->planted.capacity,
-                     state->planted.count + (size_t)open_slots,
-                     sizeof(*state->planted.data))) {
+        !planted_crop_columns_reserve(&state->planted,
+                                      state->planted.count + (size_t)open_slots)) {
       farm_state_mark_allocation_failed(state);
       return false;
     }
@@ -326,14 +325,13 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
    * in this phase and its per-crop order is the same -- which is exactly why
    * the split survived the fixture suites undetected. */
   for (size_t i = 0; i < state->planted.count; i++) {
-    PlantedCrop *planted = &state->planted.data[i];
-    const CropDef *crop = config_find_crop(config, planted->crop_item_id);
+    const CropDef *crop = config_find_crop(config, state->planted.crop_item_id[i]);
     if (crop == NULL)
       continue;
     bool should_water = agent->should_water(agent, state, (int)i);
     ENGINE_CHECK_STATE_ALLOC("water decision");
     if (should_water && rng_chance(rng, agent->watering_diligence)) {
-      acted = actions_water_crop(state, planted, &config->watering) || acted;
+      acted = actions_water_crop(state, i, &config->watering) || acted;
     }
     /* Operand order matches Python's `should_fertilize(...) and not
      * planted.fertilized`; no agent's should_fertilize has side effects, so
@@ -341,11 +339,11 @@ bool engine_run_day_observed(FarmState *state, const Agent *agent, FarmRng *rng,
      * order. */
     bool should_fertilize = agent->should_fertilize(agent, state, (int)i);
     ENGINE_CHECK_STATE_ALLOC("fertilizer decision");
-    if (should_fertilize && !planted->fertilized) {
+    if (should_fertilize && !state->planted.fertilized[i]) {
       if (state->fertilizer_inventory == 0)
         (void)actions_buy_fertilizer(state, &config->fertilizer, 1);
       acted =
-          actions_fertilize_crop(state, planted, &config->fertilizer) || acted;
+          actions_fertilize_crop(state, i, &config->fertilizer) || acted;
     }
   }
   ENGINE_CHECK_STATE_ALLOC("crop care");

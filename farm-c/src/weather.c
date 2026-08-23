@@ -102,19 +102,23 @@ void weather_apply(FarmState *state, const WeatherDay *weather) {
             continue;
         }
 
-        PlantedCrop *planted = &state->planted.data[state->plots.planted_index[i]];
-        const CropDef *crop = config_find_crop(config, planted->crop_item_id);
+        size_t planted_index = (size_t)state->plots.planted_index[i];
+        const CropDef *crop = config_find_crop(config, state->planted.crop_item_id[planted_index]);
 
-        /* crop_growth_update_stress mutates its PlotState in place and its
-         * signature stays a plain PlotState* (tests/test_physics.c exercises
-         * it standalone with no FarmState) -- gather this one plot's row,
-         * call, scatter the mutated row back. */
+        /* crop_growth_update_stress mutates both its PlantedCrop and
+         * PlotState in place, and its signature stays plain pointers
+         * (tests/test_physics.c exercises it standalone with no FarmState)
+         * -- gather this one plot's and one crop's rows, call, scatter the
+         * mutated rows back. */
         PlotState plot_row = plot_columns_get(&state->plots, i);
-        crop_growth_update_stress(planted, &plot_row, crop, weather->temperature, evaporation);
+        PlantedCrop planted_row = planted_crop_columns_get(&state->planted, planted_index);
+        crop_growth_update_stress(&planted_row, &plot_row, crop, weather->temperature, evaporation);
         plot_columns_set(&state->plots, i, plot_row);
+        planted_crop_columns_set(&state->planted, planted_index, planted_row);
 
-        int overdue = day - planted->last_watered_day - crop->water_interval_days;
-        planted->neglect_days = overdue > 0 ? overdue : 0;
+        int overdue =
+            day - state->planted.last_watered_day[planted_index] - crop->water_interval_days;
+        state->planted.neglect_days[planted_index] = overdue > 0 ? overdue : 0;
 
         state->plots.disease_pressure[i] = py_min(
             dynamics->max_disease_pressure,

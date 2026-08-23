@@ -115,9 +115,9 @@ static bool random_agent_should_use_fertilizer(const Agent *self, const FarmStat
 static bool random_agent_should_fertilize(const Agent *self, const FarmState *state,
                                            int planted_index) {
     (void)self;
-    const PlantedCrop *planted = &state->planted.data[planted_index];
-    const ItemDef *item = config_find_item(state->config, planted->crop_item_id);
-    ReprValue ctx[3] = {repr_str("fertilize_mid_grow"), repr_int((long)planted->day_planted),
+    const ItemDef *item = config_find_item(state->config, state->planted.crop_item_id[planted_index]);
+    ReprValue ctx[3] = {repr_str("fertilize_mid_grow"),
+                         repr_int((long)state->planted.day_planted[planted_index]),
                          repr_str(item->external_id)};
     return rng_decision_random(state->has_run_seed, state->run_seed, state->day, ctx, 3) < 0.5;
 }

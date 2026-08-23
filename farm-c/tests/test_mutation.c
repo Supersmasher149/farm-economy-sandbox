@@ -349,13 +349,14 @@ static void check_planted(const char *section, const char *name, const PlantedCr
     report(actual->accrued_cost == jhex(expected, "accrued_cost"), section, name, "accrued_cost");
 }
 
-static void check_planted_vec(const char *section, const char *name, const PlantedCropVec *actual,
-                               cJSON *expected_array) {
+static void check_planted_vec(const char *section, const char *name,
+                               const PlantedCropColumns *actual, cJSON *expected_array) {
     int expected_count = cJSON_GetArraySize(expected_array);
     report(actual->count == (size_t)expected_count, section, name, "planted count");
     size_t n = actual->count < (size_t)expected_count ? actual->count : (size_t)expected_count;
     for (size_t i = 0; i < n; i++) {
-        check_planted(section, name, &actual->data[i], cJSON_GetArrayItem(expected_array, (int)i));
+        PlantedCrop row = planted_crop_columns_get(actual, i);
+        check_planted(section, name, &row, cJSON_GetArrayItem(expected_array, (int)i));
     }
 }
 
@@ -586,7 +587,7 @@ static void load_player(cJSON *snapshot, const ResolvedConfig *config, FarmState
      * fixtures.py's serialize_plot -- plot.crop and the matching entry in
      * player.planted are literally the same Python object). */
     for (size_t i = 0; i < state->planted.count; i++) {
-        int plot_index = state->planted.data[i].plot_index;
+        int plot_index = state->planted.plot_index[i];
         if (plot_index >= 0 && (size_t)plot_index < state->plots.count) {
             state->plots.planted_index[plot_index] = (int)i;
         }
@@ -892,7 +893,7 @@ static void run_water_crop(World *w, cJSON *cases) {
         FarmState state = begin_case(w, c);
         cJSON *r = cJSON_GetObjectItem(c, "result");
         int idx = jint(r, "planted_index");
-        bool ok = actions_water_crop(&state, &state.planted.data[idx], &w->config.watering);
+        bool ok = actions_water_crop(&state, (size_t)idx, &w->config.watering);
         report(ok == jbool(r, "ok"), "water_crop", jstr(c, "name"), "ok");
         finish_case("water_crop", w, c, &state);
     }
@@ -915,7 +916,7 @@ static void run_fertilize_crop(World *w, cJSON *cases) {
         FarmState state = begin_case(w, c);
         cJSON *r = cJSON_GetObjectItem(c, "result");
         int idx = jint(r, "planted_index");
-        bool ok = actions_fertilize_crop(&state, &state.planted.data[idx], &w->config.fertilizer);
+        bool ok = actions_fertilize_crop(&state, (size_t)idx, &w->config.fertilizer);
         report(ok == jbool(r, "ok"), "fertilize_crop", jstr(c, "name"), "ok");
         finish_case("fertilize_crop", w, c, &state);
     }
