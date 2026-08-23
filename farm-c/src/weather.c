@@ -55,57 +55,71 @@ void weather_apply(FarmState *state, const WeatherDay *weather) {
     bool regenerates_nutrients =
         (regen->nitrogen != 0.0) || (regen->phosphorus != 0.0) || (regen->potassium != 0.0);
 
-    for (size_t i = 0; i < state->plot_count; i++) {
-        PlotState *plot = &state->plots[i];
-
+    for (size_t i = 0; i < state->plots.count; i++) {
         /* weather.py:130: `plot.moisture = min(1.0, plot.moisture +
          * rainfall + regen_moisture)` -- left-associative, matching C's
-         * default grouping for `a + b + c`. */
-        plot->moisture = py_min(1.0, plot->moisture + rainfall + regen->moisture);
+         * default grouping for `a + b + c`. Direct column access here (not
+         * a gathered PlotState local) is the actual cache-locality win of
+         * the SoA layout for this, the hottest per-day loop. */
+        state->plots.moisture[i] =
+            py_min(1.0, state->plots.moisture[i] + rainfall + regen->moisture);
         if (regenerates_nutrients) {
             if (regen->nitrogen != 0.0) {
-                plot->nitrogen = py_min(1.0, plot->nitrogen + regen->nitrogen);
+                state->plots.nitrogen[i] = py_min(1.0, state->plots.nitrogen[i] + regen->nitrogen);
             }
             if (regen->phosphorus != 0.0) {
-                plot->phosphorus = py_min(1.0, plot->phosphorus + regen->phosphorus);
+                state->plots.phosphorus[i] =
+                    py_min(1.0, state->plots.phosphorus[i] + regen->phosphorus);
             }
             if (regen->potassium != 0.0) {
-                plot->potassium = py_min(1.0, plot->potassium + regen->potassium);
+                state->plots.potassium[i] =
+                    py_min(1.0, state->plots.potassium[i] + regen->potassium);
             }
         }
         if (regen->soil_health != 0.0) {
-            plot->soil_health = py_min(1.0, plot->soil_health + regen->soil_health);
+            state->plots.soil_health[i] = py_min(1.0, state->plots.soil_health[i] + regen->soil_health);
         }
         if (regen->pest_pressure != 0.0) {
-            plot->pest_pressure = py_max(0.0, plot->pest_pressure - regen->pest_pressure);
+            state->plots.pest_pressure[i] =
+                py_max(0.0, state->plots.pest_pressure[i] - regen->pest_pressure);
         }
         if (regen->disease_pressure != 0.0) {
-            plot->disease_pressure = py_max(0.0, plot->disease_pressure - regen->disease_pressure);
+            state->plots.disease_pressure[i] =
+                py_max(0.0, state->plots.disease_pressure[i] - regen->disease_pressure);
         }
 
-        if (plot->planted_index < 0) {
+        if (state->plots.planted_index[i] < 0) {
             /* Fallow: these four fields are always written, unlike the
              * conditional regen writes above (matches weather.py:150-153
              * running unconditionally once a plot is confirmed fallow). */
-            plot->moisture = clamp01(plot->moisture - evaporation);
-            plot->pest_pressure = py_max(0.0, plot->pest_pressure * dynamics->fallow_pest_decay);
-            plot->disease_pressure =
-                py_max(0.0, plot->disease_pressure * dynamics->fallow_disease_decay);
-            plot->soil_health = py_min(1.0, plot->soil_health + dynamics->fallow_soil_health_regen);
+            state->plots.moisture[i] = clamp01(state->plots.moisture[i] - evaporation);
+            state->plots.pest_pressure[i] =
+                py_max(0.0, state->plots.pest_pressure[i] * dynamics->fallow_pest_decay);
+            state->plots.disease_pressure[i] =
+                py_max(0.0, state->plots.disease_pressure[i] * dynamics->fallow_disease_decay);
+            state->plots.soil_health[i] =
+                py_min(1.0, state->plots.soil_health[i] + dynamics->fallow_soil_health_regen);
             continue;
         }
 
-        PlantedCrop *planted = &state->planted.data[plot->planted_index];
+        PlantedCrop *planted = &state->planted.data[state->plots.planted_index[i]];
         const CropDef *crop = config_find_crop(config, planted->crop_item_id);
-        crop_growth_update_stress(planted, plot, crop, weather->temperature, evaporation);
+
+        /* crop_growth_update_stress mutates its PlotState in place and its
+         * signature stays a plain PlotState* (tests/test_physics.c exercises
+         * it standalone with no FarmState) -- gather this one plot's row,
+         * call, scatter the mutated row back. */
+        PlotState plot_row = plot_columns_get(&state->plots, i);
+        crop_growth_update_stress(planted, &plot_row, crop, weather->temperature, evaporation);
+        plot_columns_set(&state->plots, i, plot_row);
 
         int overdue = day - planted->last_watered_day - crop->water_interval_days;
         planted->neglect_days = overdue > 0 ? overdue : 0;
 
-        plot->disease_pressure = py_min(
+        state->plots.disease_pressure[i] = py_min(
             dynamics->max_disease_pressure,
-            plot->disease_pressure + rainfall * dynamics->disease_growth_per_rainfall);
-        plot->pest_pressure =
-            py_min(dynamics->max_pest_pressure, plot->pest_pressure + dynamics->pest_growth_per_day);
+            state->plots.disease_pressure[i] + rainfall * dynamics->disease_growth_per_rainfall);
+        state->plots.pest_pressure[i] = py_min(
+            dynamics->max_pest_pressure, state->plots.pest_pressure[i] + dynamics->pest_growth_per_day);
     }
 }

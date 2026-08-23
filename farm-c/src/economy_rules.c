@@ -104,15 +104,15 @@ double economy_fertilizer_safety_value(const CropDef *crop, const FertilizerConf
 }
 
 double economy_soil_health_factor(const FarmState *state) {
-    if (state->plot_count == 0) {
+    if (state->plots.count == 0) {
         return 1.0;
     }
     double sum = 0.0;
-    for (size_t i = 0; i < state->plot_count; i++) {
-        const PlotState *plot = &state->plots[i];
-        sum += min2(plot->nitrogen, min2(plot->phosphorus, plot->potassium));
+    for (size_t i = 0; i < state->plots.count; i++) {
+        sum += min2(state->plots.nitrogen[i],
+                    min2(state->plots.phosphorus[i], state->plots.potassium[i]));
     }
-    return sum / (double)state->plot_count;
+    return sum / (double)state->plots.count;
 }
 
 double economy_soil_quality_risk(const CropDef *crop, const FarmState *state) {
@@ -121,15 +121,15 @@ double economy_soil_quality_risk(const CropDef *crop, const FarmState *state) {
     double nutrient_risk = (1.0 - health) * demand_weight * NUTRIENT_RISK_SENSITIVITY;
 
     double same_family_fraction = 0.0;
-    if (state->plot_count > 0 && crop->family != NULL) {
+    if (state->plots.count > 0 && crop->family != NULL) {
         size_t matches = 0;
-        for (size_t i = 0; i < state->plot_count; i++) {
-            const char *previous = state->plots[i].previous_crop_family;
+        for (size_t i = 0; i < state->plots.count; i++) {
+            const char *previous = state->plots.previous_crop_family[i];
             if (previous != NULL && strcmp(previous, crop->family) == 0) {
                 matches++;
             }
         }
-        same_family_fraction = (double)matches / (double)state->plot_count;
+        same_family_fraction = (double)matches / (double)state->plots.count;
     }
     double family_risk = same_family_fraction * SAME_FAMILY_REPLANT_DISCOUNT;
 

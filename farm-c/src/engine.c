@@ -80,8 +80,8 @@ static bool plant_open_slots(FarmState *state, const Agent *agent) {
   size_t next_plot = 0;
   while (farm_state_open_slots(state) > 0) {
     bool free_plot = false;
-    for (; next_plot < state->plot_count; next_plot++) {
-      if (state->plots[next_plot].planted_index == -1) {
+    for (; next_plot < state->plots.count; next_plot++) {
+      if (state->plots.planted_index[next_plot] == -1) {
         free_plot = true;
         break;
       }

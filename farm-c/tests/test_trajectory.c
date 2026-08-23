@@ -147,21 +147,21 @@ static void test_digest_notices_state_changes(const ResolvedConfig *config) {
     state.money -= 0.01;
 
     /* One ulp on one plot's moisture, out of every field of every plot. */
-    double saved = state.plots[0].moisture;
-    state.plots[0].moisture = nextafter(saved, 1.0);
+    double saved = state.plots.moisture[0];
+    state.plots.moisture[0] = nextafter(saved, 1.0);
     digest_of(&state, other);
     report(strcmp(base, other) != 0, "1-ulp soil change moves the digest");
-    state.plots[0].moisture = saved;
+    state.plots.moisture[0] = saved;
 
     /* -0.0 vs 0.0: equal under `==`, and the literal max/min forms in
      * crop_growth.c exist to keep them distinct. If the digest could not see
      * this, nothing else would. */
-    state.plots[0].pest_pressure = 0.0;
+    state.plots.pest_pressure[0] = 0.0;
     digest_of(&state, base);
-    state.plots[0].pest_pressure = -0.0;
+    state.plots.pest_pressure[0] = -0.0;
     digest_of(&state, other);
     report(strcmp(base, other) != 0, "-0.0 hashes differently from 0.0");
-    state.plots[0].pest_pressure = 0.0;
+    state.plots.pest_pressure[0] = 0.0;
 
     /* A counter that never reaches the final CSV still has to be covered,
      * or a divergence in it is invisible until it changes something else. */

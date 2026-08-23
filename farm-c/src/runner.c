@@ -15,15 +15,15 @@ static void set_error(RunnerError *error, RunnerErrorCode code, const char *mess
 }
 
 static void apply_initial_soil(FarmState *state, const SoilInitial *soil) {
-    for (size_t i = 0; i < state->plot_count; i++) {
-        state->plots[i].moisture = soil->moisture;
-        state->plots[i].nitrogen = soil->nitrogen;
-        state->plots[i].phosphorus = soil->phosphorus;
-        state->plots[i].potassium = soil->potassium;
-        state->plots[i].ph = soil->ph;
-        state->plots[i].soil_health = soil->soil_health;
-        state->plots[i].pest_pressure = soil->pest_pressure;
-        state->plots[i].disease_pressure = soil->disease_pressure;
+    for (size_t i = 0; i < state->plots.count; i++) {
+        state->plots.moisture[i] = soil->moisture;
+        state->plots.nitrogen[i] = soil->nitrogen;
+        state->plots.phosphorus[i] = soil->phosphorus;
+        state->plots.potassium[i] = soil->potassium;
+        state->plots.ph[i] = soil->ph;
+        state->plots.soil_health[i] = soil->soil_health;
+        state->plots.pest_pressure[i] = soil->pest_pressure;
+        state->plots.disease_pressure[i] = soil->disease_pressure;
     }
 }
 

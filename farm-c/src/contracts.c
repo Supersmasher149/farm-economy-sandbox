@@ -149,10 +149,11 @@ static int processing_capacity(const FarmState *state) {
  * back to DEFAULT_FERTILIZER_QUALITY_BONUS, same as an absent dict would). */
 static Quality best_possible_grade(const FarmState *state, const ResolvedConfig *config,
                                     const CropDef *crop, const PlantedCrop *planted) {
-    const PlotState *plot = (planted->plot_index >= 0 &&
-                              (size_t)planted->plot_index < state->plot_count)
-                                 ? &state->plots[planted->plot_index]
-                                 : NULL;
+    bool has_plot =
+        planted->plot_index >= 0 && (size_t)planted->plot_index < state->plots.count;
+    PlotState plot_row =
+        has_plot ? plot_columns_get(&state->plots, (size_t)planted->plot_index) : (PlotState){0};
+    const PlotState *plot = has_plot ? &plot_row : NULL;
     double yield_multiplier, quality_score;
     crop_growth_harvest_multipliers(planted, crop, plot, NULL, &config->soil_dynamics,
                                      &yield_multiplier, &quality_score);

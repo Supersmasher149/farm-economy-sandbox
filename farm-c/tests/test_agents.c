@@ -275,16 +275,18 @@ static void load_scenario(cJSON *json, const ResolvedConfig *config, Scenario *o
     int p = 0;
     cJSON *plot_json;
     cJSON_ArrayForEach(plot_json, plots) {
-        PlotState *plot = &out->state.plots[p++];
-        plot->moisture = jnum(plot_json, "moisture");
-        plot->nitrogen = jnum(plot_json, "nitrogen");
-        plot->phosphorus = jnum(plot_json, "phosphorus");
-        plot->potassium = jnum(plot_json, "potassium");
-        plot->ph = jnum(plot_json, "ph");
-        plot->soil_health = jnum(plot_json, "soil_health");
-        plot->pest_pressure = jnum(plot_json, "pest_pressure");
-        plot->disease_pressure = jnum(plot_json, "disease_pressure");
-        plot->previous_crop_family = jstr(plot_json, "previous_crop_family");
+        PlotState plot = plot_columns_get(&out->state.plots, (size_t)p);
+        plot.moisture = jnum(plot_json, "moisture");
+        plot.nitrogen = jnum(plot_json, "nitrogen");
+        plot.phosphorus = jnum(plot_json, "phosphorus");
+        plot.potassium = jnum(plot_json, "potassium");
+        plot.ph = jnum(plot_json, "ph");
+        plot.soil_health = jnum(plot_json, "soil_health");
+        plot.pest_pressure = jnum(plot_json, "pest_pressure");
+        plot.disease_pressure = jnum(plot_json, "disease_pressure");
+        plot.previous_crop_family = jstr(plot_json, "previous_crop_family");
+        plot_columns_set(&out->state.plots, (size_t)p, plot);
+        p++;
     }
 
     cJSON *planted = cJSON_GetObjectItem(json, "planted");

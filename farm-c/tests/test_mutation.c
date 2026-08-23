@@ -575,8 +575,8 @@ static void load_player(cJSON *snapshot, const ResolvedConfig *config, FarmState
     int p = 0;
     cJSON *plot_json;
     cJSON_ArrayForEach(plot_json, plots_array) {
-        if ((size_t)p < state->plot_count) {
-            state->plots[p] = load_plot(plot_json);
+        if ((size_t)p < state->plots.count) {
+            plot_columns_set(&state->plots, (size_t)p, load_plot(plot_json));
         }
         p++;
     }
@@ -587,8 +587,8 @@ static void load_player(cJSON *snapshot, const ResolvedConfig *config, FarmState
      * player.planted are literally the same Python object). */
     for (size_t i = 0; i < state->planted.count; i++) {
         int plot_index = state->planted.data[i].plot_index;
-        if (plot_index >= 0 && (size_t)plot_index < state->plot_count) {
-            state->plots[plot_index].planted_index = (int)i;
+        if (plot_index >= 0 && (size_t)plot_index < state->plots.count) {
+            state->plots.planted_index[plot_index] = (int)i;
         }
     }
 
@@ -721,11 +721,12 @@ static void check_player(const char *section, const char *name, const FarmState 
 
     cJSON *plots_array = cJSON_GetObjectItem(expected, "plots");
     int expected_plot_count = cJSON_GetArraySize(plots_array);
-    report(state->plot_count == (size_t)expected_plot_count, section, name, "plot_count");
-    size_t np = state->plot_count < (size_t)expected_plot_count ? state->plot_count
-                                                                  : (size_t)expected_plot_count;
+    report(state->plots.count == (size_t)expected_plot_count, section, name, "plot_count");
+    size_t np = state->plots.count < (size_t)expected_plot_count ? state->plots.count
+                                                                   : (size_t)expected_plot_count;
     for (size_t i = 0; i < np; i++) {
-        check_plot(section, name, &state->plots[i], cJSON_GetArrayItem(plots_array, (int)i));
+        PlotState actual_plot = plot_columns_get(&state->plots, i);
+        check_plot(section, name, &actual_plot, cJSON_GetArrayItem(plots_array, (int)i));
     }
 
     check_lot_vec(section, name, &state->inventory_lots, cJSON_GetObjectItem(expected, "inventory_lots"));

@@ -362,6 +362,43 @@ static void run_generate_weather(const ResolvedConfig *config, cJSON *cases) {
     }
 }
 
+/* Ad hoc PlotColumns builder for this fixture harness -- run_apply_weather
+ * builds a FarmState directly (not via farm_state_init, since the fixture's
+ * plot_count has nothing to do with any config-derived slots_total), so it
+ * needs its own alloc/free pair rather than state.c's internal
+ * plot_columns_resize. Every field gets overwritten by load_plot/
+ * plot_columns_set below, so a plain calloc (no default-value fill) is
+ * enough. */
+static PlotColumns alloc_plot_columns(size_t count) {
+    PlotColumns cols = {0};
+    cols.moisture = calloc(count, sizeof(double));
+    cols.nitrogen = calloc(count, sizeof(double));
+    cols.phosphorus = calloc(count, sizeof(double));
+    cols.potassium = calloc(count, sizeof(double));
+    cols.ph = calloc(count, sizeof(double));
+    cols.soil_health = calloc(count, sizeof(double));
+    cols.pest_pressure = calloc(count, sizeof(double));
+    cols.disease_pressure = calloc(count, sizeof(double));
+    cols.previous_crop_family = calloc(count, sizeof(const char *));
+    cols.planted_index = calloc(count, sizeof(int));
+    cols.count = count;
+    return cols;
+}
+
+static void free_plot_columns(PlotColumns *cols) {
+    free(cols->moisture);
+    free(cols->nitrogen);
+    free(cols->phosphorus);
+    free(cols->potassium);
+    free(cols->ph);
+    free(cols->soil_health);
+    free(cols->pest_pressure);
+    free(cols->disease_pressure);
+    free(cols->previous_crop_family);
+    free(cols->planted_index);
+    *cols = (PlotColumns){0};
+}
+
 static void run_apply_weather(const ResolvedConfig *config, cJSON *cases) {
     cJSON *c;
     cJSON_ArrayForEach(c, cases) {
@@ -376,20 +413,21 @@ static void run_apply_weather(const ResolvedConfig *config, cJSON *cases) {
         cJSON *before = cJSON_GetObjectItem(c, "before");
         int plot_count = cJSON_GetArraySize(before);
 
-        PlotState *plots = calloc((size_t)plot_count, sizeof(PlotState));
+        PlotColumns plots = alloc_plot_columns((size_t)plot_count);
         PlantedCropVec planted_vec = {0};
 
         for (int i = 0; i < plot_count; i++) {
             cJSON *plot_json = cJSON_GetArrayItem(before, i);
-            plots[i] = load_plot(plot_json);
+            PlotState plot = load_plot(plot_json);
             cJSON *crop_json = cJSON_GetObjectItem(plot_json, "crop");
             if (crop_json != NULL && !cJSON_IsNull(crop_json)) {
                 PlantedCrop planted = load_planted(crop_json);
                 planted_crop_vec_push(&planted_vec, planted);
-                plots[i].planted_index = (int)planted_vec.count - 1;
+                plot.planted_index = (int)planted_vec.count - 1;
             } else {
-                plots[i].planted_index = -1;
+                plot.planted_index = -1;
             }
+            plot_columns_set(&plots, (size_t)i, plot);
         }
 
         /* Each case may override plot_regen/soil_dynamics (see
@@ -405,7 +443,6 @@ static void run_apply_weather(const ResolvedConfig *config, cJSON *cases) {
         state.config = &case_config;
         state.day = day;
         state.plots = plots;
-        state.plot_count = (size_t)plot_count;
         state.planted = planted_vec;
 
         weather_apply(&state, &weather);
@@ -413,16 +450,17 @@ static void run_apply_weather(const ResolvedConfig *config, cJSON *cases) {
         cJSON *after = cJSON_GetObjectItem(c, "after");
         for (int i = 0; i < plot_count; i++) {
             cJSON *expected_plot = cJSON_GetArrayItem(after, i);
-            check_plot("apply_weather", name, &state.plots[i], expected_plot);
+            PlotState actual_plot = plot_columns_get(&state.plots, (size_t)i);
+            check_plot("apply_weather", name, &actual_plot, expected_plot);
             cJSON *expected_crop = cJSON_GetObjectItem(expected_plot, "crop");
             if (expected_crop != NULL && !cJSON_IsNull(expected_crop)) {
-                const PlantedCrop *planted = &state.planted.data[state.plots[i].planted_index];
+                const PlantedCrop *planted = &state.planted.data[actual_plot.planted_index];
                 check_planted("apply_weather", name, planted, expected_crop);
             }
         }
 
         planted_crop_vec_free(&state.planted);
-        free(plots);
+        free_plot_columns(&plots);
     }
 }
 

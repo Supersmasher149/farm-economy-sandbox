@@ -30,6 +30,31 @@ typedef struct {
     int planted_index;                /* index into FarmState.planted, or -1 */
 } PlotState;
 
+/* Structure-of-arrays storage for FarmState.plots. PlotState above stays the
+ * gather/scatter "row" type -- used by plot_columns_get/set below and by
+ * every existing PlotState-shaped test fixture -- while the columns here are
+ * what every hot per-day loop (weather.c, economy_rules.c) indexes directly,
+ * matching the dense-array-by-index convention already used for every other
+ * FarmState field below (seed_inventory, market_prices, ...). A plain
+ * sub-struct (not one FarmState field per column) keeps farm_state_init/
+ * destroy/add_slots operating on one value, the same shape as
+ * PlantedCropVec/InventoryLotVec. */
+typedef struct {
+    double *moisture;
+    double *nitrogen;
+    double *phosphorus;
+    double *potassium;
+    double *ph;
+    double *soil_health;
+    double *pest_pressure;
+    double *disease_pressure;
+
+    const char **previous_crop_family; /* NULL if never planted */
+    int *planted_index;                /* index into FarmState.planted, or -1 */
+
+    size_t count;
+} PlotColumns;
+
 typedef struct {
     ItemId crop_item_id;
     int day_planted;
@@ -167,8 +192,7 @@ typedef struct {
     int total_days;
     int slots_total;
 
-    PlotState *plots;
-    size_t plot_count;
+    PlotColumns plots;
 
     PlantedCropVec planted;
     InventoryLotVec inventory_lots;
@@ -332,6 +356,14 @@ typedef struct {
     /* contracts.c's equivalent buffer is deliberately not here -- it sits
      * behind a const-FarmState call chain; see its comment in that file. */
 } FarmState;
+
+/* Gather/scatter a single plot's fields to/from PlotColumns, for the handful
+ * of call sites that need a whole PlotState value (crop_growth.c's
+ * pointer-taking API, trajectory.c's per-day emission, test fixtures) rather
+ * than a single field -- most call sites should index a column directly
+ * (state->plots.moisture[i]), not go through these. */
+PlotState plot_columns_get(const PlotColumns *cols, size_t i);
+void plot_columns_set(PlotColumns *cols, size_t i, PlotState value);
 
 /* --- Vector push/free, backed by vec_util.c (see its header for why these
  * aren't hand-rolled per type). Push returns false only on allocation

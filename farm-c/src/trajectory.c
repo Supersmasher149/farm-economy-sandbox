@@ -397,24 +397,24 @@ const char *trajectory_day_payload(Trajectory *t, const FarmState *state,
         sb_printf(t, "\n");
     }
 
-    for (size_t i = 0; i < state->plot_count; i++) {
-        const PlotState *plot = &state->plots[i];
+    for (size_t i = 0; i < state->plots.count; i++) {
         sb_printf(t, "plot %zu", i);
-        sb_hex(t, "moisture", plot->moisture);
-        sb_hex(t, "nitrogen", plot->nitrogen);
-        sb_hex(t, "phosphorus", plot->phosphorus);
-        sb_hex(t, "potassium", plot->potassium);
-        sb_hex(t, "ph", plot->ph);
-        sb_hex(t, "soil_health", plot->soil_health);
-        sb_hex(t, "pest_pressure", plot->pest_pressure);
-        sb_hex(t, "disease_pressure", plot->disease_pressure);
-        sb_printf(t, " family=%s",
-                  plot->previous_crop_family != NULL ? plot->previous_crop_family : "-");
+        sb_hex(t, "moisture", state->plots.moisture[i]);
+        sb_hex(t, "nitrogen", state->plots.nitrogen[i]);
+        sb_hex(t, "phosphorus", state->plots.phosphorus[i]);
+        sb_hex(t, "potassium", state->plots.potassium[i]);
+        sb_hex(t, "ph", state->plots.ph[i]);
+        sb_hex(t, "soil_health", state->plots.soil_health[i]);
+        sb_hex(t, "pest_pressure", state->plots.pest_pressure[i]);
+        sb_hex(t, "disease_pressure", state->plots.disease_pressure[i]);
+        sb_printf(t, " family=%s", state->plots.previous_crop_family[i] != NULL
+                                        ? state->plots.previous_crop_family[i]
+                                        : "-");
         /* The index rather than the crop's fields: it is emitted above, and
          * comparing the index checks the C's plot<->planted bookkeeping
          * against Python's object graph (where plot.crop is the object
          * itself and the mirror recovers its position by identity). */
-        sb_optint(t, "crop", plot->planted_index, plot->planted_index >= 0);
+        sb_optint(t, "crop", state->plots.planted_index[i], state->plots.planted_index[i] >= 0);
         sb_printf(t, "\n");
     }
 

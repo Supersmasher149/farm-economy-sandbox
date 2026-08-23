@@ -30,8 +30,8 @@ bool actions_plant_seed(FarmState *state, const CropDef *crop, int growth_days, 
         return false;
     }
     int plot_index = -1;
-    for (size_t i = 0; i < state->plot_count; i++) {
-        if (state->plots[i].planted_index == -1) {
+    for (size_t i = 0; i < state->plots.count; i++) {
+        if (state->plots.planted_index[i] == -1) {
             plot_index = (int)i;
             break;
         }
@@ -61,12 +61,14 @@ bool actions_plant_seed(FarmState *state, const CropDef *crop, int growth_days, 
         state->fertilizer_inventory -= 1;
         state->total_fertilizer_applied += 1;
     }
-    state->plots[plot_index].planted_index = new_index;
+    state->plots.planted_index[plot_index] = new_index;
     if (fertilized) {
-        PlotState *plot = &state->plots[plot_index];
-        plot->nitrogen = py_min(1.0, plot->nitrogen + fertilizer->nutrients_added.nitrogen);
-        plot->phosphorus = py_min(1.0, plot->phosphorus + fertilizer->nutrients_added.phosphorus);
-        plot->potassium = py_min(1.0, plot->potassium + fertilizer->nutrients_added.potassium);
+        state->plots.nitrogen[plot_index] =
+            py_min(1.0, state->plots.nitrogen[plot_index] + fertilizer->nutrients_added.nitrogen);
+        state->plots.phosphorus[plot_index] = py_min(
+            1.0, state->plots.phosphorus[plot_index] + fertilizer->nutrients_added.phosphorus);
+        state->plots.potassium[plot_index] = py_min(
+            1.0, state->plots.potassium[plot_index] + fertilizer->nutrients_added.potassium);
     }
     state->total_planted += 1;
     state->crop_plant_counts[crop->item_id] += 1;
@@ -80,16 +82,16 @@ bool actions_water_crop(FarmState *state, PlantedCrop *planted, const WateringCo
     if (state->money < cost) {
         return false;
     }
-    if (planted->plot_index < 0 || (size_t)planted->plot_index >= state->plot_count) {
+    if (planted->plot_index < 0 || (size_t)planted->plot_index >= state->plots.count) {
         return false;
     }
-    PlotState *plot = &state->plots[planted->plot_index];
     state->money -= cost;
     farm_state_record_expense(state, EXPENSE_WATERING, cost);
     planted->accrued_cost += cost;
     planted->last_watered_day = state->day;
     planted->neglect_days = 0;
-    plot->moisture = py_min(1.0, plot->moisture + watering->moisture_added);
+    state->plots.moisture[planted->plot_index] =
+        py_min(1.0, state->plots.moisture[planted->plot_index] + watering->moisture_added);
     state->total_waterings += 1;
     return true;
 }
@@ -122,11 +124,14 @@ bool actions_fertilize_crop(FarmState *state, PlantedCrop *planted,
     state->fertilizer_inventory -= 1;
     state->total_fertilizer_applied += 1;
     planted->accrued_cost += fertilizer->cost;
-    if (planted->plot_index >= 0 && (size_t)planted->plot_index < state->plot_count) {
-        PlotState *plot = &state->plots[planted->plot_index];
-        plot->nitrogen = py_min(1.0, plot->nitrogen + fertilizer->nutrients_added.nitrogen);
-        plot->phosphorus = py_min(1.0, plot->phosphorus + fertilizer->nutrients_added.phosphorus);
-        plot->potassium = py_min(1.0, plot->potassium + fertilizer->nutrients_added.potassium);
+    if (planted->plot_index >= 0 && (size_t)planted->plot_index < state->plots.count) {
+        int plot_index = planted->plot_index;
+        state->plots.nitrogen[plot_index] =
+            py_min(1.0, state->plots.nitrogen[plot_index] + fertilizer->nutrients_added.nitrogen);
+        state->plots.phosphorus[plot_index] = py_min(
+            1.0, state->plots.phosphorus[plot_index] + fertilizer->nutrients_added.phosphorus);
+        state->plots.potassium[plot_index] = py_min(
+            1.0, state->plots.potassium[plot_index] + fertilizer->nutrients_added.potassium);
     }
     return true;
 }
@@ -166,8 +171,8 @@ bool actions_harvest_mature(FarmState *state, const ResolvedConfig *config, Farm
         bool mature = (state->day - planted.day_planted) >= planted.growth_days_required;
         if (!mature) {
             state->planted.data[write] = planted;
-            if (planted.plot_index >= 0 && (size_t)planted.plot_index < state->plot_count) {
-                state->plots[planted.plot_index].planted_index = (int)write;
+            if (planted.plot_index >= 0 && (size_t)planted.plot_index < state->plots.count) {
+                state->plots.planted_index[planted.plot_index] = (int)write;
             }
             write++;
             continue;
@@ -176,9 +181,10 @@ bool actions_harvest_mature(FarmState *state, const ResolvedConfig *config, Farm
         harvested_any = true;
         state->total_harvest_events += 1;
         const CropDef *crop = config_find_crop(config, planted.crop_item_id);
-        PlotState *plot = (planted.plot_index >= 0 && (size_t)planted.plot_index < state->plot_count)
-                               ? &state->plots[planted.plot_index]
-                               : NULL;
+        bool has_plot = planted.plot_index >= 0 && (size_t)planted.plot_index < state->plots.count;
+        PlotState plot_row = has_plot ? plot_columns_get(&state->plots, (size_t)planted.plot_index)
+                                       : (PlotState){0};
+        const PlotState *plot = has_plot ? &plot_row : NULL;
 
         int amount;
         bool lost = crop_growth_compute_harvest_outcome(&planted, crop, watering, fertilizer, rng,
@@ -218,16 +224,19 @@ bool actions_harvest_mature(FarmState *state, const ResolvedConfig *config, Farm
             }
         }
 
-        if (plot != NULL) {
+        if (has_plot) {
             /* `crop.get("family", crop["id"])`: a family-less crop's plot
              * remembers the crop's own item id instead, so a later
              * same-family rotation check can never accidentally match a
              * different family-less crop. */
+            size_t plot_index = (size_t)planted.plot_index;
             const ItemDef *item = config_find_item(config, crop->item_id);
-            plot->previous_crop_family = crop->family != NULL ? crop->family : item->external_id;
-            plot->planted_index = -1;
-            plot->soil_health = py_max(config->soil_dynamics.min_soil_health,
-                                       plot->soil_health - config->soil_dynamics.harvest_soil_health_cost);
+            state->plots.previous_crop_family[plot_index] =
+                crop->family != NULL ? crop->family : item->external_id;
+            state->plots.planted_index[plot_index] = -1;
+            state->plots.soil_health[plot_index] =
+                py_max(config->soil_dynamics.min_soil_health,
+                       state->plots.soil_health[plot_index] - config->soil_dynamics.harvest_soil_health_cost);
         }
     }
 

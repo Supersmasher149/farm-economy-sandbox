@@ -15,7 +15,7 @@ static void observe(const FarmState *state, const WeatherDay *weather, void *con
     assert(weather != NULL);
     trace->calls++;
     trace->last_day = state->day;
-    if (trace->calls == 1) trace->first_moisture = state->plots[0].moisture;
+    if (trace->calls == 1) trace->first_moisture = state->plots.moisture[0];
 }
 
 static void load(ResolvedConfig *config, SimulationSettings *settings) {
