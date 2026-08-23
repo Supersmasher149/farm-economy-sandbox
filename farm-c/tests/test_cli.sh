@@ -3,7 +3,7 @@ set -eu
 
 summary=$(./farm-c single --seed 42)
 case "$summary" in
-    *"strategy: profit_optimizer"*"actual_seed: 42"*"days_simulated:"*"bankrupt:"*) ;;
+    *"strategy: profit_optimizer"*"actual_seed: 42"*"elapsed_seconds:"*"days_simulated:"*"bankrupt:"*) ;;
     *) echo "CLI summary is missing required fields" >&2; exit 1 ;;
 esac
 
@@ -28,9 +28,37 @@ fi
 
 batch_summary=$(./farm-c batch --runs 2 --seed 42 --strategy fast_seller --strategy profit_optimizer)
 case "$batch_summary" in
-    *"base_seed: 42"*"total_runs: 4"*"fast_seller"*"profit_optimizer"*) ;;
+    *"base_seed: 42"*"total_runs: 4"*"elapsed:"*"fast_seller"*"profit_optimizer"*) ;;
     *) echo "batch summary is missing required fields" >&2; exit 1 ;;
 esac
+
+# --progress forces the live line onto stderr even when stderr is not a
+# terminal (as it never is under this script); --no-progress must not draw
+# it. progress_advance runs after batch_run's own callback, so this is a
+# stderr-only check -- it must not perturb stdout/CSV (verified below).
+progress_stderr=$(./farm-c batch --runs 5 --seed 42 --strategy fast_seller --progress 2>&1 >/dev/null)
+case "$progress_stderr" in
+    *'sim/s'*'elapsed'*'left'*) ;;
+    *) echo "--progress did not draw a status line on stderr" >&2; exit 1 ;;
+esac
+no_progress_stderr=$(./farm-c batch --runs 5 --seed 42 --strategy fast_seller --no-progress 2>&1 >/dev/null)
+if [ -n "$no_progress_stderr" ]; then
+    echo "--no-progress unexpectedly wrote to stderr: $no_progress_stderr" >&2
+    exit 1
+fi
+
+# --progress/--no-progress are display-only: same seed must still produce
+# byte-identical CSV output either way.
+progress_csv=$(mktemp)
+no_progress_csv=$(mktemp)
+./farm-c batch --runs 3 --seed 42 --strategy fast_seller --progress --csv "$progress_csv" >/dev/null 2>&1
+./farm-c batch --runs 3 --seed 42 --strategy fast_seller --no-progress --csv "$no_progress_csv" >/dev/null 2>&1
+if ! cmp -s "$progress_csv" "$no_progress_csv"; then
+    echo "--progress changed batch results for a fixed seed" >&2
+    rm -f "$progress_csv" "$no_progress_csv"
+    exit 1
+fi
+rm -f "$progress_csv" "$no_progress_csv"
 
 csv_path=$(mktemp)
 ./farm-c batch --runs 2 --seed 42 --strategy fast_seller --csv "$csv_path" >/dev/null

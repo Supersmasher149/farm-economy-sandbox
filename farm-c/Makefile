@@ -92,7 +92,7 @@ CJSON_OBJ = $(BUILD_DIR)/cJSON.o
 TEST_BINS = tests/test_agents tests/test_rng tests/test_physics tests/test_mutation \
             tests/test_config_loader tests/test_engine tests/test_runner tests/test_batch \
             tests/test_dashboard tests/test_trajectory tests/test_reporting \
-            tests/test_config_invalid
+            tests/test_config_invalid tests/test_progress
 DEPS = $(LIB_OBJS:.o=.d) $(CJSON_OBJ:.o=.d)
 
 .PHONY: all test fixtures fixtures-rng fixtures-physics fixtures-mutation clean profile \
@@ -182,6 +182,9 @@ tests/test_reporting: tests/test_reporting.c $(LIB_OBJS) $(CJSON_OBJ)
 tests/test_config_invalid: tests/test_config_invalid.c $(LIB_OBJS) $(CJSON_OBJ)
 	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
+tests/test_progress: tests/test_progress.c $(LIB_OBJS) $(CJSON_OBJ)
+	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+
 test: $(TEST_BINS) farm-c
 	./tests/test_agents
 	./tests/test_rng
@@ -195,6 +198,7 @@ test: $(TEST_BINS) farm-c
 	./tests/test_trajectory
 	./tests/test_reporting
 	./tests/test_config_invalid
+	./tests/test_progress
 	sh tests/test_cli.sh
 	./farm-c golden check
 	$(MAKE) golden-check-profile

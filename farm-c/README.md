@@ -360,6 +360,33 @@ in ~2% of `test_rng.c`'s cases before the flag was added (see
 header comment for the same requirement on the existing weather/crop-growth
 kernel).
 
+### Timing
+
+Both commands report how long the run took. `single` prints
+`elapsed_seconds` (wall time around the `runner_run_single` call only --
+config loading and printing are excluded, same scope `main.py`'s per-run
+timing would cover). `batch` prints an `elapsed` summary line
+(`MM:SS elapsed (N.NNNs, R sim/s)`) once every run has completed.
+
+`batch` also draws a self-overwriting progress line on stderr while it
+runs -- bar, percent, done/total, sim/s, elapsed, and estimated time left --
+mirroring `../runner/progress.py`'s `main.py batch` line, format for format
+(see `src/progress.c`). It draws only when stderr is a terminal; `--progress`
+and `--no-progress` force it on or off (e.g. for a piped `batch > report.txt`
+that should still show progress, or an interactive shell that shouldn't).
+Drawing the line never touches `FarmState` or `FarmRng` -- `on_batch_result`
+only calls `progress_advance` after `batch_run`'s own callback has already
+recorded the result -- so turning it on or off cannot change a batch's
+outcome for a given seed, the same boundary `../CLAUDE.md` documents for the
+Python reporter. This is a cosmetic/diagnostic feature, not part of the
+bit-exact Python contract: its rendering isn't fixture-tested against
+Python, only against hand-computed expectations (`tests/test_progress.c`).
+
+```bash
+./farm-c batch --runs 1000 --seed 42 --progress      # force the bar on
+./farm-c batch --runs 1000 --seed 42 --no-progress    # force it off
+```
+
 ### Recording run/batch summaries to Mem0
 
 `--mem0`, accepted by both `single` and `batch`, records a one-line free-text

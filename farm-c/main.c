@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "aggregate.h"
 #include "batch.h"
@@ -14,6 +15,7 @@
 #include "dashboard.h"
 #include "golden.h"
 #include "mem0_client.h"
+#include "progress.h"
 #include "runner.h"
 #include "warnings.h"
 
@@ -33,6 +35,12 @@ typedef struct {
     bool mem0;
 } SingleOptions;
 
+/* Mirrors ../main.py's `--progress`/`--no-progress`: AUTO defers to
+ * whether stderr is a terminal (see cmd_batch), ON/OFF are explicit
+ * overrides for either direction (piped output that still wants the bar,
+ * or an interactive shell that doesn't). */
+typedef enum { PROGRESS_AUTO, PROGRESS_ON, PROGRESS_OFF } ProgressMode;
+
 typedef struct {
     const char *config_dir;
     bool has_runs;
@@ -47,6 +55,7 @@ typedef struct {
     const char *csv_path;
     const char *html_path;
     bool mem0;
+    ProgressMode progress;
 } BatchOptions;
 
 static void usage(FILE *stream) {
@@ -55,7 +64,7 @@ static void usage(FILE *stream) {
            "                     [--mem0]\n"
            "       farm-c batch --runs N [--strategy NAME]... [--seed INT] [--config DIR]\n"
            "                    [--days N] [--start-money N] [--csv PATH] [--html PATH]\n"
-           "                    [--mem0]\n"
+           "                    [--mem0] [--progress] [--no-progress]\n"
            "       farm-c golden capture|check [--config DIR] [--baseline PATH]\n"
            "       farm-c golden trace|payload STRATEGY SEED [--day N]\n"
            "\n"
@@ -63,7 +72,12 @@ static void usage(FILE *stream) {
            "`batch`) to the Mem0 Platform (https://mem0.ai). Requires farm-c to be built\n"
            "with `make WITH_MEM0=1` and the MEM0_API_KEY environment variable to be set;\n"
            "farm-c fails fast if --mem0 is passed and either is missing, before running\n"
-           "anything.\n");
+           "anything.\n"
+           "\n"
+           "batch draws a self-overwriting progress line (bar, %%, done/total, sim/s,\n"
+           "elapsed, ETA) on stderr when stderr is a terminal; --progress/--no-progress\n"
+           "force it on or off. Both `single` and `batch` always print how long the run\n"
+           "took, whether or not the live line was drawn.\n");
 }
 
 /* Shared by cmd_single/cmd_batch: fail fast, before doing any simulation
@@ -159,10 +173,15 @@ static bool parse_batch_args(int argc, char **argv, BatchOptions *options) {
         .csv_path = NULL,
         .html_path = NULL,
         .mem0 = false,
+        .progress = PROGRESS_AUTO,
     };
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--mem0") == 0) {
             options->mem0 = true;
+        } else if (strcmp(argv[i], "--progress") == 0) {
+            options->progress = PROGRESS_ON;
+        } else if (strcmp(argv[i], "--no-progress") == 0) {
+            options->progress = PROGRESS_OFF;
         } else if (strcmp(argv[i], "--runs") == 0 && i + 1 < argc) {
             if (!parse_positive_long(argv[++i], &options->runs)) return false;
             options->has_runs = true;
@@ -212,10 +231,12 @@ static void print_day(const FarmState *state, const WeatherDay *weather, void *c
            state->planted.count, state->inventory_lots.count);
 }
 
-static void print_result(const SingleOptions *options, const RunResult *result) {
+static void print_result(const SingleOptions *options, const RunResult *result,
+                         double elapsed_seconds) {
     const FarmState *state = &result->state;
     printf("strategy: %s\n", options->strategy);
     printf("actual_seed: %" PRIu64 "\n", result->seed);
+    printf("elapsed_seconds: %.6f\n", elapsed_seconds);
     printf("days_simulated: %d\nfinal_money: %.17g\nrevenue: %.17g\nexpenses: %.17g\n",
            result->days_simulated, state->money, state->total_revenue, state->total_expenses);
     printf("planted: %d\nharvested: %d\nsold: %d\nidle_days: %d\n",
@@ -263,15 +284,17 @@ static int cmd_single(int argc, char **argv) {
     if (!load_config_or_report(options.config_dir, &config, &settings)) return 1;
     RunResult result = {0};
     RunnerError error;
+    double started_at = progress_now_seconds();
     bool ok = runner_run_single(&config, &settings, agent, options.seed,
                                 options.verbose ? print_day : NULL, NULL, &result, &error);
+    double elapsed_seconds = progress_now_seconds() - started_at;
     if (!ok) {
         fprintf(stderr, "run error: %s\n", error.message);
         runner_run_result_destroy(&result);
         config_destroy(&config);
         return 1;
     }
-    print_result(&options, &result);
+    print_result(&options, &result, elapsed_seconds);
     if (options.mem0) {
         const FarmState *state = &result.state;
         char text[768];
@@ -303,6 +326,7 @@ typedef struct {
     const char *const *names;
     size_t agent_count;
     const ResolvedConfig *config;
+    ProgressReporter *progress;
 } BatchContext;
 
 static void write_csv_row(FILE *csv, const BatchRunResult *r) {
@@ -325,6 +349,7 @@ static void on_batch_result(const BatchRunResult *r, void *context) {
     BatchContext *ctx = context;
     if (ctx->csv != NULL) write_csv_row(ctx->csv, r);
     dashboard_add_run(ctx->html, r); /* no-op when --html was not passed */
+    if (ctx->progress != NULL) progress_advance(ctx->progress, 1);
 
     /* Match by the strategy name batch_run reports, not by run position:
      * r->strategy is the same names[] pointer batch_run was given (see
@@ -477,13 +502,27 @@ static int cmd_batch(int argc, char **argv) {
             agg[i].crop_totals = crop_totals + i * config.crop_count;
     }
 
-    BatchContext context = {csv, html, agg, names, agent_count, &config};
+    /* PROGRESS_AUTO defers to whether stderr is a terminal, same default
+     * ../runner/progress.py's ProgressReporter(enabled=None) uses -- so a
+     * redirected/piped batch (`farm-c batch ... > report.txt`, or CI logs)
+     * draws nothing by default and --progress opts back in. */
+    bool progress_enabled = options.progress == PROGRESS_ON ||
+                            (options.progress == PROGRESS_AUTO && isatty(fileno(stderr)));
+    ProgressReporter progress;
+    progress_init(&progress, agent_count * (size_t)options.runs, stderr, progress_enabled);
+
+    BatchContext context = {csv, html, agg, names, agent_count, &config, &progress};
 
     uint64_t resolved_seed = 0;
     BatchError error;
+    /* progress_start() always begins timing, whether or not the live line
+     * is drawn -- it's what makes the "elapsed" report below meaningful
+     * even under --no-progress or a redirected stderr. */
+    progress_start(&progress);
     bool ok = batch_run(&config, &settings, agents, names, agent_count, (size_t)options.runs,
                         options.seed.has_seed, options.seed.seed, &resolved_seed,
                         on_batch_result, &context, &error);
+    progress_finish(&progress);
     if (csv != NULL) fclose(csv);
     /* Closed on both paths: a partially written page is still valid HTML
      * for the runs that did complete, and leaving the file open would leak
@@ -502,9 +541,18 @@ static int cmd_batch(int argc, char **argv) {
         return 1;
     }
 
+    double elapsed_seconds = progress_elapsed_seconds(&progress);
+    size_t total_runs = agent_count * (size_t)options.runs;
+    char elapsed_text[16];
+    progress_format_duration(elapsed_seconds, elapsed_text, sizeof(elapsed_text));
+    char rate_text[16];
+    progress_format_rate(elapsed_seconds > 0.0 ? (double)total_runs / elapsed_seconds : NAN,
+                        rate_text, sizeof(rate_text));
+
     printf("base_seed: %" PRIu64 "\n", resolved_seed);
     printf("strategies: %zu\nruns_per_strategy: %ld\ntotal_runs: %zu\n", agent_count,
-          options.runs, agent_count * (size_t)options.runs);
+          options.runs, total_runs);
+    printf("elapsed: %s (%.3fs, %s sim/s)\n", elapsed_text, elapsed_seconds, rate_text);
     if (csv != NULL) printf("csv: %s\n", options.csv_path);
     if (html != NULL) printf("html: %s\n", options.html_path);
     print_batch_summary(names, agg, agent_count, config.crop_count);
