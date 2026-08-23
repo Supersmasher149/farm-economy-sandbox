@@ -3,13 +3,7 @@
  * this mirrors.
  *
  * Deliberately narrower than the Python surface (docs/c-port-plan.md's
- * "modern engine, single-run only" scope boundary, now extended one step):
- *   - Sequential only. Python's process pool exists because CPython's GIL
- *     makes threads useless for CPU-bound work; C has no such constraint,
- *     but this port adds no threading of its own -- a run here is already
- *     fast enough that batches worth doing on this port (thousands of
- *     runs) finish in well under a second sequentially. Nothing here rules
- *     out a future parallel path; it just isn't built.
+ * "modern engine, single-run only" scope boundary):
  *   - No report artifacts (summary.json/summary_report.md/dashboard.html).
  *     Callers get one BatchRunResult per completed run via a callback and
  *     decide what to do with it -- print it, aggregate it, write a CSV.
@@ -23,6 +17,47 @@
  * so a `--seed` shared between `farm-c batch` and `python3 main.py batch`
  * runs each (agent, run_seed) pair through an independently-verified
  * simulation of the same inputs.
+ *
+ * --- Parallelism (docs/c-port-plan.md step 22) --------------------------
+ *
+ * batch_run_parallel spreads the jobs across POSIX threads. Python needs a
+ * *process* pool because the GIL makes threads useless for CPU-bound work;
+ * C does not, so this is threads over one address space, sharing the single
+ * immutable ResolvedConfig rather than pickling a copy per worker.
+ *
+ * The whole design exists to make worker count a pure performance knob --
+ * `--workers N` must not be able to change a single bit of output for a
+ * given base seed, exactly as ../CLAUDE.md requires of the Python batch
+ * runner. Three properties get that, and all three are load-bearing:
+ *
+ *   1. Seeds are still minted by one FarmRng in strict job order. Workers
+ *      claim jobs under a mutex and mint inside that critical section, so
+ *      job i gets the i-th `randrange(2**32)` draw no matter which thread
+ *      runs it or when.
+ *   2. Runs share nothing. Each has its own FarmState, its own FarmRng, and
+ *      a `const ResolvedConfig *` nobody writes to; agents are stateless
+ *      const singletons (include/agent.h). The two file-scope scratch
+ *      buffers in the run path (contracts.c, rng_hash.c) are already
+ *      _Thread_local.
+ *   3. Results are *delivered* in job order, not completion order. A
+ *      bounded reorder ring holds finished-but-not-yet-deliverable results
+ *      while the caller's thread drains it sequentially, so on_result fires
+ *      in exactly the agent-major order the sequential path used. This is
+ *      what keeps floating-point aggregation, CSV row order and the HTML
+ *      payload byte-identical -- summing the same doubles in a different
+ *      order would not be.
+ *
+ * The ring is what bounds memory: at most `4 * workers` runs may be in
+ * flight or awaiting delivery, so peak memory scales with worker count,
+ * never with batch size -- the same streaming discipline the sequential
+ * path gets by freeing each FarmState before the next run starts.
+ *
+ * Failure semantics are unchanged, and are stated in delivery order rather
+ * than execution order: the batch reports the *first failing job by index*,
+ * every earlier job's callback has fired, and no later job's has. Later
+ * jobs may have already executed on another thread when the failure is
+ * delivered; their results are discarded unseen, which is unobservable
+ * because a run has no side effects outside its own FarmState.
  */
 #ifndef FARM_BATCH_H
 #define FARM_BATCH_H
@@ -140,5 +175,38 @@ bool batch_run(const ResolvedConfig *config,
                BatchRunCallback on_result,
                void *context,
                BatchError *error);
+
+/* Hard ceiling on `worker_count`, so a fat-fingered `--workers 1000000`
+ * fails an argument check instead of trying to spawn a million threads. */
+#define BATCH_MAX_WORKERS 256
+
+/* One worker per online CPU (BATCH_MAX_WORKERS at most, 1 if the count
+ * cannot be determined) -- the same default os.cpu_count() gives
+ * runner/batch_run.py. */
+size_t batch_default_worker_count(void);
+
+/* batch_run, spread across `worker_count` threads. Identical contract:
+ * same minted seeds, same `on_result` order, same first-failure reporting,
+ * bit-identical results for a given base seed at every worker count.
+ *
+ * `worker_count == 0` means batch_default_worker_count(); `1` runs the
+ * sequential loop directly, spawning no thread at all (batch_run is exactly
+ * that call). Values above BATCH_MAX_WORKERS are a BATCH_ERROR_ARGUMENT.
+ * The effective count is clamped down to the job count -- there is nothing
+ * for the 8th thread of a 3-run batch to do -- and if no thread can be
+ * spawned at all the batch completes sequentially rather than failing. */
+bool batch_run_parallel(const ResolvedConfig *config,
+                        const SimulationSettings *settings,
+                        const Agent *const *agents,
+                        const char *const *strategy_names,
+                        size_t agent_count,
+                        size_t runs_per_strategy,
+                        size_t worker_count,
+                        bool has_base_seed,
+                        uint64_t base_seed,
+                        uint64_t *out_base_seed,
+                        BatchRunCallback on_result,
+                        void *context,
+                        BatchError *error);
 
 #endif /* FARM_BATCH_H */

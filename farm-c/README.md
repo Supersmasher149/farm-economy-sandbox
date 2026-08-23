@@ -74,8 +74,7 @@ The six phases so far:
   daily history, and human-readable final summaries.
 - **Phase 6**, `src/batch.c` and `farm-c batch`: the C analogue of
   `../runner/batch_run.py` -- run every strategy `--runs` times each off one
-  base seed, sequentially (no process pool: nothing here is CPU-bound enough
-  on this engine to need one). Seed minting is bit-exact with Python's:
+  base seed. Seed minting is bit-exact with Python's:
   `rng_randrange_2_32` (`src/rng.c`) ports the `getrandbits(33)` path
   `random.Random.randrange(2**32)` takes -- one bit past every other RNG
   call in this port, which only ever needed `getrandbits(k<=32)` -- so a
@@ -199,12 +198,13 @@ tests/               test_agents.c (fixture-driven parity test for the
                      and repeatability), test_runner.c
                      (single-run lifecycle), test_batch.c (seed minting
                      against real Python `randrange(2**32)` output, job
-                     order, and batch-vs-single-run parity),
+                     order, batch-vs-single-run parity, and that every run's
+                     every field is identical at every worker count),
                      test_dashboard.c (--html payload well-formedness,
                      agreement with the aggregator, escaping, and the
                      self-contained property), test_cli.sh (CLI smoke
-                     tests, including that --html leaves batch results
-                     byte-identical for a fixed seed),
+                     tests, including that neither --html nor --workers
+                     changes batch results for a fixed seed),
                      fixtures/{agents,rng,physics,mutation}.json (generated,
                      checked in), third_party/cJSON.{h,c} (legacy fixture
                      copy); include/cJSON.h and src/cJSON.c are the production
@@ -296,6 +296,8 @@ make farm-c
 ./farm-c batch --runs 1000 --seed 42 --html reports/dashboard.html
 ./farm-c batch --runs 200 --strategy fast_seller --strategy profit_optimizer
 ./farm-c batch --runs 100 --days 30 --start-money 300     # diagnostic overrides
+./farm-c batch --runs 1000 --seed 42 --workers 1          # force the sequential path
+./farm-c batch --runs 1000 --seed 42 --workers 4          # pick the worker count
 ```
 
 An omitted `--strategy` runs the full 11-agent roster in `AGENT_REGISTRY`
@@ -333,95 +335,47 @@ PNGs. And the payload is a **display artifact**: doubles are written at
 exact record of a run. Page size is roughly 1.5 MB for a full
 `--runs 1000` batch (11,000 rows).
 
-There is still no `summary.json`/`summary_report.md` equivalent here, and no
-process pool -- `farm-c batch` runs every job on one thread, sequentially,
-in the same agent-major order it mints seeds in.
+There is still no `summary.json`/`summary_report.md` equivalent here.
 
-Seed minting is bit-exact with `runner/batch_run.py`'s
-`seed_rng.randrange(2**32)`: `rng_randrange_2_32` (`src/rng.c`) is the one
-place in this port that draws `getrandbits(33)` rather than the `k<=32` fast
-path every other RNG call uses (see its header comment for how CPython
-builds that extra bit). Practically, this means a `--seed` shared between
-`farm-c batch` and `python3 main.py batch` mints the identical per-run seed
-for the identical strategy at the identical position in the run list, so
-the two can be diffed run-for-run -- confirmed by hand for `fast_seller`
-seed 42 in `tests/test_batch.c` and again against a live `run_single` call
-during development (see git history), both bit-exact on `money`, `revenue`,
-`expenses`, and `total_harvested`.
+## Parallel batches
 
-Every compile/link rule builds with `-ffp-contract=off`. Without it, a
-compiler may legally fuse an expression shaped like `a + (b - a) * x` (e.g.
-`rng_uniform`) into a single-rounded FMA instead of two separately-rounded
-IEEE-754 operations -- Python never does this, so it silently produces
-1-ulp divergences that only `-ffp-contract=off` prevents. This is exactly
-what caught `rng_uniform`/`rng_roll_price` drifting from the Python oracle
-in ~2% of `test_rng.c`'s cases before the flag was added (see
-`docs/c-port-plan.md` Section 7, and `../simulation/_fastplotmodule.c`'s
-header comment for the same requirement on the existing weather/crop-growth
-kernel).
+`farm-c batch` spreads its runs over one worker thread per CPU core by
+default. `--workers N` sets the count; `--workers 1` forces the sequential
+loop, which is still the reference the parallel path is checked against.
+Python needs a *process* pool because the GIL makes threads useless for
+CPU-bound work; C does not, so this is threads over one address space,
+sharing the single immutable `ResolvedConfig` rather than pickling a copy
+per worker.
 
-### Timing
+**Worker count is a performance knob and nothing else.** For a fixed
+`--seed`, the CSV, the HTML dashboard, the summary table and the warnings
+are byte-identical at every worker count. Three things get that
+(`include/batch.h` has the full argument):
 
-Both commands report how long the run took. `single` prints
-`elapsed_seconds` (wall time around the `runner_run_single` call only --
-config loading and printing are excluded, same scope `main.py`'s per-run
-timing would cover). `batch` prints an `elapsed` summary line
-(`MM:SS elapsed (N.NNNs, R sim/s)`) once every run has completed.
+1. Seeds are still minted by one `FarmRng` in strict job order -- workers
+   claim jobs under a mutex and mint inside that critical section, so job
+   *i* gets the *i*-th `randrange(2**32)` draw no matter which thread runs
+   it.
+2. Runs share nothing: a `FarmState`, a `FarmRng` and a `const
+   ResolvedConfig *` nobody writes to, with stateless const agent
+   singletons. The two file-scope scratch buffers on the run path
+   (`contracts.c`, `rng_hash.c`) were already `_Thread_local`.
+3. Results are *delivered* in job order, not completion order. A bounded
+   reorder ring parks finished runs until their turn while the calling
+   thread drains it sequentially, so `on_result` fires in exactly the
+   agent-major order the sequential path used. Summing the same doubles in
+   a different order would not give the same aggregates, which is why
+   completion-order delivery is not an option.
 
-`batch` also draws a self-overwriting progress line on stderr while it
-runs -- bar, percent, done/total, sim/s, elapsed, and estimated time left --
-mirroring `../runner/progress.py`'s `main.py batch` line, format for format
-(see `src/progress.c`). It draws only when stderr is a terminal; `--progress`
-and `--no-progress` force it on or off (e.g. for a piped `batch > report.txt`
-that should still show progress, or an interactive shell that shouldn't).
-Drawing the line never touches `FarmState` or `FarmRng` -- `on_batch_result`
-only calls `progress_advance` after `batch_run`'s own callback has already
-recorded the result -- so turning it on or off cannot change a batch's
-outcome for a given seed, the same boundary `../CLAUDE.md` documents for the
-Python reporter. This is a cosmetic/diagnostic feature, not part of the
-bit-exact Python contract: its rendering isn't fixture-tested against
-Python, only against hand-computed expectations (`tests/test_progress.c`).
+The ring is also what bounds memory: at most `4 * workers` runs are in
+flight or awaiting delivery, so peak memory tracks worker count, never
+batch size.
 
-```bash
-./farm-c batch --runs 1000 --seed 42 --progress      # force the bar on
-./farm-c batch --runs 1000 --seed 42 --no-progress    # force it off
-```
-
-### Recording run/batch summaries to Mem0
-
-`--mem0`, accepted by both `single` and `batch`, records a one-line free-text
-summary to the [Mem0 Platform](https://mem0.ai) after the run/batch
-completes normally -- `single` records one memory for the run; `batch`
-records one memory per strategy, built from the same `StrategySummary` the
-terminal table and warnings already read (`include/aggregate.h`), not one
-per individual run.
-
-This is an optional, off-by-default network dependency, kept out of the
-default build the same way `simulation/_fastplotmodule.c` and the Cython
-build are in the Python tree (see `../CLAUDE.md`):
-
-```bash
-make WITH_MEM0=1 farm-c            # links libcurl; default `make farm-c` does not
-export MEM0_API_KEY=...            # from https://app.mem0.ai/dashboard/api-keys
-./farm-c single --strategy profit_optimizer --seed 42 --mem0
-./farm-c batch --runs 1000 --seed 42 --mem0
-```
-
-Without `WITH_MEM0=1`, `src/mem0_client.c` compiles to a stub that always
-fails with a message saying so, so `--mem0` fails fast (before running
-anything, exit code 2) rather than being silently unavailable. The same
-fail-fast happens if the binary was built with `WITH_MEM0=1` but
-`MEM0_API_KEY` isn't set. A failure recording an individual memory *after*
-the run/batch already completed (a network error, a bad key) is reported to
-stderr but does not change the run's exit code -- the simulation work it's
-summarizing already succeeded by that point.
-
-`src/mem0_client.c`/`include/mem0_client.h` never touch `FarmState` or any
-other engine type directly; callers in `main.c` hand it a plain string, the
-same read-only-consumer boundary `../CLAUDE.md` draws around the Python
-statistical layer. It draws no simulation RNG and runs after
-`runner_run_single`/`batch_run` return, so it cannot affect a run's
-determinism or replay under `--seed`.
+`tests/test_batch.c` asserts every field of every run is identical across
+worker counts 1/2/3/5/8/64 and auto, using a roster whose run lengths differ
+wildly (`reckless_spender` goes bankrupt early, `profit_optimizer` plays the
+full horizon) so workers really do finish out of order.
+`tests/test_cli.sh` repeats the check on the CSV and the HTML report.
 
 ## Verification
 

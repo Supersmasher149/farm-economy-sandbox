@@ -58,6 +58,13 @@ VENDOR_WARN = -Wno-deprecated-declarations
 # divergences from Python (which never fuses). Same requirement as
 # simulation/_fastplotmodule.c; see docs/c-port-plan.md Section 7.
 FP = -ffp-contract=off
+# POSIX threads, for src/batch.c's parallel batch path. -pthread is both a
+# compile flag (it defines the reentrancy macros) and a link flag (it pulls
+# in the threading runtime; a no-op on macOS, where pthreads live in
+# libSystem), so it rides along on every rule -- exactly like $(FP), and for
+# the same reason: a rule that quietly loses it is a rule whose objects do
+# not match the rest of the build.
+THREADS = -pthread
 SAN = -fsanitize=address,undefined -fno-omit-frame-pointer
 # Debug symbols. Doesn't change codegen/output (harmless for determinism),
 # just lets lldb/gdb and Instruments map back to source and line numbers.
@@ -102,23 +109,23 @@ all: test
 
 $(BUILD_DIR)/%.o: src/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
 
 $(BUILD_DIR)/cJSON.o: src/cJSON.c include/cJSON.h
 	@mkdir -p $(dir $@)
-	$(CC) $(CSTD) $(VENDOR_WARN) $(FP) $(DBG) $(SAN) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
+	$(CC) $(CSTD) $(VENDOR_WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
 
 tests/test_agents: tests/test_agents.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_rng: tests/test_rng.c $(BUILD_DIR)/rng.o $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_physics: tests/test_physics.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_mutation: tests/test_mutation.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 # The golden baseline is checked by `make test`; capture is deliberately a
 # separate target you have to ask for, because re-recording it is how an
@@ -156,34 +163,34 @@ fixtures-mutation:
 # already checked in; `make fixtures fixtures-rng fixtures-physics
 # fixtures-mutation test` regenerates them first.
 tests/test_config_loader: tests/test_config_loader.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_engine: tests/test_engine.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 farm-c: main.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_runner: tests/test_runner.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_batch: tests/test_batch.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_dashboard: tests/test_dashboard.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_trajectory: tests/test_trajectory.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_reporting: tests/test_reporting.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_config_invalid: tests/test_config_invalid.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_progress: tests/test_progress.c $(LIB_OBJS) $(CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 test: $(TEST_BINS) farm-c
 	./tests/test_agents
@@ -232,14 +239,14 @@ profile: $(BUILD_DIR)/farm-c-profile
 
 $(PROFILE_DIR)/%.o: src/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CSTD) $(WARN) $(FP) $(OPT) $(DBG) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(OPT) $(DBG) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
 
 $(PROFILE_DIR)/cJSON.o: src/cJSON.c include/cJSON.h
 	@mkdir -p $(dir $@)
-	$(CC) $(CSTD) $(VENDOR_WARN) $(FP) $(OPT) $(DBG) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
+	$(CC) $(CSTD) $(VENDOR_WARN) $(FP) $(THREADS) $(OPT) $(DBG) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
 
 $(BUILD_DIR)/farm-c-profile: main.c $(PROFILE_LIB_OBJS) $(PROFILE_CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(OPT) $(DBG) $(INCLUDE) $^ -o $@ $(LIBS)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(OPT) $(DBG) $(INCLUDE) $^ -o $@ $(LIBS)
 
 -include $(DEPS)
 -include $(PROFILE_DEPS)

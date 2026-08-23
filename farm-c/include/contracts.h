@@ -36,6 +36,15 @@ bool contracts_is_offer_feasible(const FarmState *state, const ResolvedConfig *c
 void contracts_clear_allocation_failure(void);
 bool contracts_had_allocation_failure(void);
 
+/* Releases this thread's contracts.c decorate-sort scratch buffer (see
+ * src/contracts.c's contracts_scratch_sort). That buffer is _Thread_local
+ * and deliberately never freed between calls -- it is reused for the life
+ * of the thread -- which is free on the main thread and a genuine leak on a
+ * worker thread that exits. src/batch.c's workers call this as their last
+ * act; nothing else needs to, and calling it mid-run only costs the next
+ * call a realloc. */
+void contracts_release_thread_scratch(void);
+
 /* simulation/contracts.py:530-570 */
 double contracts_forecast_committed_supply(const FarmState *state, const ResolvedConfig *config,
                                             const ContractRecord *contract);

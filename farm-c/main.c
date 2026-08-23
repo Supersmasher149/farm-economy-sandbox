@@ -56,6 +56,10 @@ typedef struct {
     const char *html_path;
     bool mem0;
     ProgressMode progress;
+    /* 0 = auto (one worker per online core, batch_default_worker_count());
+     * 1 = the sequential path. See include/batch.h -- this is a pure
+     * performance knob, never an output-changing one. */
+    long workers;
 } BatchOptions;
 
 static void usage(FILE *stream) {
@@ -64,7 +68,7 @@ static void usage(FILE *stream) {
            "                     [--mem0]\n"
            "       farm-c batch --runs N [--strategy NAME]... [--seed INT] [--config DIR]\n"
            "                    [--days N] [--start-money N] [--csv PATH] [--html PATH]\n"
-           "                    [--mem0] [--progress] [--no-progress]\n"
+           "                    [--workers N] [--mem0] [--progress] [--no-progress]\n"
            "       farm-c golden capture|check [--config DIR] [--baseline PATH]\n"
            "       farm-c golden trace|payload STRATEGY SEED [--day N]\n"
            "\n"
@@ -77,7 +81,12 @@ static void usage(FILE *stream) {
            "batch draws a self-overwriting progress line (bar, %%, done/total, sim/s,\n"
            "elapsed, ETA) on stderr when stderr is a terminal; --progress/--no-progress\n"
            "force it on or off. Both `single` and `batch` always print how long the run\n"
-           "took, whether or not the live line was drawn.\n");
+           "took, whether or not the live line was drawn.\n"
+           "\n"
+           "batch spreads its runs over one worker thread per CPU core by default;\n"
+           "--workers N sets the count and --workers 1 forces the sequential path.\n"
+           "Results are byte-identical at every worker count for a given --seed, so\n"
+           "this only ever changes how long the batch takes.\n");
 }
 
 /* Shared by cmd_single/cmd_batch: fail fast, before doing any simulation
@@ -174,6 +183,7 @@ static bool parse_batch_args(int argc, char **argv, BatchOptions *options) {
         .html_path = NULL,
         .mem0 = false,
         .progress = PROGRESS_AUTO,
+        .workers = 0,
     };
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--mem0") == 0) {
@@ -201,6 +211,10 @@ static bool parse_batch_args(int argc, char **argv, BatchOptions *options) {
             if (!parse_double(argv[++i], &options->start_money) || options->start_money < 0.0)
                 return false;
             options->has_start_money = true;
+        } else if (strcmp(argv[i], "--workers") == 0 && i + 1 < argc) {
+            if (!parse_positive_long(argv[++i], &options->workers) ||
+                options->workers > BATCH_MAX_WORKERS)
+                return false;
         } else if (strcmp(argv[i], "--csv") == 0 && i + 1 < argc) {
             options->csv_path = argv[++i];
         } else if (strcmp(argv[i], "--html") == 0 && i + 1 < argc) {
@@ -513,15 +527,25 @@ static int cmd_batch(int argc, char **argv) {
 
     BatchContext context = {csv, html, agg, names, agent_count, &config, &progress};
 
+    /* Resolved here rather than left to batch_run_parallel's own `0 means
+     * auto` so the printed `workers:` line reports what actually ran.
+     * batch_run_parallel clamps it down again to the job count; so does
+     * this, for the same reason and so the two never disagree. */
+    size_t total_jobs = agent_count * (size_t)options.runs;
+    size_t worker_count = options.workers > 0 ? (size_t)options.workers
+                                              : batch_default_worker_count();
+    if (worker_count > total_jobs) worker_count = total_jobs;
+
     uint64_t resolved_seed = 0;
     BatchError error;
     /* progress_start() always begins timing, whether or not the live line
      * is drawn -- it's what makes the "elapsed" report below meaningful
      * even under --no-progress or a redirected stderr. */
     progress_start(&progress);
-    bool ok = batch_run(&config, &settings, agents, names, agent_count, (size_t)options.runs,
-                        options.seed.has_seed, options.seed.seed, &resolved_seed,
-                        on_batch_result, &context, &error);
+    bool ok = batch_run_parallel(&config, &settings, agents, names, agent_count,
+                                 (size_t)options.runs, worker_count, options.seed.has_seed,
+                                 options.seed.seed, &resolved_seed, on_batch_result, &context,
+                                 &error);
     progress_finish(&progress);
     if (csv != NULL) fclose(csv);
     /* Closed on both paths: a partially written page is still valid HTML
@@ -542,7 +566,7 @@ static int cmd_batch(int argc, char **argv) {
     }
 
     double elapsed_seconds = progress_elapsed_seconds(&progress);
-    size_t total_runs = agent_count * (size_t)options.runs;
+    size_t total_runs = total_jobs;
     char elapsed_text[16];
     progress_format_duration(elapsed_seconds, elapsed_text, sizeof(elapsed_text));
     char rate_text[16];
@@ -550,8 +574,8 @@ static int cmd_batch(int argc, char **argv) {
                         rate_text, sizeof(rate_text));
 
     printf("base_seed: %" PRIu64 "\n", resolved_seed);
-    printf("strategies: %zu\nruns_per_strategy: %ld\ntotal_runs: %zu\n", agent_count,
-          options.runs, total_runs);
+    printf("strategies: %zu\nruns_per_strategy: %ld\ntotal_runs: %zu\nworkers: %zu\n",
+          agent_count, options.runs, total_runs, worker_count);
     printf("elapsed: %s (%.3fs, %s sim/s)\n", elapsed_text, elapsed_seconds, rate_text);
     if (csv != NULL) printf("csv: %s\n", options.csv_path);
     if (html != NULL) printf("html: %s\n", options.html_path);

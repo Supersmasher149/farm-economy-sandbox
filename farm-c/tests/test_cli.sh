@@ -60,6 +60,46 @@ if ! cmp -s "$progress_csv" "$no_progress_csv"; then
 fi
 rm -f "$progress_csv" "$no_progress_csv"
 
+# --workers is a performance knob only: for a fixed --seed, every artifact
+# a batch writes must be byte-identical at any worker count. The CSV and the
+# HTML dashboard are checked because they are the two files a reader diffs;
+# stdout is checked with the reported worker count and timings filtered out,
+# since those are the two lines that are *supposed* to differ.
+seq_csv=$(mktemp); par_csv=$(mktemp)
+seq_html=$(mktemp); par_html=$(mktemp)
+seq_out=$(mktemp); par_out=$(mktemp)
+./farm-c batch --runs 6 --seed 42 --no-progress --workers 1 \
+    --csv "$seq_csv" --html "$seq_html" >"$seq_out" 2>&1
+./farm-c batch --runs 6 --seed 42 --no-progress --workers 4 \
+    --csv "$par_csv" --html "$par_html" >"$par_out" 2>&1
+workers_ok=1
+cmp -s "$seq_csv" "$par_csv" || { echo "--workers changed the CSV for a fixed seed" >&2; workers_ok=0; }
+cmp -s "$seq_html" "$par_html" || { echo "--workers changed the HTML report" >&2; workers_ok=0; }
+seq_trim=$(mktemp); par_trim=$(mktemp)
+grep -v -e '^workers:' -e '^elapsed:' -e '^csv:' -e '^html:' "$seq_out" >"$seq_trim"
+grep -v -e '^workers:' -e '^elapsed:' -e '^csv:' -e '^html:' "$par_out" >"$par_trim"
+cmp -s "$seq_trim" "$par_trim" || {
+    echo "--workers changed the batch summary for a fixed seed" >&2
+    workers_ok=0
+}
+rm -f "$seq_trim" "$par_trim"
+case "$(grep '^workers:' "$par_out")" in
+    "workers: 4") ;;
+    *) echo "batch did not report the requested worker count" >&2; workers_ok=0 ;;
+esac
+rm -f "$seq_csv" "$par_csv" "$seq_html" "$par_html" "$seq_out" "$par_out"
+[ "$workers_ok" -eq 1 ] || exit 1
+
+# Rejected before any simulation runs, rather than clamped silently.
+if ./farm-c batch --runs 1 --workers 0 >/dev/null 2>&1; then
+    echo "--workers 0 unexpectedly succeeded" >&2
+    exit 1
+fi
+if ./farm-c batch --runs 1 --workers 100000 >/dev/null 2>&1; then
+    echo "--workers 100000 unexpectedly succeeded" >&2
+    exit 1
+fi
+
 csv_path=$(mktemp)
 ./farm-c batch --runs 2 --seed 42 --strategy fast_seller --csv "$csv_path" >/dev/null
 csv_rows=$(wc -l <"$csv_path")

@@ -428,6 +428,10 @@ static int cmp_arrival_sort_entry(const void *a, const void *b) {
  * nothing and removes that trap. */
 static _Thread_local ScratchBuffer contracts_scratch_sort;
 
+void contracts_release_thread_scratch(void) {
+    scratch_buffer_free(&contracts_scratch_sort);
+}
+
 static void arrival_vec_stable_sort_by_day(ArrivalVec *vec) {
     if (vec->count == 0) {
         return;
