@@ -824,6 +824,8 @@ def cmd_batch(args):
                 ),
                 convergence_path=staged_convergence_path,
                 distributions_path=staged_distributions_path,
+                current_summary_doc=summary_doc,
+                reports_dir=REPORTS_DIR,
             )
         else:
             write_no_charts_placeholder(staged_dashboard_path)
