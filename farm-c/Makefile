@@ -28,10 +28,17 @@
 #                            no other target compiles. Catches optimizer-
 #                            induced FP drift (FMA contraction) that the
 #                            -O0 sanitized suite cannot see.
-#   make profile            - build build/farm-c-profile: -O2, no sanitizers,
-#                            debug symbols kept. Profile CPU time/memory
-#                            usage (Instruments, `sample`, `/usr/bin/time -l`)
-#                            against this, never against ASan+UBSan `farm-c`.
+#   make release            - build build/farm-c-release: -O2, no sanitizers,
+#                            debug symbols kept. THIS is the binary to run
+#                            real work on. The default `farm-c` carries
+#                            ASan+UBSan at -O0 and is ~20x slower for
+#                            byte-identical output -- use it to test, not to
+#                            simulate.
+#   make profile            - alias for `release`. Same binary; the name is
+#                            kept because profiling CPU time/memory
+#                            (Instruments, `sample`, `/usr/bin/time -l`) must
+#                            happen against this build and never against
+#                            ASan+UBSan `farm-c`.
 #   make WITH_MEM0=1 farm-c - also link src/mem0_client.c against libcurl, so
 #                            `single`/`batch --mem0` can record run/batch
 #                            summaries to the Mem0 Platform. Off by default:
@@ -104,7 +111,7 @@ TEST_BINS = tests/test_pyfloat tests/test_agents tests/test_rng tests/test_physi
 DEPS = $(LIB_OBJS:.o=.d) $(CJSON_OBJ:.o=.d)
 
 .PHONY: all test fixtures fixtures-rng fixtures-physics fixtures-mutation clean profile \
-        golden-check golden-capture golden-check-profile
+        release golden-check golden-capture golden-check-profile
 
 all: test
 
@@ -151,8 +158,8 @@ golden-capture: farm-c
 # prevent, and a build rule that loses $(FP) (or gains -ffast-math) still
 # passes every other target. Verified to have teeth: rebuilding the profile
 # objects with -ffp-contract=fast diverges all 44 combos at 1 ulp.
-golden-check-profile: $(BUILD_DIR)/farm-c-profile
-	./$(BUILD_DIR)/farm-c-profile golden check
+golden-check-profile: $(BUILD_DIR)/farm-c-release
+	./$(BUILD_DIR)/farm-c-release golden check
 
 fixtures:
 	python3 ../tools/export_agent_fixtures.py
@@ -229,7 +236,7 @@ clean:
 	# untracked and shadow nothing, just confuse.
 	rm -f src/*.o src/*.d src/agents/*.o src/agents/*.d
 
-# `make profile` builds build/farm-c-profile: same sources as `farm-c`, but
+# `make release` builds build/farm-c-release: same sources as `farm-c`, but
 # -O2 and *without* ASan/UBSan. The default build above always carries
 # sanitizer instrumentation, which inflates CPU time (~2-3x) and memory
 # usage (redzones + shadow memory) enough to make either number meaningless
@@ -237,24 +244,60 @@ clean:
 # `farm-c`/`make test`'s binaries. (LeakSanitizer, part of ASan, still works
 # fine on the regular build for leak *detection* -- it's peak-memory and
 # wall-clock numbers specifically that ASan distorts.)
+#
+# It is not only profiling that belongs here. Measured on `batch --runs 100
+# --seed 42 --workers 8`: 1.61s for `./farm-c` against 0.08s here, for a
+# byte-identical CSV. Anything that is actually running the simulator --
+# a balance batch, a sweep, a report -- wants this binary, which is why the
+# target is named `release` and `profile` is now just an alias for it.
+# `make test` still builds and checks both, so the sanitized binary keeps
+# gating correctness and this one keeps gating optimizer-induced FP drift.
 PROFILE_DIR = $(BUILD_DIR)/profile
 OPT = -O2
+# Link-time optimization, release/profile builds only. Worth 1.32x sequential
+# and 1.24x at 8 workers on `batch --runs 1000 --seed 42` (interleaved
+# min-of-5), because this port's hot path is full of one-line accessors that
+# live in a different translation unit from every caller and so cannot be
+# inlined without it: state.c's plot_columns_get/set and
+# planted_crop_columns_get/set (the SoA gather/scatter in weather.c's per-plot
+# loop), config.c's config_find_crop/_item (one bounds check each), and the
+# allocation latches engine.c reads ~14x per simulated day.
+#
+# It rides on $(OPT), so it is on the compile *and* link lines. That is not
+# incidental: with LTO the real codegen happens at link, so $(FP) must reach
+# the link line too or FMA contraction comes back at exactly the step nothing
+# else looks at. It does -- every link rule already carries $(FP) -- and
+# `make golden-check-profile` is what proves it, which is why `make test`
+# runs it. Verified: all 44 baseline combos pass and the full-precision CSV
+# is byte-identical to a non-LTO build at both --workers 1 and 8.
+LTO = -flto
+# LTO writes the real object file to a temp path the linker deletes as soon
+# as it is done, so `dsymutil` finds no debug info and `sample`/Instruments
+# report the whole binary as `???`. Keeping that object makes the release
+# build symbolizable again -- which matters precisely because this is also
+# the build you are told to profile. Lands in $(BUILD_DIR), so `clean` takes
+# it with everything else.
+LTO_OBJ = -Wl,-object_path_lto,$(BUILD_DIR)/farm-c-release-lto.o
 PROFILE_LIB_OBJS = $(patsubst src/%.c,$(PROFILE_DIR)/%.o,$(LIB_SRCS))
 PROFILE_CJSON_OBJ = $(PROFILE_DIR)/cJSON.o
 PROFILE_DEPS = $(PROFILE_LIB_OBJS:.o=.d) $(PROFILE_CJSON_OBJ:.o=.d)
 
-profile: $(BUILD_DIR)/farm-c-profile
+release: $(BUILD_DIR)/farm-c-release
+
+# Kept so existing muscle memory, CI, and CLAUDE.md's profiling guidance
+# keep working -- it is the same binary.
+profile: release
 
 $(PROFILE_DIR)/%.o: src/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(OPT) $(DBG) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(OPT) $(LTO) $(DBG) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
 
 $(PROFILE_DIR)/cJSON.o: src/cJSON.c include/cJSON.h
 	@mkdir -p $(dir $@)
-	$(CC) $(CSTD) $(VENDOR_WARN) $(FP) $(THREADS) $(OPT) $(DBG) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
+	$(CC) $(CSTD) $(VENDOR_WARN) $(FP) $(THREADS) $(OPT) $(LTO) $(DBG) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
 
-$(BUILD_DIR)/farm-c-profile: main.c $(PROFILE_LIB_OBJS) $(PROFILE_CJSON_OBJ)
-	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(OPT) $(DBG) $(INCLUDE) $^ -o $@ $(LIBS)
+$(BUILD_DIR)/farm-c-release: main.c $(PROFILE_LIB_OBJS) $(PROFILE_CJSON_OBJ)
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(OPT) $(LTO) $(LTO_OBJ) $(DBG) $(INCLUDE) $^ -o $@ $(LIBS)
 
 -include $(DEPS)
 -include $(PROFILE_DEPS)

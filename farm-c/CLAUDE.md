@@ -36,7 +36,9 @@ make golden-check-profile   # the same baseline against the -O2 build; the only
                        # target that compiles the simulator with the optimizer on
 make golden-capture    # re-record it -- see "The two replay gates" below
 make farm-c            # build the CLI (also ASan+UBSan)
-make profile           # build/farm-c-profile: -O2, NO sanitizers -- the only build to time
+make release           # build/farm-c-release: -O2 + LTO, NO sanitizers.
+                       # THIS is the binary to run real work on -- see below.
+make profile           # alias for `release`; same binary
 make clean
 
 # One test binary at a time (each is a plain executable, no test runner)
@@ -70,12 +72,28 @@ Default config directory is `../config` (the same JSON the Python simulator
 reads — there is no separate C copy). Default strategy is `profit_optimizer`.
 An omitted seed is generated and printed (`actual_seed` / `base_seed`).
 
-**Never time or memory-profile the default build, and never time a batch at
-`--workers 1` unless sequential is what you are measuring.** `farm-c` and every
-`tests/test_*` binary carry `-fsanitize=address,undefined`, which inflates CPU
-time ~2-3x and distorts peak memory. Use `build/farm-c-profile` for
-Instruments / `sample` / `/usr/bin/time -l`. (ASan's leak detection on the
-regular build is still fine and worth keeping in the loop.)
+**`./farm-c` is the build to test with, not the build to simulate with.** It
+and every `tests/test_*` binary carry `-fsanitize=address,undefined` at `-O0`.
+That is right for correctness and wrong for everything else: measured on
+`batch --runs 100 --seed 42 --workers 8`, `./farm-c` takes 1.61s against
+`build/farm-c-release`'s 0.08s for a **byte-identical** CSV. Anything that
+actually runs the simulator -- a balance batch, a sweep, a report, and above
+all any timing or memory measurement -- wants `make release`. ASan inflates
+CPU ~2-3x and distorts peak memory, so a number taken from `./farm-c` is not
+a number. (ASan's leak *detection* on the regular build is still fine and
+worth keeping in the loop.) Also never time a batch at `--workers 1` unless
+sequential is what you are measuring.
+
+`release` is `-O2 -flto`. LTO is load-bearing here rather than cosmetic --
+1.32x sequential, 1.24x at 8 workers -- because the hot path is full of
+one-line accessors that live in a different translation unit from every
+caller (`state.c`'s SoA gather/scatter, `config.c`'s id lookups, the
+allocation latches `engine.c` reads ~14x per simulated day). Two consequences:
+**$(FP) must stay on the link line**, since with LTO that is where codegen
+happens and `make golden-check-profile` is the only thing that would catch
+FMA contraction creeping back; and the link carries
+`-Wl,-object_path_lto,...` so `sample`/Instruments can still symbolize the
+binary, which LTO otherwise reduces to `???`.
 
 ## Bit-exactness invariants
 

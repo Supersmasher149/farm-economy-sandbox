@@ -258,11 +258,35 @@ make fixtures-mutation # regenerates tests/fixtures/mutation.json from the
                          # golden baseline
  make golden-check      # just the golden baseline
  make golden-capture    # re-records it (see Verification)
- make farm-c            # builds the single-run/batch CLI
+ make farm-c            # builds the single-run/batch CLI (ASan+UBSan, -O0)
+ make release           # build/farm-c-release: -O2 + LTO, no sanitizers
 ```
 
 `make test` alone (no Python needed) re-runs against whatever fixtures are
 already checked in, and re-checks the committed golden baseline the same way.
+
+### Which binary to run
+
+`make farm-c` builds `./farm-c` with `-fsanitize=address,undefined` at `-O0`.
+That is the right build to *test* with and the wrong one to *simulate* with.
+On `batch --runs 100 --seed 42 --workers 8` it takes **1.61s** against
+`build/farm-c-release`'s **0.08s**, for a byte-identical CSV — ASan
+instrumentation, not a different simulation.
+
+So: `./farm-c` for `make test`, leak detection, and reproducing a crash;
+`build/farm-c-release` for balance batches, sweeps, reports, and every timing
+or memory measurement. The command examples below write `./farm-c` because
+that is what the tests build, but substitute `build/farm-c-release` for any
+run you actually care about the wall clock of.
+
+`release` is `-O2 -flto`, and the LTO is worth 1.32x sequential / 1.24x at 8
+workers — the hot path is dense with one-line cross-translation-unit
+accessors that cannot be inlined without it. `make golden-check-profile`
+re-checks all 44 baseline combos against that build, because with LTO the
+codegen happens at link and that is where a lost `-ffp-contract=off` would
+reintroduce FMA contraction. The link also passes
+`-Wl,-object_path_lto,...`, without which `sample` and Instruments symbolize
+the whole binary as `???`.
 
 ### Single runs
 
