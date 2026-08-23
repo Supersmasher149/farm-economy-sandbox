@@ -28,7 +28,7 @@ pool — see "Parallel batches" below).
 All from `farm-c/`.
 
 ```bash
-make test              # build + run all 12 test binaries under ASan+UBSan, then
+make test              # build + run all 14 test binaries under ASan+UBSan, then
                        # tests/test_cli.sh, then the committed golden baseline
                        # against both the -O0 sanitized and the -O2 build
 make golden-check      # just the golden baseline (no Python needed)
@@ -119,6 +119,15 @@ only the fixture suites catch:
 - **The 23 numbered steps in `src/engine.c:engine_run_day_observed`** are the
   Python `run_day` order. Changing it is a breaking change for every recorded
   seed, exactly as `../CLAUDE.md` says for the Python engine.
+- **`py_round_ndigits` has two implementations and they must agree.** The
+  fast path is exact 128-bit integer arithmetic; the fallback is the
+  `snprintf("%.*f")`/`strtod` round-trip, which is the *definition* of the
+  operation. The fast path exists because on Darwin both libc calls reach
+  `localeconv_l()` and its process-wide lock, which serialized parallel
+  batches (1.6x at 8 workers, 1.4s of kernel time). Widen the fast path's
+  preconditions only with `tests/test_pyfloat.c` — a differential test
+  against the fallback, not a value table — extended to cover the new
+  domain. Anything it cannot prove must `return false` and fall back.
 - **Contract forecasting stays timeline-aware.** `contracts.c`'s
   `_item_capacity` equivalent tracks arrival days, slot free-days, recipe
   duration and deadlines; the "future inputs / recipe quantity" shortcut
@@ -185,7 +194,7 @@ record (`%.17g` vs the page's display-only `%.10g`).
 
 ## Tests
 
-Twelve binaries plus `tests/test_cli.sh` and the golden-replay check, all
+Fourteen binaries plus `tests/test_cli.sh` and the golden-replay check, all
 driven by `make test`. Each
 fixture-driven suite (`test_agents`, `test_rng`, `test_physics`,
 `test_mutation`) replays recorded Python output and asserts `==`, never an
@@ -270,6 +279,12 @@ turn it into a text diff.
   0%) and its mean-of-ratios definition of `avg_profit_per_day`.
 - `test_trajectory.c` — the digest's own sensitivity; see the replay gates
   above.
+- `test_pyfloat.c` — `py_round_ndigits`' exact-integer fast path against the
+  libc round-trip it replaces, differentially: 2.69M cases covering the real
+  weather ranges, exact halfway values, 300k random doubles across the full
+  exponent range, subnormals, and both zeros. Compares bit patterns, not
+  `==`, because `round(-0.0, 2)` must stay negative zero — which is the bug
+  it caught on its first run.
 - `test_batch.c` — beyond seed minting and job order, that **worker count
   changes nothing**: every field of every run identical across 1/2/3/5/8/64
   workers and auto, over a roster whose run lengths differ enough that

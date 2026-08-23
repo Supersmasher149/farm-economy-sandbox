@@ -188,7 +188,10 @@ src/                 economy_rules.c, markets.c, inventory.c, contracts.c,
                      .h holds its CSS/JS as string literals)
 src/agents/          base.c (shared defaults + route_sales_by_best_price),
                      one file per agent, matching ../agents/*.py 1:1
-tests/               test_agents.c (fixture-driven parity test for the
+tests/               test_pyfloat.c (differential test of
+                     py_round_ndigits' exact integer fast path against its
+                     own libc round-trip reference),
+                     test_agents.c (fixture-driven parity test for the
                      agent port), test_rng.c (same, for rng.c),
                      test_physics.c (same, for crop_growth.c/weather.c),
                      test_mutation.c (same, for actions.c/inventory.c/
@@ -376,6 +379,132 @@ worker counts 1/2/3/5/8/64 and auto, using a roster whose run lengths differ
 wildly (`reckless_spender` goes bankrupt early, `profit_optimizer` plays the
 full horizon) so workers really do finish out of order.
 `tests/test_cli.sh` repeats the check on the CSV and the HTML report.
+
+### What the speedup actually cost
+
+Measured on an 8-core machine, `--runs 500` (5,500 runs), `-O2` profile
+build, best of three:
+
+| workers | 1 | 2 | 4 | 6 | 8 |
+|---|---|---|---|---|---|
+| wall clock | 1.43s | 0.75s | 0.47s | 0.39s | 0.39s |
+
+The first attempt scaled only **1.6x** at 8 workers while burning 3.5x the
+CPU, 1.4s of it in the kernel. The pool was not the problem: the contended
+lock was inside libc. `py_round_ndigits` implemented Python's
+`round(x, ndigits)` as `snprintf("%.*f")` + `strtod`, and on Darwin both
+reach `localeconv_l()`, which takes a **process-wide** `os_unfair_lock`.
+`weather_generate` rounds three values a day, so a batch made ~1.5M calls,
+every one of them through one global lock.
+
+`src/pyfloat.c` now answers the common case from exact 128-bit integer
+arithmetic instead of decimal text: `x` is a dyadic rational `m * 2^e`, so
+`x * 10^n` is exactly `m * 5^n * 2^(e+n)`, and rounding *that* half-to-even
+is the first of the round-trip's two roundings, exact by construction. The
+second -- decimal `I / 10^n` back to the nearest double -- is a single IEEE
+division of two exactly-representable operands whenever `|I| <= 2^53` and
+`n <= 22`, which is correctly rounded and therefore is what `strtod`
+returns. Anything outside those preconditions declines and falls back to the
+libc round-trip, which remains the definition of the operation.
+
+That is not a claim to be taken on trust, so `tests/test_pyfloat.c` is a
+differential test rather than a table: it recomputes the libc round-trip and
+demands bit-identical results over 2.69M cases -- the real weather ranges
+swept densely, exact halfway cases (which is what rules out a
+`nearbyint(x*10^n)/10^n` shortcut), 300k random doubles across the full
+exponent range, subnormals, both zeros and both infinities. Comparison is by
+bit pattern, never `==`, because `round(-0.0, 2)` must stay negative zero --
+the first thing the test caught was exactly that, a sign read off the
+mantissa instead of the sign bit.
+
+Removing the lock made the sequential path **1.25x** faster too, and took
+kernel time at 8 workers from 1.42s to 0.20s.
+
+Seed minting is bit-exact with `runner/batch_run.py`'s
+`seed_rng.randrange(2**32)`: `rng_randrange_2_32` (`src/rng.c`) is the one
+place in this port that draws `getrandbits(33)` rather than the `k<=32` fast
+path every other RNG call uses (see its header comment for how CPython
+builds that extra bit). Practically, this means a `--seed` shared between
+`farm-c batch` and `python3 main.py batch` mints the identical per-run seed
+for the identical strategy at the identical position in the run list, so
+the two can be diffed run-for-run -- confirmed by hand for `fast_seller`
+seed 42 in `tests/test_batch.c` and again against a live `run_single` call
+during development (see git history), both bit-exact on `money`, `revenue`,
+`expenses`, and `total_harvested`.
+
+Every compile/link rule builds with `-ffp-contract=off`. Without it, a
+compiler may legally fuse an expression shaped like `a + (b - a) * x` (e.g.
+`rng_uniform`) into a single-rounded FMA instead of two separately-rounded
+IEEE-754 operations -- Python never does this, so it silently produces
+1-ulp divergences that only `-ffp-contract=off` prevents. This is exactly
+what caught `rng_uniform`/`rng_roll_price` drifting from the Python oracle
+in ~2% of `test_rng.c`'s cases before the flag was added (see
+`docs/c-port-plan.md` Section 7, and `../simulation/_fastplotmodule.c`'s
+header comment for the same requirement on the existing weather/crop-growth
+kernel).
+
+### Timing
+
+Both commands report how long the run took. `single` prints
+`elapsed_seconds` (wall time around the `runner_run_single` call only --
+config loading and printing are excluded, same scope `main.py`'s per-run
+timing would cover). `batch` prints an `elapsed` summary line
+(`MM:SS elapsed (N.NNNs, R sim/s)`) once every run has completed.
+
+`batch` also draws a self-overwriting progress line on stderr while it
+runs -- bar, percent, done/total, sim/s, elapsed, and estimated time left --
+mirroring `../runner/progress.py`'s `main.py batch` line, format for format
+(see `src/progress.c`). It draws only when stderr is a terminal; `--progress`
+and `--no-progress` force it on or off (e.g. for a piped `batch > report.txt`
+that should still show progress, or an interactive shell that shouldn't).
+Drawing the line never touches `FarmState` or `FarmRng` -- `on_batch_result`
+only calls `progress_advance` after `batch_run`'s own callback has already
+recorded the result -- so turning it on or off cannot change a batch's
+outcome for a given seed, the same boundary `../CLAUDE.md` documents for the
+Python reporter. This is a cosmetic/diagnostic feature, not part of the
+bit-exact Python contract: its rendering isn't fixture-tested against
+Python, only against hand-computed expectations (`tests/test_progress.c`).
+
+```bash
+./farm-c batch --runs 1000 --seed 42 --progress      # force the bar on
+./farm-c batch --runs 1000 --seed 42 --no-progress    # force it off
+```
+
+### Recording run/batch summaries to Mem0
+
+`--mem0`, accepted by both `single` and `batch`, records a one-line free-text
+summary to the [Mem0 Platform](https://mem0.ai) after the run/batch
+completes normally -- `single` records one memory for the run; `batch`
+records one memory per strategy, built from the same `StrategySummary` the
+terminal table and warnings already read (`include/aggregate.h`), not one
+per individual run.
+
+This is an optional, off-by-default network dependency, kept out of the
+default build the same way `simulation/_fastplotmodule.c` and the Cython
+build are in the Python tree (see `../CLAUDE.md`):
+
+```bash
+make WITH_MEM0=1 farm-c            # links libcurl; default `make farm-c` does not
+export MEM0_API_KEY=...            # from https://app.mem0.ai/dashboard/api-keys
+./farm-c single --strategy profit_optimizer --seed 42 --mem0
+./farm-c batch --runs 1000 --seed 42 --mem0
+```
+
+Without `WITH_MEM0=1`, `src/mem0_client.c` compiles to a stub that always
+fails with a message saying so, so `--mem0` fails fast (before running
+anything, exit code 2) rather than being silently unavailable. The same
+fail-fast happens if the binary was built with `WITH_MEM0=1` but
+`MEM0_API_KEY` isn't set. A failure recording an individual memory *after*
+the run/batch already completed (a network error, a bad key) is reported to
+stderr but does not change the run's exit code -- the simulation work it's
+summarizing already succeeded by that point.
+
+`src/mem0_client.c`/`include/mem0_client.h` never touch `FarmState` or any
+other engine type directly; callers in `main.c` hand it a plain string, the
+same read-only-consumer boundary `../CLAUDE.md` draws around the Python
+statistical layer. It draws no simulation RNG and runs after
+`runner_run_single`/`batch_run` return, so it cannot affect a run's
+determinism or replay under `--seed`.
 
 ## Verification
 

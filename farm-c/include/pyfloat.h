@@ -42,7 +42,15 @@ double py_neumaier_sum(const double *values, int count);
  * `round()` output recorded by tools/export_physics_fixtures.py rather than
  * assuming it. Only used for weather.py's round(temperature, 2) /
  * round(rainfall, 3) / round(evaporation, 3); ndigits is always small (<=3)
- * and non-negative in every caller, so that's all this needs to support. */
+ * and non-negative in every caller, so that's all this needs to support.
+ *
+ * That round-trip is still the definition, and still the fallback, but it is
+ * no longer how the common case is computed: on Darwin both snprintf and
+ * strtod reach localeconv_l(), which takes a process-wide lock, and a
+ * parallel batch makes ~1.5M of these calls. pyfloat.c performs the same two
+ * roundings on exact 128-bit integers instead, and declines (falling back
+ * here) for any input it cannot answer exactly. tests/test_pyfloat.c is the
+ * differential test that holds the two to the same answer. */
 double py_round_ndigits(double x, int ndigits);
 
 /* Bytes needed by py_float_hex, including the NUL: the longest output is a

@@ -1,6 +1,7 @@
 # .o and .d (header-dependency files emitted by the Makefile's -MMD -MP)
 # land here, mirroring src/'s layout -- see Makefile's BUILD_DIR.
 build/
+tests/test_pyfloat
 tests/test_agents
 tests/test_rng
 tests/test_physics

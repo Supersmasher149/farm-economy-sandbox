@@ -96,7 +96,8 @@ BUILD_DIR = build
 LIB_SRCS = $(filter-out src/cJSON.c,$(wildcard src/*.c)) $(wildcard src/agents/*.c)
 LIB_OBJS = $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(LIB_SRCS))
 CJSON_OBJ = $(BUILD_DIR)/cJSON.o
-TEST_BINS = tests/test_agents tests/test_rng tests/test_physics tests/test_mutation \
+TEST_BINS = tests/test_pyfloat tests/test_agents tests/test_rng tests/test_physics \
+            tests/test_mutation \
             tests/test_config_loader tests/test_engine tests/test_runner tests/test_batch \
             tests/test_dashboard tests/test_trajectory tests/test_reporting \
             tests/test_config_invalid tests/test_progress
@@ -114,6 +115,12 @@ $(BUILD_DIR)/%.o: src/%.c
 $(BUILD_DIR)/cJSON.o: src/cJSON.c include/cJSON.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CSTD) $(VENDOR_WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(DEPFLAGS) $(INCLUDE) -c $< -o $@
+
+# Only pyfloat.o: this is a differential test of one function against its
+# own libc reference, and linking the whole simulator would let an unrelated
+# link error mask it.
+tests/test_pyfloat: tests/test_pyfloat.c $(BUILD_DIR)/pyfloat.o
+	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 tests/test_agents: tests/test_agents.c $(LIB_OBJS) $(CJSON_OBJ)
 	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
@@ -193,6 +200,7 @@ tests/test_progress: tests/test_progress.c $(LIB_OBJS) $(CJSON_OBJ)
 	$(CC) $(CSTD) $(WARN) $(FP) $(THREADS) $(DBG) $(SAN) $(INCLUDE) $^ -o $@ $(LIBS)
 
 test: $(TEST_BINS) farm-c
+	./tests/test_pyfloat
 	./tests/test_agents
 	./tests/test_rng
 	./tests/test_physics
