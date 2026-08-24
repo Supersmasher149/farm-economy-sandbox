@@ -51,6 +51,30 @@ python3 main.py view
 python3 main.py view --sort bankruptcy_rate --top 5
 python3 main.py view --diff latest-1 latest    # what changed since the last batch
 python3 main.py view --list                    # published runs available to reference
+python3 main.py view --intervals                # confidence intervals per estimand
+python3 main.py view --convergence --estimand bankruptcy_probability
+
+# Statistical layer: intervals ride on every batch; these tune them
+python3 main.py batch --runs 1000 --confidence 0.99
+python3 main.py batch --runs 1000 --sampling-plan paired --baseline profit_optimizer
+python3 main.py batch --runs 1000 --correction bonferroni --bootstrap-replications 4000
+python3 main.py batch --runs 1000 --no-distributions --no-comparisons   # skip the extra passes
+
+# Adaptive sampling: stop on precision instead of a fixed run count
+python3 main.py batch --min-runs 200 --max-runs 5000 --checkpoint-runs 200 \
+    --stop-estimand expected_final_money --target-relative-half-width 0.02
+python3 main.py batch --min-runs 500 --max-runs 20000 --checkpoint-runs 500 \
+    --bankruptcy-half-width 0.01 --min-bankruptcies 30 --alpha-spending obrien_fleming
+
+# Re-analyze a published run or any CSV -- including one produced by farm-c
+python3 main.py analyze --run latest
+python3 main.py analyze --csv farm-c/reports/run_results.csv
+
+# Propagate declared parameter uncertainty through the simulator
+python3 main.py uncertainty --spec experiments/specs/example-uncertainty.json \
+    --method oat --replicates 50
+python3 main.py uncertainty --spec experiments/specs/example-uncertainty.json \
+    --method sobol --samples 64 --replicates 20    # N(k+2) configurations
 
 # Full test suite
 python3 -m pytest
@@ -95,16 +119,26 @@ it gets displayed), and `reports/dashboard.html` (every chart from
 `metrics.visualize`, bundled into one self-contained page via
 `metrics/dashboard.py`; a short placeholder page if matplotlib isn't
 installed or `--no-charts` was passed, so the artifact always exists and is
-never a broken symlink). Pass `--seed` to make an entire batch — including
+never a broken symlink). It also writes four analysis artifacts —
+`reports/distributions.json` (exact quantiles/histograms/ECDF/tails/survival
+from the CSV), `reports/comparisons.json` (every strategy pair, corrected for
+multiplicity), `reports/convergence.json` (the checkpoint history behind the
+estimates) and `reports/analysis_metadata.json` (seeds, plan, methods, git
+provenance). An analysis that was switched off writes
+`{"skipped": true, "reason": ...}` rather than nothing, so no published
+symlink ever dangles. Pass `--seed` to make an entire batch — including
 every agent's per-run seeds — reproducible, useful for A/B-testing a config
 or code change under identical simulated conditions.
 Report artifacts are published atomically as a **set**, via a single pointer
 switch (`_publish_report_artifacts` in `main.py`): a batch stages into
 `reports/.batch-*/`, that directory is renamed to `reports/runs/<id>/` (one
 atomic rename), and `reports/latest` is repointed at it (one atomic symlink
-swap) under an inter-process lock. The five familiar paths above are stable
-symlinks through `latest`, so that one swap moves all five together — a
-reader can never pair a CSV from one batch with a summary from another.
+swap) under an inter-process lock. The nine paths above (`ARTIFACT_NAMES` in
+`main.py`) are stable symlinks through `latest`, so that one swap moves all
+nine together — a reader can never pair a CSV from one batch with a summary
+from another. Adding an artifact means adding it to `ARTIFACT_NAMES` *and*
+writing it (or its skip stub) into the staging directory; a name in the list
+with no file breaks publication for every artifact, not just that one.
 Published run directories are immutable and the last `RUNS_RETAINED` are
 kept, so resolving `reports/latest` once gives a consistent snapshot even
 while a later batch publishes, and `main.py view --run <id>` /
@@ -275,6 +309,80 @@ workflow" section for a worked example. New strategies get registered in
 crops, bankruptcy rates above threshold, rarely-reached upgrades) so a
 balance regression shows up in `summary_report.md` without manually
 eyeballing every strategy's numbers.
+
+## Statistical analysis layer
+
+Added in `docs/design/2026-08-21-statistical-analysis-framework-plan.md`;
+delivery status and what was deliberately left out are recorded in
+`docs/design/2026-08-22-statistical-analysis-validation-status.md`. The layer
+wraps the simulator and must never reach into it.
+
+**The analysis consumes no simulation RNG draws.** Bootstrap resampling,
+adaptive stopping and uncertainty sampling all use their own generators,
+seeded via `derive_analysis_seed` (`metrics/inference.py`), which is
+`blake2b` over the base seed and a label — never `hash()`, which is
+`PYTHONHASHSEED`-randomized and would make a bootstrap interval
+irreproducible across processes. `tests/test_analysis_integration.py`
+falsifies the claim directly: it runs a batch, does the whole analysis, runs
+the identical batch again, and asserts the results are identical.
+
+**One place computes an interval:** `metrics/inference.py`. Student-t for
+means, Wilson/Clopper-Pearson for proportions, deterministic percentile
+bootstrap for quantiles and non-analytic differences. `metrics/estimands.py`
+is the registry that says what is being estimated (unit of analysis, cohort,
+extraction, missing-value policy, whether it supports adaptive stopping);
+add an estimand there, not in a report renderer.
+
+**Published numbers are quantized to `PUBLISHED_PRECISION_DIGITS` (12).**
+Welford's M2 is order-dependent in the last ULP, so an unquantized standard
+deviation differs between a 1-worker and an 8-worker batch. Live
+accumulators keep full precision — the quantization is at `Estimate.to_dict`
+only, so stopping rules are not affected by it.
+
+**`runner/sampling_plan.py` versions the seed schedule, and
+`legacy-mt19937-v1` is frozen.** It reproduces
+`random.Random(base_seed).randrange(2**32)` agent-major, which is what every
+recorded seed, `replay-guard` and `farm-c`'s parity harness depend on;
+`runner/batch_run.py` uses it whenever no plan is named, so the default path
+is bit-identical to what it always was. `independent-hashed-v1` addresses a
+seed by `(strategy, replicate)` rather than by position — that is what makes
+adaptive blocks extendable and roster-invariant, and it is required for
+adaptive mode (which rejects the legacy plan rather than silently
+renumbering). `shared-initial-seed-v1` shares one seed per replicate across
+strategies for paired comparison; its own `describe()` records
+`pairing_strength: "weak"`, because agents diverge and then consume the
+shared stream differently. **It is not a default win** — measured at 400
+replicates, median correlation across pairs is 0.069 and the paired
+difference interval is a median 1.006x the independent one, i.e. slightly
+*wider*. Only agents that behave like the baseline benefit (a
+`ProfitOptimizer` subclass that overrides little: ~18-20%). Numbers, and why
+real CRN would need Section 7 stages 4-6 (not implemented, because they move
+`RandomEvents` and break both replay baselines and farm-c parity), are in
+`docs/design/2026-08-22-statistical-analysis-validation-status.md`.
+
+**Adaptive stopping evaluates only on complete blocks** (`runner/adaptive.py`),
+at a checkpoint schedule declared before the first run, with Lan-DeMets alpha
+spending across looks. Peeking at a partial block would make the realized run
+count depend on worker timing, and the whole layer's worker-count invariance
+with it.
+
+**`experiments/` holds config uncertainty, and it stays out of `config/`.**
+A `farm-uncertainty-v1` spec declares distributions over config *paths*;
+sampled configurations are deep-copied and pushed through the real
+`validate_simulation_config` before running, so a sampler can never smuggle
+an invalid economy past the loader. Only the Monte Carlo design honours
+declared correlation groups — OAT, LHS, Morris and Sobol reject a correlated
+spec rather than quietly ignoring the correlation. `sobol_design` builds
+`AB_i` as *A with column i from B*; the mirrored convention reproduces
+neither S1 nor ST, which is what the Ishigami benchmark in
+`tests/test_uncertainty.py` exists to catch.
+
+**Python and C boundary.** `farm-c` stays a deterministic raw-data producer;
+statistics are not duplicated there. `metrics/distributions.load_observations`
+tolerates farm-c's CSV column set (0/1 bankruptcy flags, `lowest_money` for
+`minimum_cash_balance`, a recomputed `avg_profit_per_day`), so
+`python3 main.py analyze --csv farm-c/reports/run_results.csv` runs the same
+inference over C output.
 
 ## Balance-testing workflow
 

@@ -282,3 +282,196 @@ def render_warnings(warnings: list[str]) -> str:
     if not warnings:
         return "No balance warnings."
     return "\n".join(f"⚠ {w}" for w in warnings)
+
+
+# ---------------------------------------------------------------------------
+# Statistical views
+#
+# Same rule as the table above: this module lays numbers out, it never
+# computes one. Every value rendered here was written by
+# metrics/inference.py, metrics/distributions.py or metrics/comparisons.py
+# into a published artifact, so the terminal, the markdown report and the
+# dashboard cannot disagree.
+# ---------------------------------------------------------------------------
+
+
+def _fmt_number(value, ndigits: int = 2) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, float):
+        return f"{value:,.{ndigits}f}"
+    if isinstance(value, int):
+        return f"{value:,}"
+    return str(value)
+
+
+def render_intervals(
+    strategies: dict,
+    estimand_ids=None,
+    sort_by: str | None = None,
+    ascending: bool = False,
+) -> str:
+    """Estimate, interval and effective n per strategy per estimand.
+
+    `n` is on every row because it is rarely the batch's run count: a
+    survivors-only estimand or one some runs never observed is estimated on a
+    smaller cohort, and an interval read without its denominator is the exact
+    misreading the estimand registry exists to prevent.
+    """
+    estimand_ids = list(estimand_ids) if estimand_ids else None
+    rows = []
+    for strategy, stats in strategies.items():
+        inference = stats.get("inference") or {}
+        ids = estimand_ids or list(inference)
+        for estimand_id in ids:
+            estimate = inference.get(estimand_id)
+            if not estimate:
+                continue
+            rows.append(
+                [
+                    strategy,
+                    estimand_id,
+                    _fmt_number(estimate.get("n"), 0),
+                    _fmt_number(estimate.get("value"), 4),
+                    _fmt_number(estimate.get("lower"), 4),
+                    _fmt_number(estimate.get("upper"), 4),
+                    _fmt_number(estimate.get("half_width"), 4),
+                    _fmt_number(estimate.get("stdev"), 4),
+                    str(estimate.get("method")),
+                ]
+            )
+    if not rows:
+        return (
+            "No inference block found in this run's summary.json -- it predates the "
+            "statistical layer. Re-run `python3 main.py batch` to get one."
+        )
+    if sort_by:
+        column = {"strategy": 0, "estimand": 1, "n": 2, "estimate": 3}.get(sort_by)
+        if column is not None:
+            rows.sort(key=lambda row: row[column], reverse=not ascending)
+    headers = [
+        "strategy",
+        "estimand",
+        "n",
+        "estimate",
+        "lower",
+        "upper",
+        "half_width",
+        "sd",
+        "method",
+    ]
+    return _render_table_rows(headers, rows)
+
+
+def render_distributions(document: dict, cohort: str = "all_runs") -> str:
+    """Exact quantiles and shape diagnostics for one cohort per strategy."""
+    if document.get("skipped"):
+        return f"Distributions not computed for this run ({document.get('reason')})."
+    rows = []
+    for strategy, entry in document.get("strategies", {}).items():
+        described = entry.get("cohorts", {}).get(cohort, {})
+        if not described.get("count"):
+            rows.append([strategy, "0", "—", "—", "—", "—", "—", "—", "—"])
+            continue
+        quantiles = described.get("quantiles", {})
+        outliers = described.get("tukey_outliers", {})
+        rows.append(
+            [
+                strategy,
+                _fmt_number(described.get("count"), 0),
+                _fmt_number(quantiles.get("p5")),
+                _fmt_number(quantiles.get("p25")),
+                _fmt_number(quantiles.get("p50")),
+                _fmt_number(quantiles.get("p75")),
+                _fmt_number(quantiles.get("p95")),
+                _fmt_number(described.get("skewness"), 3),
+                f"{outliers.get('lower', 0)}/{outliers.get('upper', 0)}",
+            ]
+        )
+    headers = ["strategy", "n", "p5", "p25", "p50", "p75", "p95", "skew", "outliers lo/hi"]
+    convention = document.get("quantile_convention", "inverse_cdf")
+    note = (
+        f"cohort: {cohort} | quantile convention: {convention} | "
+        "exact observations, not the median reservoir"
+    )
+    return f"{note}\n{_render_table_rows(headers, rows)}"
+
+
+def render_comparisons(document: dict, top: int = 10) -> str:
+    """Largest strategy differences per estimand, with multiplicity stated."""
+    if document.get("skipped"):
+        return f"Comparisons not computed for this run ({document.get('reason')})."
+    sections = [
+        f"pairing: {document.get('pairing')} | correction: {document.get('correction')}"
+        + (f" | baseline: {document['baseline']}" if document.get("baseline") else "")
+    ]
+    for estimand_id, pairs in document.get("estimands", {}).items():
+        if not pairs:
+            continue
+        ranked = sorted(pairs, key=lambda c: abs(c.get("difference") or 0.0), reverse=True)[:top]
+        rows = [
+            [
+                pair["strategy_a"],
+                pair["strategy_b"],
+                _fmt_number(pair.get("difference"), 3),
+                _fmt_number(pair.get("lower"), 3),
+                _fmt_number(pair.get("upper"), 3),
+                _fmt_number(pair.get("win_probability"), 3),
+                _fmt_number(pair.get("adjusted_p_value"), 4),
+                _fmt_number(pair.get("n_pairs") or pair.get("n_a"), 0),
+            ]
+            for pair in ranked
+        ]
+        headers = ["A", "B", "diff", "lower", "upper", "P(A>B)", "p_adj", "n"]
+        heading = f"== {estimand_id} ({len(pairs)} pairs in family) =="
+        sections.append(f"{heading}\n{_render_table_rows(headers, rows)}")
+    return "\n\n".join(sections)
+
+
+def render_convergence(document: dict) -> str:
+    """Checkpoint history: what was looked at, and why sampling stopped."""
+    if document.get("skipped"):
+        return f"No convergence record ({document.get('reason')})."
+    design = document.get("design", {})
+    checkpoints = document.get("checkpoints", [])
+    lines = [
+        f"stop reason: {document.get('stop_reason')} | "
+        f"looks taken: {len(checkpoints)} of {len(design.get('checkpoint_schedule') or [])} declared | "
+        f"alpha spending: {design.get('alpha_spending')}"
+    ]
+    rows = []
+    for checkpoint in checkpoints:
+        for strategy, entry in sorted(checkpoint.get("strategies", {}).items()):
+            estimate = entry.get("estimates", {}).get("expected_final_money")
+            if not estimate:
+                continue
+            rows.append(
+                [
+                    str(checkpoint.get("look")),
+                    strategy,
+                    _fmt_number(checkpoint.get("runs_per_strategy"), 0),
+                    _fmt_number(estimate.get("estimate")),
+                    _fmt_number(estimate.get("half_width"), 4),
+                    _fmt_number(estimate.get("change_from_previous"), 4),
+                    str(checkpoint.get("decision")),
+                ]
+            )
+    if not rows:
+        return "\n".join(lines)
+    headers = ["look", "strategy", "runs", "estimate", "half_width", "change", "decision"]
+    return lines[0] + "\n" + _render_table_rows(headers, rows)
+
+
+def load_artifact(run_dir: str, name: str) -> dict:
+    """Load one published JSON artifact, with a clear message if it predates
+    the statistical layer rather than a bare FileNotFoundError."""
+    import os as _os
+
+    path = _os.path.join(run_dir, name)
+    if not _os.path.exists(path):
+        raise ViewError(
+            f"{path} not found -- this run was published before `{name}` existed. "
+            "Re-run `python3 main.py batch` to get a run that has it."
+        )
+    with open(path) as f:
+        return json.load(f)

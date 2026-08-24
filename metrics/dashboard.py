@@ -174,6 +174,8 @@ def render_dashboard_html(
     title: str = "Farm Economy Batch Report",
     subtitle: str = "",
     dpi: int = 130,
+    convergence_path: str = None,
+    distributions_path: str = None,
     *,
     current_summary_doc: dict | None = None,
     reports_dir: str | None = None,
@@ -183,6 +185,10 @@ def render_dashboard_html(
     matplotlib is available and there is data to chart, otherwise a short
     explanatory page -- so callers never have to special-case a missing
     artifact.
+
+    `convergence_path`/`distributions_path` are passed through to
+    metrics.visualize.render_all, which adds the convergence and
+    distribution charts when those analysis artifacts exist.
 
     `current_summary_doc` (the current, not-yet-published batch's
     summary.json dict) and `reports_dir` (to look up already-published
@@ -202,7 +208,14 @@ def render_dashboard_html(
 
     tmp_dir = tempfile.mkdtemp(prefix="farm-dashboard-")
     try:
-        chart_paths = visualize.render_all(csv_path, tmp_dir, dpi, show=False)
+        chart_paths = visualize.render_all(
+            csv_path,
+            tmp_dir,
+            dpi,
+            show=False,
+            convergence_path=convergence_path,
+            distributions_path=distributions_path,
+        )
         figures = []
         for path in chart_paths:
             name = os.path.splitext(os.path.basename(path))[0]

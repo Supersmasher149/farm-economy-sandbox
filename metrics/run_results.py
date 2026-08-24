@@ -72,10 +72,23 @@ class RunResult:
     revenue_by_channel: dict
     quality_harvested: dict
     crop_decision_observations: dict
+    # Which replicate of the sampling plan produced this run. `None` under the
+    # legacy schedule's own callers that never set it; under any plan in
+    # runner/sampling_plan.py it is the index that lines this run up with the
+    # *same* replicate of every other strategy, which is what a paired
+    # comparison joins on. Defaulted so every existing constructor call keeps
+    # working unchanged.
+    replicate_id: object = None
 
 
 def build_run_result(
-    player, strategy_name: str, seed: int, days_simulated: int, crops: list, upgrades: list
+    player,
+    strategy_name: str,
+    seed: int,
+    days_simulated: int,
+    crops: list,
+    upgrades: list,
+    replicate_id=None,
 ) -> RunResult:
     expenses = {key: _money(value) for key, value in player.expenses_by_category.items()}
     revenue_by_channel = {key: _money(value) for key, value in player.revenue_by_channel.items()}
@@ -165,6 +178,7 @@ def build_run_result(
         revenue_by_channel=revenue_by_channel,
         quality_harvested=dict(player.quality_harvested),
         crop_decision_observations=rounded_observations,
+        replicate_id=replicate_id,
     )
 
 
@@ -172,6 +186,7 @@ def write_csv(results: list, path: str, crop_ids: list) -> None:
     fieldnames = [
         "strategy",
         "seed",
+        "replicate_id",
         "days_simulated",
         "final_money",
         "total_revenue",

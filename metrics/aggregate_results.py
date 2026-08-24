@@ -21,6 +21,12 @@ to the wrong side by premature rounding; every other field is rounded to 2
 decimals in `finalize()` since nothing downstream needs more precision than
 that. metrics/report.py rounds the unrounded fields itself at render time.
 
+Formal inference (standard errors and confidence intervals) rides along on
+the same single pass via `metrics/inference.py`: each strategy carries an
+`InferenceAccumulator`, and `finalize()` publishes its estimates under an
+`"inference"` key. The descriptive fields above are untouched by that -- an
+interval is added beside a number here, never in place of one.
+
 `aggregate(results) -> dict` is kept as a convenience wrapper with the same
 signature and output as before (works on a list or any other iterable, in a
 single pass). Batch callers that want to interleave aggregation with other
@@ -31,6 +37,8 @@ per-result work (e.g. streaming a CSV row per result) should drive
 import hashlib
 import random
 import statistics
+
+from metrics.inference import DEFAULT_CONFIDENCE, InferenceAccumulator
 
 MEDIAN_RESERVOIR_CAPACITY = 1024
 
@@ -144,8 +152,20 @@ _CONDITIONAL_MEAN_FIELDS = (
 
 
 class _StrategyAccumulator:
-    def __init__(self, strategy: str):
+    def __init__(
+        self,
+        strategy: str,
+        estimand_ids=None,
+        confidence: float = DEFAULT_CONFIDENCE,
+    ):
+        self.strategy = strategy
         self.count = 0
+        # Formal inference over the same stream. Separate from the mean
+        # accumulators above rather than folded into them: those exist to
+        # reproduce a descriptive number exactly, this one to bracket it,
+        # and collapsing the two would make a change to either silently
+        # move the other.
+        self.inference = InferenceAccumulator(estimand_ids, confidence=confidence)
         self.means = {
             name: _MeanAccumulator()
             for name in _CONDITIONAL_MEAN_FIELDS + tuple(name for name, _ in _SIMPLE_MEAN_FIELDS)
@@ -176,6 +196,7 @@ class _StrategyAccumulator:
 
     def add(self, r) -> None:
         self.count += 1
+        self.inference.add(r)
         means = self.means
 
         self.all_money_values.add(r.final_money)
@@ -320,30 +341,58 @@ class _StrategyAccumulator:
             },
             "quality_harvested": self.quality_totals,
             "crop_decision_observations": self.crop_observations,
+            # Formal inference, keyed by estimand id. Every entry carries its
+            # own effective sample count, interval method, and population, so
+            # a reader never has to infer the denominator from context.
+            "inference": self.inference.to_document(),
         }
 
 
 class BatchAggregator:
     """Streaming aggregator: call .add(result) once per RunResult, in any
     order or interleaving with other per-result work, then .finalize() once
-    at the end to get the same summary dict aggregate() returns."""
+    at the end to get the same summary dict aggregate() returns.
 
-    def __init__(self):
+    `estimand_ids` and `confidence` steer only the `"inference"` block; the
+    descriptive fields are identical whatever is passed, so an adaptive
+    controller can ask for a narrower estimand set without changing a single
+    published number.
+    """
+
+    def __init__(self, estimand_ids=None, confidence: float = DEFAULT_CONFIDENCE):
         self._by_strategy = {}
+        self._estimand_ids = estimand_ids
+        self._confidence = confidence
 
     def add(self, result) -> None:
         acc = self._by_strategy.get(result.strategy)
         if acc is None:
-            acc = _StrategyAccumulator(result.strategy)
+            acc = _StrategyAccumulator(
+                result.strategy, self._estimand_ids, confidence=self._confidence
+            )
             self._by_strategy[result.strategy] = acc
         acc.add(result)
+
+    def inference_accumulators(self) -> dict:
+        """Live per-strategy InferenceAccumulators.
+
+        Exposed for `runner/adaptive.py`, which needs to read an interval at a
+        checkpoint *without* finalizing (finalize() is a one-shot render of
+        the whole summary, and calling it mid-batch would be both wasteful and
+        misleading). `InferenceAccumulator.snapshot()` is non-destructive, so
+        a checkpoint read cannot disturb the batch it is measuring.
+        """
+        return {strategy: acc.inference for strategy, acc in self._by_strategy.items()}
+
+    def counts(self) -> dict:
+        return {strategy: acc.count for strategy, acc in self._by_strategy.items()}
 
     def finalize(self) -> dict:
         return {strategy: acc.finalize() for strategy, acc in self._by_strategy.items()}
 
 
-def aggregate(results) -> dict:
-    aggregator = BatchAggregator()
+def aggregate(results, estimand_ids=None, confidence: float = DEFAULT_CONFIDENCE) -> dict:
+    aggregator = BatchAggregator(estimand_ids, confidence=confidence)
     for r in results:
         aggregator.add(r)
     return aggregator.finalize()

@@ -1,0 +1,57 @@
+{
+  "schema": "farm-uncertainty-v1",
+  "name": "example-crop-economics",
+  "description": "Worked example: the crop-loss and price numbers a balance pass leans on hardest, with the provenance each would need before a real study.",
+  "on_invalid": "resample",
+  "max_attempts": 50,
+  "correlation_groups": {
+    "weather_exposure": {
+      "correlation": 0.6,
+      "note": "Loss chances move together: a wetter decade raises every crop's spoilage, so sampling them independently would understate the tail."
+    }
+  },
+  "parameters": [
+    {
+      "id": "quickweed_loss_chance",
+      "path": "crops[id=quickweed].loss_chance",
+      "distribution": "beta",
+      "parameters": {"alpha": 19, "beta": 81},
+      "unit": "probability",
+      "classification": "epistemic",
+      "correlation_group": "weather_exposure",
+      "source": "placeholder -- replace with a real field estimate before citing this study",
+      "constraints": {"min": 0.0, "max": 0.9}
+    },
+    {
+      "id": "greenleaf_loss_chance",
+      "path": "crops[id=greenleaf].loss_chance",
+      "distribution": "beta",
+      "parameters": {"alpha": 26, "beta": 74},
+      "unit": "probability",
+      "classification": "epistemic",
+      "correlation_group": "weather_exposure",
+      "source": "placeholder",
+      "constraints": {"min": 0.0, "max": 0.9}
+    },
+    {
+      "id": "greenleaf_base_price",
+      "path": "crops[id=greenleaf].base_price",
+      "distribution": "triangular",
+      "parameters": {"low": 4.5, "mode": 6.0, "high": 8.0},
+      "unit": "currency",
+      "classification": "epistemic",
+      "source": "placeholder",
+      "constraints": {"min": 0.5}
+    },
+    {
+      "id": "start_money",
+      "path": "simulation_settings.start_money",
+      "distribution": "uniform",
+      "parameters": {"low": 25, "high": 60},
+      "unit": "currency",
+      "classification": "epistemic",
+      "source": "design question, not measurement: how much does the opening balance matter?",
+      "constraints": {"min": 1, "integer": true}
+    }
+  ]
+}

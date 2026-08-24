@@ -1,0 +1,9 @@
+# Optional extra for vectorized/ only (python3 -m vectorized.orchestrator,
+# scripts/vectorized_*.py). Same pattern as requirements-viz.txt: the core
+# simulator (main.py, simulation/, runner/) needs none of this and never
+# will -- see README's "no third-party dependencies to run the simulator".
+#
+# numba is JIT, not a build step: first call to simulate_chunk() compiles
+# (a few seconds), cached afterwards by numba itself.
+numpy==2.5.2
+numba==0.67.0
