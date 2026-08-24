@@ -1,3 +1,8 @@
+/* strdup is POSIX (POSIX.1-2008), not ISO C, so glibc's <string.h> hides its
+ * declaration under -std=c11 unless a feature-test macro asks for it; must
+ * come before any header is included, including golden.h's own. */
+#define _POSIX_C_SOURCE 200809L
+
 #include "golden.h"
 
 #include <errno.h>

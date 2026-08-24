@@ -33,11 +33,12 @@ kernel-vs-reference comparison can't catch, since a bug in either would
 still leave the per-run numbers agreeing.
 """
 
-import numpy as np
 import pytest
 
 pytest.importorskip("numpy")
 pytest.importorskip("numba")
+
+import numpy as np  # noqa: E402
 
 import scripts.vectorized_validate as vv  # noqa: E402
 from vectorized import crops  # noqa: E402
