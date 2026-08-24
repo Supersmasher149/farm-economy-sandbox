@@ -7,15 +7,20 @@
  * plain assertions against hand-computed expected text rather than
  * recorded Python output.
  */
-/* mkstemp is not ISO C -- see tests/test_config_invalid.c's comment on
- * _POSIX_C_SOURCE/_DARWIN_C_SOURCE for why both are needed and must come
- * before any header is included. */
+/* mkstemp is declared in <stdlib.h> on glibc but in <unistd.h> on Darwin,
+ * so this file needs both headers -- <stdlib.h> was missing entirely,
+ * which only built here by accident because Darwin's <unistd.h> already
+ * carries the declaration. It is also not ISO C, so glibc's <stdlib.h>
+ * hides it under -std=c11 unless a feature-test macro asks for it -- see
+ * tests/test_config_invalid.c's comment on _POSIX_C_SOURCE/_DARWIN_C_SOURCE
+ * for why both are needed and must come before any header is included. */
 #define _POSIX_C_SOURCE 200809L
 #define _DARWIN_C_SOURCE
 
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
