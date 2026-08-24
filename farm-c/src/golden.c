@@ -1,7 +1,11 @@
-/* strdup is POSIX (POSIX.1-2008), not ISO C, so glibc's <string.h> hides its
- * declaration under -std=c11 unless a feature-test macro asks for it; must
- * come before any header is included, including golden.h's own. */
+/* strdup is not ISO C, so glibc's <string.h> hides its declaration under
+ * -std=c11 unless a feature-test macro asks for it. _DARWIN_C_SOURCE rides
+ * alongside for the same reason tests/test_config_invalid.c defines it next
+ * to _POSIX_C_SOURCE (see the comment there): on Darwin, _POSIX_C_SOURCE
+ * alone can narrow visibility instead of widening it. Both must come before
+ * any header is included, including golden.h's own. */
 #define _POSIX_C_SOURCE 200809L
+#define _DARWIN_C_SOURCE
 
 #include "golden.h"
 

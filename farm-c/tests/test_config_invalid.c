@@ -19,6 +19,19 @@
  * (docs/c-port-plan.md Section 9), and ASan is what makes that assertion
  * mean something.
  */
+/* mkdtemp is not ISO C, so glibc's <stdlib.h> hides its declaration under
+ * -std=c11 unless a feature-test macro asks for it -- without this, gcc
+ * silently falls back to an implicit int-returning declaration and
+ * truncates the returned pointer on 64-bit, which crashed make_sandbox with
+ * a SEGV rather than failing to compile the way clang does. _POSIX_C_SOURCE
+ * alone is enough on glibc, but on Darwin it has the opposite effect: it
+ * *narrows* __DARWIN_C_LEVEL away from __DARWIN_C_FULL and hides mkdtemp
+ * from <unistd.h> unless _DARWIN_C_SOURCE is defined alongside it (a no-op,
+ * unrecognized macro on glibc). Both must come before any header is
+ * included. */
+#define _POSIX_C_SOURCE 200809L
+#define _DARWIN_C_SOURCE
+
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
