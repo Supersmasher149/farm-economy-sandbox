@@ -277,7 +277,18 @@ LTO = -flto
 # build symbolizable again -- which matters precisely because this is also
 # the build you are told to profile. Lands in $(BUILD_DIR), so `clean` takes
 # it with everything else.
+#
+# -object_path_lto is an Apple ld64 option (profiling with Instruments/
+# `sample` is a macOS-only workflow here); GNU ld on Linux doesn't
+# recognize it and, worse, silently treats the comma-separated path that
+# follows as a positional input file to link, failing with "cannot find
+# build/farm-c-release-lto.o: No such file or directory" since nothing
+# ever writes that path there. Empty on every other platform.
+ifeq ($(shell uname -s),Darwin)
 LTO_OBJ = -Wl,-object_path_lto,$(BUILD_DIR)/farm-c-release-lto.o
+else
+LTO_OBJ =
+endif
 PROFILE_LIB_OBJS = $(patsubst src/%.c,$(PROFILE_DIR)/%.o,$(LIB_SRCS))
 PROFILE_CJSON_OBJ = $(PROFILE_DIR)/cJSON.o
 PROFILE_DEPS = $(PROFILE_LIB_OBJS:.o=.d) $(PROFILE_CJSON_OBJ:.o=.d)
