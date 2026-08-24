@@ -7,6 +7,12 @@
  * plain assertions against hand-computed expected text rather than
  * recorded Python output.
  */
+/* mkstemp is not ISO C -- see tests/test_config_invalid.c's comment on
+ * _POSIX_C_SOURCE/_DARWIN_C_SOURCE for why both are needed and must come
+ * before any header is included. */
+#define _POSIX_C_SOURCE 200809L
+#define _DARWIN_C_SOURCE
+
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
